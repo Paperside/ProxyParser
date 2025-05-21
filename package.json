@@ -1,0 +1,22 @@
+{
+  "name": "proxyparser",
+  "version": "1.0.0",
+  "description": "Project dealing with proxy links and revising(groupby, customRule) proxy files, then provide unified API for downloading",
+  "license": "ISC",
+  "author": "Paperside",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "axios": "^1.8.3",
+    "express": "^4.21.2",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}

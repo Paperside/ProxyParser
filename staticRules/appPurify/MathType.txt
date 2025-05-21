@@ -1,0 +1,3 @@
+DOMAIN,www.wiris.net
+DOMAIN,version.dessci.com
+DOMAIN,data.wiris.cloud
