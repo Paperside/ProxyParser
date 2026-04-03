@@ -36,7 +36,7 @@ const genAIGoups = proxyGroupName => {
     {
       name: '🤖 LLMs',
       type: 'select',
-      proxies: ['Relay', ...proxyGroupName],
+      proxies: [...proxyGroupName],
     },
   ]
 }
@@ -200,3 +200,4 @@ const genGroups = proxy => {
 module.exports = {
   genGroups,
 }
+

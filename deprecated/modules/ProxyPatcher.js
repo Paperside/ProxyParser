@@ -1,6 +1,5 @@
 const { fetchSubscriptionByUrl } = require('../fetch/FetchSubscription')
 const { parseProxyWithString } = require('./ProxyContent')
-const { patchRelay } = require('./PatchRelay')
 const { genGroups } = require('./ProxyGroup')
 const { getFullRules } = require('./ProxyRules')
 
@@ -16,7 +15,6 @@ const getPatchedProxy = async url => {
       const rules = await getFullRules()
       res.data.rules = rules
       res.data['proxy-groups'] = genGroups(res.data)
-      res.data = patchRelay(res.data)
     }
   }
   return res
