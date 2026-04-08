@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --hot src/index.ts",
-    "start": "bun src/index.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "dev": "sh -c 'export PATH=\"$HOME/.bun/bin:$PATH\"; if command -v lsof >/dev/null 2>&1; then pids=$(lsof -ti tcp:${PORT:-3001} -sTCP:LISTEN 2>/dev/null); if [ -n \"$pids\" ]; then kill $pids 2>/dev/null || true; fi; fi; exec bun --hot src/index.ts'",
+    "start": "sh -c 'export PATH=\"$HOME/.bun/bin:$PATH\"; exec bun src/index.ts'",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "sh -c 'export PATH=\"$HOME/.bun/bin:$PATH\"; exec bun test'"
   },
   "dependencies": {
     "@elysiajs/cors": "^1.3.3",
