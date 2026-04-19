@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { Copy, ExternalLink, Layers3, PencilLine, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 
@@ -20,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue
 } from "../components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
 import {
   formatRelativeDate,
@@ -511,9 +511,13 @@ const TemplateDialog = ({
   );
 };
 
-export const TemplatesPage = () => {
+export const TemplatesPage = ({
+  section
+}: {
+  section: "mine" | "market";
+}) => {
   const workspace = useWorkspace();
-  const [activeTab, setActiveTab] = useState("mine");
+  const navigate = useNavigate();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<TemplateEditorState>(emptyTemplateForm);
@@ -627,7 +631,12 @@ export const TemplatesPage = () => {
     try {
       await workspace.forkTemplate(templateId);
       setFeedbackMessage(`已将模板“${displayName}”复制到我的模板。`);
-      setActiveTab("mine");
+
+      if (section !== "mine") {
+        await navigate({
+          to: "/templates/mine"
+        });
+      }
     } catch (error) {
       setFeedbackMessage(error instanceof Error ? error.message : "复制模板失败。");
     } finally {
@@ -703,13 +712,7 @@ export const TemplatesPage = () => {
         </div>
       ) : null}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="mine">我的模板</TabsTrigger>
-          <TabsTrigger value="market">模板市场</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="mine">
+      {section === "mine" ? (
           <div className="space-y-4">
             {sortedTemplates.length === 0 ? (
               <Card className="rounded-[32px] p-10 text-center text-sm text-slate-500">
@@ -774,9 +777,7 @@ export const TemplatesPage = () => {
               </Card>
             ))}
           </div>
-        </TabsContent>
-
-        <TabsContent value="market">
+      ) : (
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <Card className="rounded-[32px] p-6">
               <div className="flex items-center gap-3">
@@ -1054,8 +1055,7 @@ export const TemplatesPage = () => {
               </div>
             </Card>
           </div>
-        </TabsContent>
-      </Tabs>
+      )}
 
       <TemplateDialog
         open={dialogOpen}

@@ -41,6 +41,14 @@ const EntryRedirect = () => {
   return <Navigate to={auth.session ? "/dashboard" : "/login"} />;
 };
 
+const SubscriptionsRedirect = () => {
+  return <Navigate to="/subscriptions/upstream" />;
+};
+
+const TemplatesRedirect = () => {
+  return <Navigate to="/templates/mine" />;
+};
+
 const GuestLayout = () => {
   const auth = useAuth();
 
@@ -116,7 +124,19 @@ const dashboardRoute = createRoute({
 const subscriptionsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/subscriptions",
-  component: SubscriptionsPage
+  component: SubscriptionsRedirect
+});
+
+const subscriptionsUpstreamRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/subscriptions/upstream",
+  component: () => <SubscriptionsPage section="upstream" />
+});
+
+const subscriptionsGeneratedRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/subscriptions/generated",
+  component: () => <SubscriptionsPage section="generated" />
 });
 
 const generatedSubscriptionWizardRoute = createRoute({
@@ -128,7 +148,19 @@ const generatedSubscriptionWizardRoute = createRoute({
 const templatesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/templates",
-  component: TemplatesPage
+  component: TemplatesRedirect
+});
+
+const templatesMineRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/templates/mine",
+  component: () => <TemplatesPage section="mine" />
+});
+
+const templatesMarketRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/templates/market",
+  component: () => <TemplatesPage section="market" />
 });
 
 const settingsRoute = createRoute({
@@ -143,8 +175,12 @@ const routeTree = rootRoute.addChildren([
   appRoute.addChildren([
     dashboardRoute,
     subscriptionsRoute,
+    subscriptionsUpstreamRoute,
+    subscriptionsGeneratedRoute,
     generatedSubscriptionWizardRoute,
     templatesRoute,
+    templatesMineRoute,
+    templatesMarketRoute,
     settingsRoute
   ])
 ]);
