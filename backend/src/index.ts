@@ -130,7 +130,10 @@ const main = async () => {
       time: new Date().toISOString(),
       database: getDatabaseHealth()
     }))
-    .listen(runtimeConfig.port);
+    .listen({
+      port: runtimeConfig.port,
+      reusePort: false
+    });
 
   void rulesetSyncService.syncDueRulesets("startup");
 

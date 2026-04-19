@@ -11,16 +11,13 @@
     "frontend"
   ],
   "scripts": {
-    "dev": "sh -c 'export PATH=\"$HOME/.bun/bin:$PATH\"; exec concurrently -n backend,frontend -c blue,magenta \"bun run --cwd backend dev\" \"bun run --cwd frontend dev\"'",
-    "start": "sh -c 'export PATH=\"$HOME/.bun/bin:$PATH\"; exec concurrently -n backend,frontend -c blue,magenta \"bun run --cwd backend start\" \"bun run --cwd frontend start\"'",
-    "build": "sh -c 'export PATH=\"$HOME/.bun/bin:$PATH\"; bun run --cwd backend typecheck && bun run --cwd frontend build'",
-    "typecheck": "sh -c 'export PATH=\"$HOME/.bun/bin:$PATH\"; bun run --cwd backend typecheck && bun run --cwd frontend typecheck'",
-    "dev:backend": "sh -c 'export PATH=\"$HOME/.bun/bin:$PATH\"; exec bun run --cwd backend dev'",
-    "dev:frontend": "sh -c 'export PATH=\"$HOME/.bun/bin:$PATH\"; exec bun run --cwd frontend dev'",
-    "start:backend": "sh -c 'export PATH=\"$HOME/.bun/bin:$PATH\"; exec bun run --cwd backend start'",
-    "start:frontend": "sh -c 'export PATH=\"$HOME/.bun/bin:$PATH\"; exec bun run --cwd frontend start'"
-  },
-  "devDependencies": {
-    "concurrently": "^9.2.1"
+    "dev": "bun run --workspaces --parallel dev",
+    "start": "bun run --workspaces --parallel start",
+    "build": "bun run --workspaces build",
+    "typecheck": "bun run --workspaces typecheck",
+    "dev:backend": "bun run --filter @proxyparser/backend dev",
+    "dev:frontend": "bun run --filter @proxyparser/frontend dev",
+    "start:backend": "bun run --filter @proxyparser/backend start",
+    "start:frontend": "bun run --filter @proxyparser/frontend start"
   }
 }
