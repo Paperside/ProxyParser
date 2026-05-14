@@ -620,3 +620,107 @@ test("draft can create an upstream source from a pasted URL", async () => {
   expect(source?.displayName).toBe("粘贴导入源");
   expect(source?.lastSyncStatus).toBe("failed");
 });
+
+test("temporary token enforces TTL bounds and revoke denies delivery", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService,
+    managedSubscriptionService
+  } = createTestContext();
+  const registered = await authService.register({
+    email: "tokenctl@example.com",
+    username: "tokenctl",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "Key 测试源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "Key 测试草稿",
+    upstreamSourceId: source.id
+  });
+  const published = await managedSubscriptionService.publishFromDraft(registered.user.id, draft.id, {
+    displayName: "Key 测试订阅",
+    isEnabled: true
+  });
+
+  const shortToken = managedSubscriptionService.createTempToken(
+    registered.user.id,
+    published.id,
+    60
+  );
+  const longToken = managedSubscriptionService.createTempToken(
+    registered.user.id,
+    published.id,
+    31 * 24 * 60 * 60
+  );
+  const shortTtlMs = new Date(shortToken.expiresAt).getTime() - Date.now();
+  const longTtlMs = new Date(longToken.expiresAt).getTime() - Date.now();
+
+  expect(shortTtlMs).toBeGreaterThanOrEqual(59 * 60 * 1000);
+  expect(longTtlMs).toBeLessThanOrEqual(30 * 24 * 60 * 60 * 1000 + 5_000);
+  expect(shortToken.id).toBeTruthy();
+
+  managedSubscriptionService.revokeTempToken(registered.user.id, published.id, shortToken.id);
+
+  await expect(
+    managedSubscriptionService.deliver(published.id, shortToken.token, "127.0.0.1", "bun:test")
+  ).rejects.toThrow("订阅访问令牌无效或已过期。");
+});
+
+test("subscription can be shared publicly and to a user", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService,
+    managedSubscriptionService
+  } = createTestContext();
+  const owner = await authService.register({
+    email: "share-owner@example.com",
+    username: "shareowner",
+    password: "password123"
+  });
+  const target = await authService.register({
+    email: "share-target@example.com",
+    username: "sharetarget",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(owner.user.id, {
+    displayName: "共享源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
+  const draft = await generatedSubscriptionDraftService.create(owner.user.id, {
+    displayName: "共享草稿",
+    upstreamSourceId: source.id
+  });
+  const published = await managedSubscriptionService.publishFromDraft(owner.user.id, draft.id, {
+    displayName: "共享订阅",
+    isEnabled: true
+  });
+
+  managedSubscriptionService.upsertShareGrant(owner.user.id, published.id, {
+    scope: "public",
+    mode: "view"
+  });
+  managedSubscriptionService.upsertShareGrant(owner.user.id, published.id, {
+    scope: "user",
+    mode: "fork",
+    targetUserId: target.user.id
+  });
+
+  const grants = managedSubscriptionService.listShareGrants(owner.user.id, published.id);
+
+  expect(grants.some((grant) => grant.scope === "public" && grant.mode === "view")).toBe(true);
+  expect(
+    grants.some(
+      (grant) =>
+        grant.scope === "user" && grant.mode === "fork" && grant.targetUserId === target.user.id
+    )
+  ).toBe(true);
+});

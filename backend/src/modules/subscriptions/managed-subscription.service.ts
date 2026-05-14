@@ -1,4 +1,10 @@
-import type { ClashProxyDocument, ManagedSubscriptionDetail, ManagedSubscriptionSummary } from "../../types";
+import type {
+  ClashProxyDocument,
+  ManagedSubscriptionDetail,
+  ManagedSubscriptionSummary,
+  SubscriptionShareGrantMode,
+  SubscriptionShareScope
+} from "../../types";
 import { createId } from "../../lib/ids";
 import { hashOpaqueToken, createOpaqueToken } from "../../lib/auth/tokens";
 import { createDefaultTemplatePayload } from "../../lib/render/template-payload";
@@ -34,6 +40,13 @@ interface PublishManagedSubscriptionFromDraftInput {
   isEnabled?: boolean;
 }
 
+interface UpsertShareGrantInput {
+  scope: SubscriptionShareScope;
+  mode: SubscriptionShareGrantMode;
+  targetUserId?: string | null;
+  targetEmail?: string | null;
+}
+
 export class ManagedSubscriptionError extends Error {
   constructor(
     message: string,
@@ -49,6 +62,13 @@ const parseSourceDocument = (json: string | null): ClashProxyDocument | null => 
   }
 
   return JSON.parse(json) as ClashProxyDocument;
+};
+
+const MIN_TEMP_TOKEN_TTL_SECONDS = 60 * 60;
+const MAX_TEMP_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+const clampTempTokenTtl = (value: number) => {
+  return Math.min(Math.max(value, MIN_TEMP_TOKEN_TTL_SECONDS), MAX_TEMP_TOKEN_TTL_SECONDS);
 };
 
 const deriveTemplatePayloadFromDocument = (document: ClashProxyDocument) => {
@@ -321,6 +341,24 @@ export class ManagedSubscriptionService {
     };
   }
 
+  listTempTokens(ownerUserId: string, subscriptionId: string) {
+    const subscription = this.repository.findByIdAndOwner(subscriptionId, ownerUserId);
+
+    if (!subscription) {
+      throw new ManagedSubscriptionError("未找到该生成订阅。", 404);
+    }
+
+    return this.accessRepository.listTempTokens(ownerUserId, subscriptionId).map((token) => ({
+      id: token.id,
+      managedSubscriptionId: token.managedSubscriptionId,
+      label: token.label,
+      expiresAt: token.expiresAt,
+      revokedAt: token.revokedAt,
+      lastUsedAt: token.lastUsedAt,
+      createdAt: token.createdAt
+    }));
+  }
+
   createTempToken(ownerUserId: string, subscriptionId: string, expiresInSeconds = 24 * 60 * 60) {
     const subscription = this.repository.findByIdAndOwner(subscriptionId, ownerUserId);
 
@@ -329,10 +367,12 @@ export class ManagedSubscriptionService {
     }
 
     const token = createOpaqueToken(48);
-    const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+    const tokenId = createId("stt");
+    const normalizedExpiresInSeconds = clampTempTokenTtl(expiresInSeconds);
+    const expiresAt = new Date(Date.now() + normalizedExpiresInSeconds * 1000).toISOString();
 
     this.accessRepository.createTempToken({
-      id: createId("stt"),
+      id: tokenId,
       userId: ownerUserId,
       managedSubscriptionId: subscriptionId,
       tokenHash: hashOpaqueToken(token),
@@ -340,8 +380,73 @@ export class ManagedSubscriptionService {
     });
 
     return {
+      id: tokenId,
       token,
       expiresAt
+    };
+  }
+
+  revokeTempToken(ownerUserId: string, subscriptionId: string, tokenId: string) {
+    const subscription = this.repository.findByIdAndOwner(subscriptionId, ownerUserId);
+
+    if (!subscription) {
+      throw new ManagedSubscriptionError("未找到该生成订阅。", 404);
+    }
+
+    if (!this.accessRepository.revokeTempToken(ownerUserId, subscriptionId, tokenId)) {
+      throw new ManagedSubscriptionError("未找到可撤销的临时订阅令牌。", 404);
+    }
+
+    return {
+      success: true
+    };
+  }
+
+  listShareGrants(ownerUserId: string, subscriptionId: string) {
+    const subscription = this.repository.findByIdAndOwner(subscriptionId, ownerUserId);
+
+    if (!subscription) {
+      throw new ManagedSubscriptionError("未找到该生成订阅。", 404);
+    }
+
+    return this.repository.listShareGrants(ownerUserId, subscriptionId);
+  }
+
+  upsertShareGrant(ownerUserId: string, subscriptionId: string, input: UpsertShareGrantInput) {
+    const subscription = this.repository.findByIdAndOwner(subscriptionId, ownerUserId);
+
+    if (!subscription) {
+      throw new ManagedSubscriptionError("未找到该生成订阅。", 404);
+    }
+
+    if (input.scope === "user" && !input.targetUserId && !input.targetEmail) {
+      throw new ManagedSubscriptionError("定向共享需要指定用户。", 400);
+    }
+
+    return this.repository.createShareGrant({
+      id: createId("sgrant"),
+      managedSubscriptionId: subscriptionId,
+      ownerUserId,
+      targetUserId: input.targetUserId ?? null,
+      targetEmail: input.targetEmail ?? null,
+      scope: input.scope,
+      mode: input.mode
+    });
+  }
+
+  revokeShareGrant(ownerUserId: string, subscriptionId: string, grantId: string) {
+    const subscription = this.repository.findByIdAndOwner(subscriptionId, ownerUserId);
+
+    if (!subscription) {
+      throw new ManagedSubscriptionError("未找到该生成订阅。", 404);
+    }
+
+    if (!this.repository.revokeShareGrant(ownerUserId, subscriptionId, grantId)) {
+      throw new ManagedSubscriptionError("未找到可撤销的共享授权。", 404);
+    }
+
+    return {
+      success: true
     };
   }
 

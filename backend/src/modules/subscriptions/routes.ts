@@ -35,6 +35,19 @@ const optionalNumber = (source: Record<string, unknown>, key: string) => {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 };
 
+const parseShareGrantBody = (body: unknown) => {
+  if (!isRecord(body)) {
+    throw new ManagedSubscriptionError("请求体格式错误。", 400);
+  }
+
+  return {
+    scope: optionalString(body, "scope") as "user" | "public" | "unlisted" | undefined,
+    mode: optionalString(body, "mode") as "view" | "fork" | "subscribe" | undefined,
+    targetUserId: optionalString(body, "targetUserId"),
+    targetEmail: optionalString(body, "targetEmail")
+  };
+};
+
 const parseSubscriptionBody = (body: unknown) => {
   if (!isRecord(body)) {
     throw new ManagedSubscriptionError("请求体格式错误。", 400);
@@ -198,6 +211,14 @@ export const createManagedSubscriptionRoutes = (
         return sendSubscriptionError(error, set);
       }
     })
+    .get("/:id/temp-tokens", ({ headers, params, set }) => {
+      try {
+        const user = authService.authenticate(headers.authorization);
+        return managedSubscriptionService.listTempTokens(user.id, params.id);
+      } catch (error) {
+        return sendSubscriptionError(error, set);
+      }
+    })
     .post("/:id/temp-token", ({ headers, params, body, set }) => {
       try {
         const user = authService.authenticate(headers.authorization);
@@ -221,6 +242,50 @@ export const createManagedSubscriptionRoutes = (
           }
         });
         return result;
+      } catch (error) {
+        return sendSubscriptionError(error, set);
+      }
+    })
+    .delete("/:id/temp-tokens/:tokenId", ({ headers, params, set }) => {
+      try {
+        const user = authService.authenticate(headers.authorization);
+        return managedSubscriptionService.revokeTempToken(user.id, params.id, params.tokenId);
+      } catch (error) {
+        return sendSubscriptionError(error, set);
+      }
+    })
+    .get("/:id/share-grants", ({ headers, params, set }) => {
+      try {
+        const user = authService.authenticate(headers.authorization);
+        return managedSubscriptionService.listShareGrants(user.id, params.id);
+      } catch (error) {
+        return sendSubscriptionError(error, set);
+      }
+    })
+    .post("/:id/share-grants", ({ headers, params, body, set }) => {
+      try {
+        const user = authService.authenticate(headers.authorization);
+        const parsed = parseShareGrantBody(body);
+
+        if (!parsed.scope || !parsed.mode) {
+          throw new ManagedSubscriptionError("共享范围和模式不能为空。", 400);
+        }
+
+        set.status = 201;
+        return managedSubscriptionService.upsertShareGrant(user.id, params.id, {
+          scope: parsed.scope,
+          mode: parsed.mode,
+          targetUserId: parsed.targetUserId,
+          targetEmail: parsed.targetEmail
+        });
+      } catch (error) {
+        return sendSubscriptionError(error, set);
+      }
+    })
+    .delete("/:id/share-grants/:grantId", ({ headers, params, set }) => {
+      try {
+        const user = authService.authenticate(headers.authorization);
+        return managedSubscriptionService.revokeShareGrant(user.id, params.id, params.grantId);
       } catch (error) {
         return sendSubscriptionError(error, set);
       }

@@ -6,6 +6,9 @@ import type {
   ManagedSubscriptionSummary,
   RenderStatus,
   ShareMode,
+  SubscriptionShareGrant,
+  SubscriptionShareGrantMode,
+  SubscriptionShareScope,
   SubscriptionUsageInfo,
   SyncStatus,
   Visibility
@@ -46,6 +49,19 @@ interface SnapshotRow {
   validationStatus: "success" | "failed";
   validationError: string | null;
   createdAt: string;
+}
+
+interface SubscriptionShareGrantRow {
+  id: string;
+  managedSubscriptionId: string;
+  ownerUserId: string;
+  targetUserId: string | null;
+  targetEmail: string | null;
+  scope: SubscriptionShareScope;
+  mode: SubscriptionShareGrantMode;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt: string | null;
 }
 
 export interface ManagedSnapshotRecord extends SnapshotRow {}
@@ -319,6 +335,86 @@ export class ManagedSubscriptionRepository {
     `);
 
     return query.run(subscriptionId, ownerUserId).changes > 0;
+  }
+
+  listShareGrants(ownerUserId: string, subscriptionId: string): SubscriptionShareGrant[] {
+    const query = this.db.query<SubscriptionShareGrantRow>(`
+      SELECT
+        id,
+        managed_subscription_id AS managedSubscriptionId,
+        owner_user_id AS ownerUserId,
+        target_user_id AS targetUserId,
+        target_email AS targetEmail,
+        scope,
+        mode,
+        created_at AS createdAt,
+        updated_at AS updatedAt,
+        revoked_at AS revokedAt
+      FROM subscription_share_grants
+      WHERE owner_user_id = ?
+        AND managed_subscription_id = ?
+        AND revoked_at IS NULL
+      ORDER BY created_at DESC
+    `);
+
+    return query.all(ownerUserId, subscriptionId);
+  }
+
+  createShareGrant(input: {
+    id: string;
+    managedSubscriptionId: string;
+    ownerUserId: string;
+    targetUserId?: string | null;
+    targetEmail?: string | null;
+    scope: SubscriptionShareScope;
+    mode: SubscriptionShareGrantMode;
+  }) {
+    const now = new Date().toISOString();
+    const query = this.db.query(`
+      INSERT INTO subscription_share_grants (
+        id,
+        managed_subscription_id,
+        owner_user_id,
+        target_user_id,
+        target_email,
+        scope,
+        mode,
+        created_at,
+        updated_at,
+        revoked_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+    `);
+
+    query.run(
+      input.id,
+      input.managedSubscriptionId,
+      input.ownerUserId,
+      input.targetUserId ?? null,
+      input.targetEmail ?? null,
+      input.scope,
+      input.mode,
+      now,
+      now
+    );
+
+    return this.listShareGrants(input.ownerUserId, input.managedSubscriptionId).find(
+      (grant) => grant.id === input.id
+    ) ?? null;
+  }
+
+  revokeShareGrant(ownerUserId: string, subscriptionId: string, grantId: string) {
+    const query = this.db.query(`
+      UPDATE subscription_share_grants
+      SET revoked_at = ?, updated_at = ?
+      WHERE id = ?
+        AND owner_user_id = ?
+        AND managed_subscription_id = ?
+        AND revoked_at IS NULL
+    `);
+    const now = new Date().toISOString();
+
+    return query.run(now, now, grantId, ownerUserId, subscriptionId).changes > 0;
   }
 
   createSnapshot(input: CreateManagedSnapshotInput) {

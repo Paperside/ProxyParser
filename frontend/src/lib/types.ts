@@ -170,6 +170,29 @@ export interface GeneratedSubscriptionDetail extends GeneratedSubscription {
   sourceName: string | null;
 }
 
+export interface SubscriptionTempTokenSummary {
+  id: string;
+  managedSubscriptionId: string | null;
+  label: string | null;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+export interface SubscriptionShareGrant {
+  id: string;
+  managedSubscriptionId: string;
+  ownerUserId: string;
+  targetUserId: string | null;
+  targetEmail: string | null;
+  scope: SubscriptionShareScope;
+  mode: SubscriptionShareGrantMode;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt: string | null;
+}
+
 export interface GeneratedSubscriptionSnapshot {
   id: string;
   managedSubscriptionId: string;
