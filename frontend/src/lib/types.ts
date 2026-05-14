@@ -3,6 +3,13 @@ export type ShareMode = "disabled" | "view" | "fork";
 export type SyncStatus = "idle" | "syncing" | "success" | "failed" | "stale";
 export type RenderStatus = "pending" | "rendering" | "success" | "failed" | "degraded";
 export type ManagedSubscriptionMode = "template" | "draft";
+export type TemplateShareabilityStatus =
+  | "unknown"
+  | "shareable"
+  | "source_locked"
+  | "sanitized";
+export type SubscriptionShareScope = "user" | "public" | "unlisted";
+export type SubscriptionShareGrantMode = "view" | "fork" | "subscribe";
 export type GeneratedSubscriptionDraftStepKey =
   | "source"
   | "proxies"
@@ -49,6 +56,21 @@ export interface ParsedConfig {
   rules?: string[];
 }
 
+export interface AutoGroupOptions {
+  enabled: boolean;
+  includeAutoGroup: boolean;
+  unclassifiedPolicy: "others" | "ignore";
+}
+
+export interface RuleProviderAttachment {
+  type: "attach-rule-provider";
+  providerSlug: string;
+  targetPolicy: string;
+  insert: {
+    position: "top" | "bottom" | "before-match";
+  };
+}
+
 export interface UpstreamSource {
   id: string;
   ownerUserId: string;
@@ -81,6 +103,8 @@ export interface TemplatePayload {
   configMode: "patch" | "full_override";
   customProxiesPolicy: "append" | "replace_same_name" | "fail_on_conflict";
   ruleProviderRefs: string[];
+  ruleProviderAttachments?: RuleProviderAttachment[];
+  autoGroup?: AutoGroupOptions | null;
   rules: string[];
   proxyGroups: Array<{ name: string; type: string; proxies: string[] }>;
   configPatch: Record<string, unknown>;
@@ -98,6 +122,9 @@ export interface Template {
   sourceTemplateId: string | null;
   sourceLabel: string | null;
   sourceUrl: string | null;
+  shareabilityStatus: TemplateShareabilityStatus;
+  sanitizedFromTemplateId: string | null;
+  lockedReasons: string[];
   visibility: Visibility;
   shareMode: ShareMode;
   publishStatus: "draft" | "published" | "archived";

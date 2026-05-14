@@ -288,3 +288,27 @@ test("订阅拉取在上游同步失败时会回退到最近一次成功快照",
   expect(delivered.yamlText).toContain("HK-01");
   expect(delivered.headers["subscription-userinfo"]).toBe("upload=1; download=2; total=3; expire=4");
 });
+
+test("product redesign migration exposes shareability and token metadata", () => {
+  const { db } = createTestContext();
+  const tableColumns = (tableName: string) =>
+    db
+      .query<{ name: string }>(`PRAGMA table_info(${tableName})`)
+      .all()
+      .map((column) => column.name);
+
+  const templateColumns = tableColumns("templates");
+  const tempTokenColumns = tableColumns("user_subscription_temp_tokens");
+  const shareGrantTable = db
+    .query<{ name: string }>(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'subscription_share_grants'`
+    )
+    .get();
+
+  expect(templateColumns).toContain("shareability_status");
+  expect(templateColumns).toContain("sanitized_from_template_id");
+  expect(templateColumns).toContain("locked_reasons_json");
+  expect(tempTokenColumns).toContain("label");
+  expect(tempTokenColumns).toContain("revoked_at");
+  expect(shareGrantTable).toBeTruthy();
+});

@@ -1,6 +1,12 @@
 import type { Database } from "bun:sqlite";
 
-import type { ShareMode, TemplateDetail, TemplateSummary, Visibility } from "../../types";
+import type {
+  ShareMode,
+  TemplateDetail,
+  TemplateShareabilityStatus,
+  TemplateSummary,
+  Visibility
+} from "../../types";
 import { createDefaultTemplatePayload, normalizeTemplatePayload } from "../../lib/render/template-payload";
 
 interface TemplateRow {
@@ -14,6 +20,9 @@ interface TemplateRow {
   sourceTemplateId: string | null;
   sourceLabel: string | null;
   sourceUrl: string | null;
+  shareabilityStatus: TemplateShareabilityStatus;
+  sanitizedFromTemplateId: string | null;
+  lockedReasonsJson: string;
   visibility: Visibility;
   shareMode: ShareMode;
   publishStatus: "draft" | "published" | "archived";
@@ -81,6 +90,9 @@ const TEMPLATE_SELECT = `
     templates.source_template_id AS sourceTemplateId,
     templates.source_label AS sourceLabel,
     templates.source_url AS sourceUrl,
+    templates.shareability_status AS shareabilityStatus,
+    templates.sanitized_from_template_id AS sanitizedFromTemplateId,
+    templates.locked_reasons_json AS lockedReasonsJson,
     templates.visibility AS visibility,
     templates.share_mode AS shareMode,
     templates.publish_status AS publishStatus,
@@ -112,6 +124,9 @@ const mapSummary = (row: TemplateRow | null): TemplateSummary | null => {
     sourceTemplateId: row.sourceTemplateId,
     sourceLabel: row.sourceLabel,
     sourceUrl: row.sourceUrl,
+    shareabilityStatus: row.shareabilityStatus,
+    sanitizedFromTemplateId: row.sanitizedFromTemplateId,
+    lockedReasons: JSON.parse(row.lockedReasonsJson) as string[],
     visibility: row.visibility,
     shareMode: row.shareMode,
     publishStatus: row.publishStatus,
