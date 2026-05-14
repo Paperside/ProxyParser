@@ -463,3 +463,115 @@ test("draft preview emits rule providers and RULE-SET rules", async () => {
     rules.indexOf("MATCH,Proxies")
   );
 });
+
+test("subscription render replays draft against latest successful upstream snapshot", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService,
+    managedSubscriptionService
+  } = createTestContext();
+  const registered = await authService.register({
+    email: "latest@example.com",
+    username: "latest",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "最新快照源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id, createSourceDocument());
+
+  const draft = generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "最新快照草稿",
+    upstreamSourceId: source.id
+  });
+  const published = await managedSubscriptionService.publishFromDraft(registered.user.id, draft.id, {
+    displayName: "最新快照订阅",
+    isEnabled: true
+  });
+
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id, {
+    proxies: [
+      {
+        name: "HK-02",
+        type: "ss",
+        server: "9.9.9.9",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "secret"
+      }
+    ],
+    "proxy-groups": [
+      {
+        name: "Proxy",
+        type: "select",
+        proxies: ["HK-02", "DIRECT"]
+      }
+    ],
+    rules: ["MATCH,Proxy"]
+  });
+
+  const rerendered = await managedSubscriptionService.render(registered.user.id, published.id);
+
+  expect(rerendered.renderedYaml).toContain("HK-02");
+  expect(rerendered.renderedYaml).not.toContain("HK-01");
+});
+
+test("render failure is persisted on subscription", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService,
+    managedSubscriptionService
+  } = createTestContext();
+  const registered = await authService.register({
+    email: "renderfail@example.com",
+    username: "renderfail",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "失败落库源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
+
+  const draft = generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "失败落库草稿",
+    upstreamSourceId: source.id
+  });
+  const published = await managedSubscriptionService.publishFromDraft(registered.user.id, draft.id, {
+    displayName: "失败落库订阅",
+    isEnabled: true
+  });
+
+  generatedSubscriptionDraftService.saveStep(registered.user.id, draft.id, {
+    stepKey: "groups_rules",
+    patchMode: "patch",
+    editorMode: "visual",
+    operations: {
+      items: [
+        {
+          type: "add",
+          group: {
+            name: "BrokenGroup",
+            type: "select",
+            proxies: ["MissingProxy"]
+          }
+        }
+      ]
+    }
+  });
+
+  await expect(managedSubscriptionService.render(registered.user.id, published.id)).rejects.toThrow(
+    "MissingProxy"
+  );
+
+  const detail = managedSubscriptionService.getById(registered.user.id, published.id);
+
+  expect(detail.lastRenderStatus).toBe("degraded");
+  expect(detail.lastErrorMessage).toContain("MissingProxy");
+});

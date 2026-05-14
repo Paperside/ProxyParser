@@ -58,6 +58,10 @@ interface ExtractTemplateInput {
   publishStatus?: "draft" | "published" | "archived";
 }
 
+interface PreviewOptions {
+  preferSelectedSnapshot?: boolean;
+}
+
 const normalizeDisplayName = (value: string | undefined) => {
   return value?.trim();
 };
@@ -181,7 +185,7 @@ export class GeneratedSubscriptionDraftService {
     return updated;
   }
 
-  async preview(ownerUserId: string, draftId: string) {
+  async preview(ownerUserId: string, draftId: string, options: PreviewOptions = {}) {
     const draft = this.repository.findByIdAndOwner(draftId, ownerUserId);
 
     if (!draft) {
@@ -202,7 +206,7 @@ export class GeneratedSubscriptionDraftService {
     }
 
     let sourceSnapshot =
-      (draft.selectedSourceSnapshotId
+      (options.preferSelectedSnapshot && draft.selectedSourceSnapshotId
         ? this.upstreamSourceRepository.findSnapshotById(draft.selectedSourceSnapshotId)
         : null) ??
       (source.lastSuccessfulSnapshotId
@@ -216,7 +220,7 @@ export class GeneratedSubscriptionDraftService {
       const refreshedSource = this.upstreamSourceRepository.findByIdAndOwner(source.id, ownerUserId);
 
       sourceSnapshot =
-        (draft.selectedSourceSnapshotId
+        (options.preferSelectedSnapshot && draft.selectedSourceSnapshotId
           ? this.upstreamSourceRepository.findSnapshotById(draft.selectedSourceSnapshotId)
           : null) ??
         (refreshedSource?.lastSuccessfulSnapshotId

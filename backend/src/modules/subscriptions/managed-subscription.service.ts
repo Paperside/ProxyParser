@@ -423,61 +423,69 @@ export class ManagedSubscriptionService {
   }
 
   private async renderInternal(subscription: ManagedSubscriptionDetail) {
-    if (subscription.renderMode === "draft") {
-      return this.renderDraftBackedSubscription(subscription);
+    try {
+      if (subscription.renderMode === "draft") {
+        return await this.renderDraftBackedSubscription(subscription);
+      }
+
+      const source = this.upstreamSourceRepository.findByIdAndOwner(
+        subscription.upstreamSourceId,
+        subscription.ownerUserId
+      );
+      const template = this.templateRepository.findDetailByIdAndOwner(
+        subscription.templateId,
+        subscription.ownerUserId
+      );
+
+      if (!source) {
+        throw new ManagedSubscriptionError("关联的上游订阅源不存在。", 400);
+      }
+
+      if (!template) {
+        throw new ManagedSubscriptionError("关联的模板不存在。", 400);
+      }
+
+      const sourceSnapshot = source.lastSuccessfulSnapshotId
+        ? this.upstreamSourceRepository.findSnapshotById(source.lastSuccessfulSnapshotId)
+        : this.upstreamSourceRepository.findLatestSnapshot(source.id);
+      const sourceDocument = parseSourceDocument(sourceSnapshot?.parsedJson ?? null);
+
+      if (!sourceDocument) {
+        throw new ManagedSubscriptionError("当前没有可用于渲染的上游订阅快照。", 409);
+      }
+
+      const rendered = renderManagedConfig(sourceDocument, template.payload);
+      const snapshotId = createId("msnap");
+      const createdAt = new Date().toISOString();
+
+      this.repository.createSnapshot({
+        id: snapshotId,
+        managedSubscriptionId: subscription.id,
+        upstreamSourceSnapshotId: sourceSnapshot?.id ?? null,
+        templateVersionId: template.latestVersionId,
+        renderedYaml: rendered.yamlText,
+        renderedJson: JSON.stringify(rendered.document),
+        forwardedHeadersJson: JSON.stringify(source.latestHeaders),
+        validationStatus: "success",
+        createdAt
+      });
+      this.repository.markRenderSuccess({
+        subscriptionId: subscription.id,
+        snapshotId,
+        syncedAt: source.lastSyncAt,
+        renderedAt: createdAt,
+        latestHeadersJson: JSON.stringify(source.latestHeaders),
+        latestUsageJson: source.latestUsage ? JSON.stringify(source.latestUsage) : null
+      });
+
+      return this.getById(subscription.ownerUserId, subscription.id);
+    } catch (error) {
+      this.repository.markRenderFailure({
+        subscriptionId: subscription.id,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
     }
-
-    const source = this.upstreamSourceRepository.findByIdAndOwner(
-      subscription.upstreamSourceId,
-      subscription.ownerUserId
-    );
-    const template = this.templateRepository.findDetailByIdAndOwner(
-      subscription.templateId,
-      subscription.ownerUserId
-    );
-
-    if (!source) {
-      throw new ManagedSubscriptionError("关联的上游订阅源不存在。", 400);
-    }
-
-    if (!template) {
-      throw new ManagedSubscriptionError("关联的模板不存在。", 400);
-    }
-
-    const sourceSnapshot = source.lastSuccessfulSnapshotId
-      ? this.upstreamSourceRepository.findSnapshotById(source.lastSuccessfulSnapshotId)
-      : this.upstreamSourceRepository.findLatestSnapshot(source.id);
-    const sourceDocument = parseSourceDocument(sourceSnapshot?.parsedJson ?? null);
-
-    if (!sourceDocument) {
-      throw new ManagedSubscriptionError("当前没有可用于渲染的上游订阅快照。", 409);
-    }
-
-    const rendered = renderManagedConfig(sourceDocument, template.payload);
-    const snapshotId = createId("msnap");
-    const createdAt = new Date().toISOString();
-
-    this.repository.createSnapshot({
-      id: snapshotId,
-      managedSubscriptionId: subscription.id,
-      upstreamSourceSnapshotId: sourceSnapshot?.id ?? null,
-      templateVersionId: template.latestVersionId,
-      renderedYaml: rendered.yamlText,
-      renderedJson: JSON.stringify(rendered.document),
-      forwardedHeadersJson: JSON.stringify(source.latestHeaders),
-      validationStatus: "success",
-      createdAt
-    });
-    this.repository.markRenderSuccess({
-      subscriptionId: subscription.id,
-      snapshotId,
-      syncedAt: source.lastSyncAt,
-      renderedAt: createdAt,
-      latestHeadersJson: JSON.stringify(source.latestHeaders),
-      latestUsageJson: source.latestUsage ? JSON.stringify(source.latestUsage) : null
-    });
-
-    return this.getById(subscription.ownerUserId, subscription.id);
   }
 
   private async renderDraftBackedSubscription(subscription: ManagedSubscriptionDetail) {
