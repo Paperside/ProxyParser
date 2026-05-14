@@ -33,7 +33,9 @@ const parseCreateBody = (body: unknown) => {
 
   return {
     displayName: optionalString(body, "displayName") ?? "",
-    upstreamSourceId: optionalString(body, "upstreamSourceId")
+    upstreamSourceId: optionalString(body, "upstreamSourceId"),
+    sourceUrl: optionalString(body, "sourceUrl"),
+    sourceDisplayName: optionalString(body, "sourceDisplayName")
   };
 };
 
@@ -190,10 +192,10 @@ export const createGeneratedSubscriptionDraftRoutes = (
         return sendDraftError(error, set);
       }
     })
-    .post("/", ({ headers, body, set }) => {
+    .post("/", async ({ headers, body, set }) => {
       try {
         const user = authService.authenticate(headers.authorization);
-        const created = draftService.create(user.id, parseCreateBody(body));
+        const created = await draftService.create(user.id, parseCreateBody(body));
         set.status = 201;
         return created;
       } catch (error) {

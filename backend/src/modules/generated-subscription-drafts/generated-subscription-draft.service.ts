@@ -28,6 +28,8 @@ type ShareabilityStatus = "unknown" | "shareable" | "source_locked";
 interface CreateDraftInput {
   displayName: string;
   upstreamSourceId?: string | null;
+  sourceUrl?: string | null;
+  sourceDisplayName?: string | null;
 }
 
 interface UpdateDraftInput {
@@ -89,16 +91,26 @@ export class GeneratedSubscriptionDraftService {
     return detail;
   }
 
-  create(ownerUserId: string, input: CreateDraftInput) {
+  async create(ownerUserId: string, input: CreateDraftInput) {
     const displayName = normalizeDisplayName(input.displayName);
 
     if (!displayName) {
       throw new GeneratedSubscriptionDraftError("草稿名称不能为空。", 400);
     }
 
-    if (input.upstreamSourceId) {
+    let upstreamSourceId = input.upstreamSourceId ?? null;
+
+    if (input.sourceUrl) {
+      const source = await this.upstreamSourceService.createAndSync(ownerUserId, {
+        displayName: input.sourceDisplayName?.trim() || displayName || "外部订阅",
+        sourceUrl: input.sourceUrl
+      });
+      upstreamSourceId = source.id;
+    }
+
+    if (upstreamSourceId) {
       const source = this.upstreamSourceRepository.findByIdAndOwner(
-        input.upstreamSourceId,
+        upstreamSourceId,
         ownerUserId
       );
 
@@ -110,7 +122,7 @@ export class GeneratedSubscriptionDraftService {
     const created = this.repository.create({
       id: createId("gsd"),
       ownerUserId,
-      upstreamSourceId: input.upstreamSourceId ?? null,
+      upstreamSourceId,
       displayName,
       currentStep: "source",
       shareabilityStatus: "unknown",

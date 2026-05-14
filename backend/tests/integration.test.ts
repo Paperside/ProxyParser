@@ -180,7 +180,7 @@ test("生成订阅草稿可以预览、提炼模板并发布", async () => {
   });
   seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
 
-  const draft = generatedSubscriptionDraftService.create(registered.user.id, {
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
     displayName: "日常分流",
     upstreamSourceId: source.id
   });
@@ -247,7 +247,7 @@ test("订阅拉取在上游同步失败时会回退到最近一次成功快照",
   });
   seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
 
-  const draft = generatedSubscriptionDraftService.create(registered.user.id, {
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
     displayName: "回退草稿",
     upstreamSourceId: source.id
   });
@@ -367,7 +367,7 @@ test("draft preview auto groups all source nodes into Proxies and regions", asyn
     rules: ["MATCH,Source"]
   });
 
-  const draft = generatedSubscriptionDraftService.create(registered.user.id, {
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
     displayName: "自动分组草稿",
     upstreamSourceId: source.id
   });
@@ -421,7 +421,7 @@ test("draft preview emits rule providers and RULE-SET rules", async () => {
 
   seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
 
-  const draft = generatedSubscriptionDraftService.create(registered.user.id, {
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
     displayName: "规则源草稿",
     upstreamSourceId: source.id
   });
@@ -484,7 +484,7 @@ test("subscription render replays draft against latest successful upstream snaps
 
   seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id, createSourceDocument());
 
-  const draft = generatedSubscriptionDraftService.create(registered.user.id, {
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
     displayName: "最新快照草稿",
     upstreamSourceId: source.id
   });
@@ -539,7 +539,7 @@ test("render failure is persisted on subscription", async () => {
   });
   seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
 
-  const draft = generatedSubscriptionDraftService.create(registered.user.id, {
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
     displayName: "失败落库草稿",
     upstreamSourceId: source.id
   });
@@ -574,4 +574,49 @@ test("render failure is persisted on subscription", async () => {
 
   expect(detail.lastRenderStatus).toBe("degraded");
   expect(detail.lastErrorMessage).toContain("MissingProxy");
+});
+
+test("upstream source rejects invalid URL on update", async () => {
+  const { authService, upstreamSourceService } = createTestContext();
+  const registered = await authService.register({
+    email: "sourceupdate@example.com",
+    username: "sourceupdate",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "可更新订阅",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  expect(() =>
+    upstreamSourceService.update(registered.user.id, source.id, {
+      sourceUrl: "notaurl"
+    })
+  ).toThrow("订阅链接必须是 http 或 https 地址。");
+});
+
+test("draft can create an upstream source from a pasted URL", async () => {
+  const { authService, generatedSubscriptionDraftService, upstreamSourceRepository } =
+    createTestContext();
+  const registered = await authService.register({
+    email: "sourceurl@example.com",
+    username: "sourceurl",
+    password: "password123"
+  });
+
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "粘贴 URL 草稿",
+    sourceDisplayName: "粘贴导入源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  expect(draft.upstreamSourceId).toBeTruthy();
+
+  const source = upstreamSourceRepository.findByIdAndOwner(
+    draft.upstreamSourceId ?? "",
+    registered.user.id
+  );
+
+  expect(source?.displayName).toBe("粘贴导入源");
+  expect(source?.lastSyncStatus).toBe("failed");
 });
