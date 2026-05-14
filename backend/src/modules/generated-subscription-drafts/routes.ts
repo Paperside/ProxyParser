@@ -145,7 +145,8 @@ const parseExtractTemplateBody = (body: unknown) => {
       | "draft"
       | "published"
       | "archived"
-      | undefined
+      | undefined,
+    sanitized: body.sanitized === true
   };
 };
 

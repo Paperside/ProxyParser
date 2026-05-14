@@ -1,6 +1,7 @@
 import { createId } from "../../lib/ids";
 import { createDefaultTemplatePayload } from "../../lib/render/template-payload";
 import { renderManagedConfig } from "../../lib/render/render-managed-config";
+import { sanitizeTemplatePayload } from "../../lib/render/template-sanitizer";
 import { MarketplaceRepository } from "../marketplace/marketplace.repository";
 import { TemplateRepository } from "../templates/template.repository";
 import { UpstreamSourceRepository } from "../upstream-sources/upstream-source.repository";
@@ -58,6 +59,7 @@ interface ExtractTemplateInput {
   visibility?: "private" | "unlisted" | "public";
   shareMode?: "disabled" | "view" | "fork";
   publishStatus?: "draft" | "published" | "archived";
+  sanitized?: boolean;
 }
 
 interface PreviewOptions {
@@ -333,8 +335,15 @@ export class GeneratedSubscriptionDraftService {
       throw new GeneratedSubscriptionDraftError("模板名称不能为空。", 400);
     }
 
-    const payload = this.buildTemplatePayloadFromPreview(preview);
-    const isShareable = preview.shareabilityStatus === "shareable";
+    const initialPayload = this.buildTemplatePayloadFromPreview(preview);
+    const sanitized = input.sanitized ? sanitizeTemplatePayload(initialPayload) : null;
+    const payload = sanitized?.payload ?? initialPayload;
+    const shareabilityStatus = sanitized
+      ? "sanitized"
+      : preview.shareabilityStatus === "shareable"
+        ? "shareable"
+        : "source_locked";
+    const isShareable = shareabilityStatus === "shareable" || shareabilityStatus === "sanitized";
     const created = this.templateRepository.create({
       id: createId("tpl"),
       ownerUserId,
@@ -351,6 +360,8 @@ export class GeneratedSubscriptionDraftService {
       visibility: isShareable ? input.visibility ?? "private" : "private",
       shareMode: isShareable ? input.shareMode ?? "disabled" : "disabled",
       publishStatus: isShareable ? input.publishStatus ?? "draft" : "draft",
+      shareabilityStatus,
+      lockedReasonsJson: JSON.stringify(sanitized?.lockedReasons ?? preview.lockedReasons),
       versionId: createId("tplv"),
       versionNote: "从生成订阅草稿提炼",
       payloadJson: JSON.stringify(payload),

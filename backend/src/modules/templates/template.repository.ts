@@ -56,6 +56,9 @@ export interface CreateTemplateInput {
   shareMode: ShareMode;
   publishStatus: "draft" | "published" | "archived";
   isInternal?: boolean;
+  shareabilityStatus?: TemplateShareabilityStatus;
+  sanitizedFromTemplateId?: string | null;
+  lockedReasonsJson?: string;
   versionId: string;
   versionNote?: string | null;
   payloadJson: string;
@@ -72,6 +75,9 @@ export interface UpdateTemplateInput {
   visibility?: Visibility;
   shareMode?: ShareMode;
   publishStatus?: "draft" | "published" | "archived";
+  shareabilityStatus?: TemplateShareabilityStatus;
+  sanitizedFromTemplateId?: string | null;
+  lockedReasonsJson?: string;
   versionId: string;
   versionNote?: string | null;
   payloadJson: string;
@@ -217,11 +223,14 @@ export class TemplateRepository {
         share_mode,
         publish_status,
         is_internal,
+        shareability_status,
+        sanitized_from_template_id,
+        locked_reasons_json,
         latest_version_id,
         created_at,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertVersion = this.db.query(`
       INSERT INTO template_versions (
@@ -252,6 +261,9 @@ export class TemplateRepository {
         input.shareMode,
         input.publishStatus,
         input.isInternal ? 1 : 0,
+        input.shareabilityStatus ?? "unknown",
+        input.sanitizedFromTemplateId ?? null,
+        input.lockedReasonsJson ?? "[]",
         input.versionId,
         now,
         now
@@ -294,6 +306,9 @@ export class TemplateRepository {
         visibility = ?,
         share_mode = ?,
         publish_status = ?,
+        shareability_status = ?,
+        sanitized_from_template_id = ?,
+        locked_reasons_json = ?,
         latest_version_id = ?,
         updated_at = ?
       WHERE id = ? AND owner_user_id = ?
@@ -333,6 +348,11 @@ export class TemplateRepository {
         input.visibility ?? current.visibility,
         input.shareMode ?? current.shareMode,
         input.publishStatus ?? current.publishStatus,
+        input.shareabilityStatus ?? current.shareabilityStatus,
+        input.sanitizedFromTemplateId === undefined
+          ? current.sanitizedFromTemplateId
+          : input.sanitizedFromTemplateId,
+        input.lockedReasonsJson ?? JSON.stringify(current.lockedReasons),
         input.versionId,
         now,
         templateId,

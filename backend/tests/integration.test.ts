@@ -724,3 +724,87 @@ test("subscription can be shared publicly and to a user", async () => {
     )
   ).toBe(true);
 });
+
+test("sanitized template removes real proxy nodes but keeps rules and groups", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService
+  } = createTestContext();
+  const registered = await authService.register({
+    email: "sanitize@example.com",
+    username: "sanitize",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "脱敏源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id, {
+    proxies: [
+      {
+        name: "HK-Secret-Node",
+        type: "ss",
+        server: "10.10.10.10",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "secret-password"
+      }
+    ],
+    "proxy-groups": [
+      {
+        name: "Proxy",
+        type: "select",
+        proxies: ["HK-Secret-Node", "DIRECT"]
+      }
+    ],
+    rules: ["MATCH,Proxy"]
+  });
+
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "脱敏草稿",
+    upstreamSourceId: source.id
+  });
+  generatedSubscriptionDraftService.saveStep(registered.user.id, draft.id, {
+    stepKey: "groups_rules",
+    patchMode: "patch",
+    editorMode: "visual",
+    operations: {
+      autoGroup: {
+        enabled: true,
+        includeAutoGroup: false,
+        unclassifiedPolicy: "others"
+      },
+      ruleProviderAttachments: [
+        {
+          type: "attach-rule-provider",
+          providerSlug: "metacubex-geosite-openai",
+          targetPolicy: "Proxies",
+          insert: {
+            position: "before-match"
+          }
+        }
+      ],
+      rules: ["MATCH,Proxies"]
+    }
+  });
+
+  const sanitized = await generatedSubscriptionDraftService.extractTemplate(
+    registered.user.id,
+    draft.id,
+    {
+      displayName: "脱敏模板",
+      sanitized: true
+    }
+  );
+
+  expect(sanitized.shareabilityStatus).toBe("sanitized");
+  expect(sanitized.payload.customProxies).toHaveLength(0);
+  expect(JSON.stringify(sanitized.payload)).not.toContain("HK-Secret-Node");
+  expect(JSON.stringify(sanitized.payload)).not.toContain("10.10.10.10");
+  expect(JSON.stringify(sanitized.payload)).toContain("RULE-SET,metacubex-geosite-openai,Proxies");
+  expect(sanitized.payload.proxyGroups.some((group) => group.name === "Proxies")).toBe(true);
+  expect(sanitized.exportedYaml ?? "").not.toContain("secret-password");
+});
