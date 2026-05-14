@@ -4,9 +4,14 @@ import type {
   AutoGroupOptions,
   ClashProxyDocument,
   ProxyGroupEntry,
-  ProxyNode
+  ProxyNode,
+  RuleProviderAttachment
 } from "../../types";
 import { renderAutoGroups } from "../../lib/render/auto-groups";
+import {
+  insertRuleProviderRules,
+  renderRuleProviderAttachments
+} from "../../lib/render/rule-provider-render";
 import type { RulesetCatalogEntry } from "../marketplace/marketplace.repository";
 
 type StepPatchMode = "patch" | "full_override";
@@ -74,6 +79,7 @@ type GroupOperation =
 
 interface GroupsRulesStepOperations {
   autoGroup?: AutoGroupOptions | null;
+  ruleProviderAttachments?: RuleProviderAttachment[];
   ruleProviderRefs?: string[];
   proxyGroups?: ProxyGroupEntry[];
   items?: GroupOperation[];
@@ -306,6 +312,35 @@ const normalizeGroupsRulesStep = (
           candidate.autoGroup.unclassifiedPolicy === "ignore" ? "ignore" : "others"
       }
     : null;
+  const ruleProviderAttachments = Array.isArray(candidate.ruleProviderAttachments)
+    ? candidate.ruleProviderAttachments
+        .map((item): RuleProviderAttachment | null => {
+          if (
+            !isRecord(item) ||
+            item.type !== "attach-rule-provider" ||
+            typeof item.providerSlug !== "string" ||
+            typeof item.targetPolicy !== "string"
+          ) {
+            return null;
+          }
+
+          const insert = isRecord(item.insert) ? item.insert : {};
+          const position =
+            insert.position === "top" || insert.position === "bottom"
+              ? insert.position
+              : "before-match";
+
+          return {
+            type: "attach-rule-provider",
+            providerSlug: item.providerSlug,
+            targetPolicy: item.targetPolicy,
+            insert: {
+              position
+            }
+          };
+        })
+        .filter((item): item is RuleProviderAttachment => Boolean(item))
+    : [];
   const items = Array.isArray(candidate.items)
     ? candidate.items
         .map((item): GroupOperation | null => {
@@ -358,6 +393,7 @@ const normalizeGroupsRulesStep = (
     editorMode,
     operations: {
       autoGroup,
+      ruleProviderAttachments,
       ruleProviderRefs: toStringArray(candidate.ruleProviderRefs),
       proxyGroups: Array.isArray(candidate.proxyGroups)
         ? candidate.proxyGroups
@@ -525,6 +561,14 @@ const applyGroupsRulesStep = (
     };
   }
 
+  const attachmentRender = renderRuleProviderAttachments({
+    attachments: step.operations.ruleProviderAttachments ?? [],
+    catalog: [...catalogBySlug.values()]
+  });
+
+  Object.assign(currentProviders, attachmentRender.providers);
+  lockedReasons.push(...attachmentRender.lockedReasons);
+
   if (Object.keys(currentProviders).length > 0) {
     document["rule-providers"] = currentProviders;
   }
@@ -592,11 +636,26 @@ const applyGroupsRulesStep = (
   }
 
   const filteredRules = baseRules.filter((rule) => !removedRules.has(rule));
-  document.rules = dedupeRules([
-    ...(step.operations.prependRules ?? []),
-    ...filteredRules,
-    ...(step.operations.appendRules ?? [])
-  ]);
+  const explicitRules = step.operations.rules ?? [];
+  const baseRuleSet =
+    explicitRules.length > 0
+      ? dedupeRules(explicitRules)
+      : dedupeRules([
+          ...(step.operations.prependRules ?? []),
+          ...filteredRules,
+          ...(step.operations.appendRules ?? [])
+        ]);
+  const attachmentPosition =
+    step.operations.ruleProviderAttachments?.find((attachment) => attachment.insert)?.insert
+      .position ?? "before-match";
+
+  document.rules = dedupeRules(
+    insertRuleProviderRules({
+      baseRules: baseRuleSet,
+      providerRules: attachmentRender.rules,
+      position: attachmentPosition
+    })
+  );
 };
 
 const applySettingsStep = (

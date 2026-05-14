@@ -401,3 +401,65 @@ test("draft preview auto groups all source nodes into Proxies and regions", asyn
   expect(groupsByName.get("JP")?.proxies).toContain("JP-01");
   expect(groupsByName.get("Others")?.proxies).toContain("Mystery-01");
 });
+
+test("draft preview emits rule providers and RULE-SET rules", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService
+  } = createTestContext();
+  const registered = await authService.register({
+    email: "ruleset@example.com",
+    username: "ruleset",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "规则源测试源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
+
+  const draft = generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "规则源草稿",
+    upstreamSourceId: source.id
+  });
+  generatedSubscriptionDraftService.saveStep(registered.user.id, draft.id, {
+    stepKey: "groups_rules",
+    patchMode: "patch",
+    editorMode: "visual",
+    operations: {
+      autoGroup: {
+        enabled: true,
+        includeAutoGroup: false,
+        unclassifiedPolicy: "others"
+      },
+      ruleProviderAttachments: [
+        {
+          type: "attach-rule-provider",
+          providerSlug: "metacubex-geosite-openai",
+          targetPolicy: "Proxies",
+          insert: {
+            position: "before-match"
+          }
+        }
+      ],
+      rules: ["MATCH,Proxies"]
+    }
+  });
+
+  const preview = await generatedSubscriptionDraftService.preview(registered.user.id, draft.id);
+  const ruleProviders = preview.document["rule-providers"] as Record<string, unknown> | undefined;
+  const rules = preview.document.rules ?? [];
+
+  expect(ruleProviders).toBeTruthy();
+  expect(Object.keys(ruleProviders ?? {})).toContain("metacubex-geosite-openai");
+  expect(preview.yamlText).toContain(
+    "/api/marketplace/rulesets/metacubex-geosite-openai/content"
+  );
+  expect(rules).toContain("RULE-SET,metacubex-geosite-openai,Proxies");
+  expect(rules.indexOf("RULE-SET,metacubex-geosite-openai,Proxies")).toBeLessThan(
+    rules.indexOf("MATCH,Proxies")
+  );
+});

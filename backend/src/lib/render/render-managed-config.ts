@@ -7,6 +7,11 @@ import type {
   TemplatePayload
 } from "../../types";
 import { renderAutoGroups } from "./auto-groups";
+import {
+  insertRuleProviderRules,
+  renderRuleProviderAttachments
+} from "./rule-provider-render";
+import type { RulesetCatalogEntry } from "../../modules/marketplace/marketplace.repository";
 
 const RESERVED_PROXY_NAMES = new Set(["DIRECT", "REJECT", "COMPATIBLE", "PASS"]);
 
@@ -76,7 +81,8 @@ export interface ManagedRenderResult {
 
 export const renderManagedConfig = (
   sourceDocument: ClashProxyDocument,
-  templatePayload: TemplatePayload
+  templatePayload: TemplatePayload,
+  ruleProviderCatalog: RulesetCatalogEntry[] = []
 ): ManagedRenderResult => {
   const sourceClone = deepClone(sourceDocument);
   const rendered: ClashProxyDocument =
@@ -108,10 +114,34 @@ export const renderManagedConfig = (
       : mergeGroups(sourceGroups, deepClone(templatePayload.proxyGroups));
 
   const sourceRules = sourceClone.rules ?? [];
+  const attachmentRender = renderRuleProviderAttachments({
+    attachments: templatePayload.ruleProviderAttachments ?? [],
+    catalog: ruleProviderCatalog
+  });
+  const currentProviders =
+    typeof rendered["rule-providers"] === "object" && rendered["rule-providers"] !== null
+      ? (rendered["rule-providers"] as Record<string, unknown>)
+      : {};
+
+  Object.assign(currentProviders, attachmentRender.providers);
+
+  if (Object.keys(currentProviders).length > 0) {
+    rendered["rule-providers"] = currentProviders;
+  }
+
   rendered.rules =
     templatePayload.rulesMode === "full_override"
       ? deepClone(templatePayload.rules)
       : dedupeRules([...deepClone(templatePayload.rules), ...sourceRules]);
+  rendered.rules = dedupeRules(
+    insertRuleProviderRules({
+      baseRules: rendered.rules,
+      providerRules: attachmentRender.rules,
+      position:
+        templatePayload.ruleProviderAttachments?.find((attachment) => attachment.insert)?.insert
+          .position ?? "before-match"
+    })
+  );
 
   validateProxyGroups(rendered);
 
