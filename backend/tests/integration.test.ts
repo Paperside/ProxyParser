@@ -621,6 +621,37 @@ test("draft can create an upstream source from a pasted URL", async () => {
   expect(source?.lastSyncStatus).toBe("failed");
 });
 
+test("draft can bind a pasted source URL during source step update", async () => {
+  const { authService, generatedSubscriptionDraftService, upstreamSourceRepository } =
+    createTestContext();
+  const registered = await authService.register({
+    email: "sourceurlupdate@example.com",
+    username: "sourceurlupdate",
+    password: "password123"
+  });
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "空白草稿"
+  });
+
+  const updated = await generatedSubscriptionDraftService.update(registered.user.id, draft.id, {
+    displayName: "URL 更新草稿",
+    sourceDisplayName: "更新导入源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  expect(updated.id).toBe(draft.id);
+  expect(updated.displayName).toBe("URL 更新草稿");
+  expect(updated.upstreamSourceId).toBeTruthy();
+
+  const source = upstreamSourceRepository.findByIdAndOwner(
+    updated.upstreamSourceId ?? "",
+    registered.user.id
+  );
+
+  expect(source?.displayName).toBe("更新导入源");
+  expect(source?.lastSyncStatus).toBe("failed");
+});
+
 test("temporary token enforces TTL bounds and revoke denies delivery", async () => {
   const {
     authService,

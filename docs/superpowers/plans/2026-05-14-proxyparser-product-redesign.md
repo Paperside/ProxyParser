@@ -8,6 +8,8 @@
 
 **Tech Stack:** Bun, Elysia, SQLite migrations, TypeScript, React, Vite, js-yaml, lucide-react, Radix UI components.
 
+**Current status (2026-05-14):** Backend product primitives, frontend extended-subscription workflow, sanitized template extraction, share grants, and short/long key controls are implemented. Verification passed with `cd backend && bun test`, `cd frontend && bun run build`, and an in-browser happy-path QA flow using a local mock subscription source.
+
 ---
 
 ## File Structure

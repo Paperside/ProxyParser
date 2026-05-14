@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Plus, Copy, PencilLine, RefreshCw, Trash2 } from "lucide-react";
+import { Plus, Copy, KeyRound, PencilLine, RefreshCw, Share2, Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 
 import { Badge } from "../components/ui/badge";
@@ -22,6 +22,7 @@ import {
   SelectValue
 } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
+import { API_BASE_URL } from "../lib/api";
 import { copyText } from "../lib/clipboard";
 import {
   formatExpire,
@@ -34,7 +35,15 @@ import {
   syncStatusTone,
   visibilityText
 } from "../lib/format";
-import type { ShareMode, UpstreamSource, Visibility } from "../lib/types";
+import type {
+  GeneratedSubscription,
+  ShareMode,
+  SubscriptionShareGrant,
+  SubscriptionTempTokenSummary,
+  UpstreamSource,
+  Visibility
+} from "../lib/types";
+import { useAuth } from "../providers/auth-provider";
 import { useWorkspace } from "../providers/workspace-provider";
 
 type SourceFormState = {
@@ -366,7 +375,7 @@ const GeneratedDialog = ({
               }}
               className="size-4 rounded border-slate-300"
             />
-            启用这个生成订阅
+            启用这个扩展订阅
           </label>
 
           {errorMessage ? (
@@ -411,6 +420,7 @@ export const SubscriptionsPage = ({
   section: "upstream" | "generated";
 }) => {
   const workspace = useWorkspace();
+  const auth = useAuth();
   const navigate = useNavigate();
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
@@ -435,6 +445,11 @@ export const SubscriptionsPage = ({
     Awaited<ReturnType<typeof workspace.compareGeneratedSubscriptionSnapshots>> | null
   >(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [accessDialogOpen, setAccessDialogOpen] = useState(false);
+  const [accessSubscription, setAccessSubscription] = useState<GeneratedSubscription | null>(null);
+  const [tempTokens, setTempTokens] = useState<SubscriptionTempTokenSummary[]>([]);
+  const [shareGrants, setShareGrants] = useState<SubscriptionShareGrant[]>([]);
+  const [accessLoading, setAccessLoading] = useState(false);
 
   const sourceOptions = useMemo(() => {
     return workspace.sources.map((source) => ({
@@ -484,7 +499,7 @@ export const SubscriptionsPage = ({
 
   const openCreateGeneratedDialog = async () => {
     const created = await workspace.createGeneratedSubscriptionDraft({
-      displayName: "未命名生成订阅",
+      displayName: "未命名扩展订阅",
       upstreamSourceId: sourceOptions[0]?.id
     });
 
@@ -546,10 +561,10 @@ export const SubscriptionsPage = ({
     try {
       if (generatedEditingId) {
         await workspace.updateGeneratedSubscription(generatedEditingId, generatedForm);
-        setFeedbackMessage("生成订阅已更新。");
+        setFeedbackMessage("扩展订阅已更新。");
       } else {
         await workspace.createGeneratedSubscription(generatedForm);
-        setFeedbackMessage("新的生成订阅已创建。");
+        setFeedbackMessage("新的扩展订阅已创建。");
       }
 
       setGeneratedDialogOpen(false);
@@ -599,6 +614,75 @@ export const SubscriptionsPage = ({
     }
   };
 
+  const loadAccessState = async (subscription: GeneratedSubscription) => {
+    setAccessLoading(true);
+
+    try {
+      const [nextTempTokens, nextShareGrants] = await Promise.all([
+        workspace.listTempTokens(subscription.id),
+        workspace.listShareGrants(subscription.id)
+      ]);
+      setTempTokens(nextTempTokens);
+      setShareGrants(nextShareGrants);
+    } catch (error) {
+      setFeedbackMessage(error instanceof Error ? error.message : "载入访问控制失败。");
+    } finally {
+      setAccessLoading(false);
+    }
+  };
+
+  const openAccessDialog = async (subscription: GeneratedSubscription) => {
+    setAccessSubscription(subscription);
+    setAccessDialogOpen(true);
+    setTempTokens([]);
+    setShareGrants([]);
+    await loadAccessState(subscription);
+  };
+
+  const copyLongSubscriptionLink = async (subscription: GeneratedSubscription) => {
+    let secret = auth.revealedSubscriptionSecret;
+
+    if (!secret) {
+      const shouldRotate = window.confirm(
+        "当前没有可显示的长期 Key。是否生成新的长期 Key？这会使旧长期 Key 失效。"
+      );
+
+      if (!shouldRotate) {
+        throw new Error("已取消生成长期 Key。");
+      }
+
+      secret = await workspace.rotateSubscriptionSecret(subscription.id);
+    }
+
+    await copyText(`${API_BASE_URL}/subscribe/${subscription.id}?token=${encodeURIComponent(secret)}`);
+  };
+
+  const createCustomTempLink = async (subscription: GeneratedSubscription) => {
+    const rawHours = window.prompt("短期 Key 有效小时数", "24");
+
+    if (rawHours === null) {
+      throw new Error("已取消创建短期 Key。");
+    }
+
+    const hours = Number(rawHours);
+    const normalizedHours = Number.isFinite(hours) && hours > 0 ? hours : 24;
+    const link = await workspace.createTempLink(
+      subscription.id,
+      Math.round(normalizedHours * 60 * 60)
+    );
+    await copyText(link);
+    await loadAccessState(subscription);
+  };
+
+  const resetLongKeyAndCopy = async (subscription: GeneratedSubscription) => {
+    if (!window.confirm("确认重置长期 Key？旧的长期订阅链接会立即失效。")) {
+      throw new Error("已取消重置长期 Key。");
+    }
+
+    const secret = await workspace.rotateSubscriptionSecret(subscription.id);
+    await copyText(`${API_BASE_URL}/subscribe/${subscription.id}?token=${encodeURIComponent(secret)}`);
+  };
+
   return (
     <div className="space-y-6">
       <Card className="rounded-[32px] p-6">
@@ -609,7 +693,7 @@ export const SubscriptionsPage = ({
               统一管理来源与分发
             </h3>
             <p className="mt-2 text-sm text-slate-500">
-              外部订阅负责接入远端数据，生成订阅则负责向客户端分发最终配置。
+              外部订阅负责接入远端数据，扩展订阅负责重组、分流、共享并向客户端分发最终配置。
             </p>
           </div>
 
@@ -625,13 +709,12 @@ export const SubscriptionsPage = ({
                   void runAction(
                     "generated-create-draft",
                     () => openCreateGeneratedDialog(),
-                    "已创建新的生成订阅草稿。"
+                    "已创建新的扩展订阅草稿。"
                   )
                 }
-                disabled={sourceOptions.length === 0}
               >
                 <Plus className="size-4" />
-                新建生成订阅
+                新建扩展订阅
               </Button>
             )}
           </div>
@@ -782,7 +865,7 @@ export const SubscriptionsPage = ({
 
           {sortedGeneratedSubscriptions.length === 0 ? (
             <Card className="rounded-[32px] p-10 text-center text-sm text-slate-500">
-              还没有生成订阅，先接入一个外部订阅，然后进入向导开始构建。
+              还没有扩展订阅，可以直接进入向导粘贴外部订阅链接并开始构建。
             </Card>
           ) : null}
 
@@ -841,7 +924,7 @@ export const SubscriptionsPage = ({
                             workspace
                               .renderGeneratedSubscription(subscription.id)
                               .then(() => undefined),
-                          "生成订阅已重新生成。"
+                          "扩展订阅已重新生成。"
                         )
                       }
                     >
@@ -854,16 +937,17 @@ export const SubscriptionsPage = ({
                       onClick={() =>
                         void runAction(
                           `generated-copy-${subscription.id}`,
-                          async () => {
-                            const link = await workspace.createTempLink(subscription.id);
-                            await copyText(link);
-                          },
-                          "已复制 24 小时有效的临时拉取链接。"
+                          () => createCustomTempLink(subscription),
+                          "已复制短期 Key 拉取链接。"
                         )
                       }
                     >
-                      <Copy className="size-4" />
-                      复制链接
+                      <KeyRound className="size-4" />
+                      短期 Key
+                    </Button>
+                    <Button variant="ghost" onClick={() => void openAccessDialog(subscription)}>
+                      <Share2 className="size-4" />
+                      共享与 Key
                     </Button>
                     <Button
                       variant="ghost"
@@ -903,14 +987,14 @@ export const SubscriptionsPage = ({
                       variant="ghost"
                       disabled={busyActionKey === `generated-delete-${subscription.id}`}
                       onClick={() => {
-                        if (!window.confirm(`确认删除生成订阅“${subscription.displayName}”？`)) {
+                        if (!window.confirm(`确认删除扩展订阅“${subscription.displayName}”？`)) {
                           return;
                         }
 
                         void runAction(
                           `generated-delete-${subscription.id}`,
                           () => workspace.deleteGeneratedSubscription(subscription.id),
-                          "生成订阅已删除。"
+                          "扩展订阅已删除。"
                         );
                       }}
                     >
@@ -944,8 +1028,8 @@ export const SubscriptionsPage = ({
 
       <GeneratedDialog
         open={generatedDialogOpen}
-        title={generatedEditingId ? "编辑生成订阅" : "新建生成订阅"}
-        description="选择一个外部订阅和一个模板，组合出最终可分发的配置。"
+        title={generatedEditingId ? "编辑扩展订阅" : "新建扩展订阅"}
+        description="选择外部订阅和模板，组合出最终可分发的配置。"
         form={generatedForm}
         isSaving={generatedSaving}
         errorMessage={generatedErrorMessage}
@@ -960,6 +1044,260 @@ export const SubscriptionsPage = ({
         onSubmit={handleSaveGenerated}
         onChange={setGeneratedForm}
       />
+
+      <Dialog
+        open={accessDialogOpen}
+        onOpenChange={(nextOpen) => {
+          setAccessDialogOpen(nextOpen);
+          if (!nextOpen) {
+            setAccessSubscription(null);
+            setTempTokens([]);
+            setShareGrants([]);
+          }
+        }}
+      >
+        <DialogContent className="w-[min(96vw,980px)]">
+          <DialogHeader>
+            <DialogTitle>{accessSubscription?.displayName ?? "扩展订阅"} · 共享与 Key</DialogTitle>
+            <DialogDescription>
+              管理短期 Key、长期 Key 和订阅共享范围。长期 Key 属于当前账号，重置后旧长期链接会失效。
+            </DialogDescription>
+          </DialogHeader>
+
+          {accessSubscription ? (
+            <div className="mt-6 space-y-6">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    void runAction(
+                      `access-copy-long-${accessSubscription.id}`,
+                      () => copyLongSubscriptionLink(accessSubscription),
+                      "已复制长期 Key 拉取链接。"
+                    )
+                  }
+                >
+                  <Copy className="size-4" />
+                  长期链接
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() =>
+                    void runAction(
+                      `access-reset-long-${accessSubscription.id}`,
+                      () => resetLongKeyAndCopy(accessSubscription),
+                      "长期 Key 已重置，新链接已复制。"
+                    )
+                  }
+                >
+                  <RefreshCw className="size-4" />
+                  重置长期 Key
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    void runAction(
+                      `access-temp-${accessSubscription.id}`,
+                      () => createCustomTempLink(accessSubscription),
+                      "短期 Key 链接已复制。"
+                    )
+                  }
+                >
+                  <KeyRound className="size-4" />
+                  新建短期 Key
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() =>
+                    void runAction(
+                      `access-share-public-${accessSubscription.id}`,
+                      async () => {
+                        await workspace.upsertShareGrant(accessSubscription.id, {
+                          scope: "public",
+                          mode: "subscribe"
+                        });
+                        await workspace.updateGeneratedSubscription(accessSubscription.id, {
+                          visibility: "public",
+                          shareMode: "view"
+                        });
+                        await loadAccessState(accessSubscription);
+                      },
+                      "已共享给所有用户。"
+                    )
+                  }
+                >
+                  <Share2 className="size-4" />
+                  共享所有人
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() =>
+                    void runAction(
+                      `access-share-user-${accessSubscription.id}`,
+                      async () => {
+                        const email = window.prompt("输入要共享的用户邮箱");
+
+                        if (!email?.trim()) {
+                          throw new Error("已取消共享用户。");
+                        }
+
+                        await workspace.upsertShareGrant(accessSubscription.id, {
+                          scope: "user",
+                          mode: "subscribe",
+                          targetEmail: email.trim()
+                        });
+                        await loadAccessState(accessSubscription);
+                      },
+                      "已共享给指定用户。"
+                    )
+                  }
+                >
+                  <Share2 className="size-4" />
+                  共享用户
+                </Button>
+              </div>
+
+              {accessLoading ? (
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 px-5 py-8 text-center text-sm text-slate-500">
+                  正在载入访问控制...
+                </div>
+              ) : (
+                <div className="grid gap-6 xl:grid-cols-2">
+                  <div className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-5">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-lg font-semibold text-slate-950">短期 Key</h4>
+                      <Badge>{tempTokens.length} 个记录</Badge>
+                    </div>
+                    <ScrollArea className="mt-4 h-[320px] pr-4">
+                      <div className="space-y-3">
+                        {tempTokens.length === 0 ? (
+                          <p className="rounded-[22px] border border-dashed border-slate-200 bg-white/80 px-4 py-8 text-center text-sm text-slate-500">
+                            还没有短期 Key。
+                          </p>
+                        ) : null}
+                        {tempTokens.map((token) => {
+                          const isRevoked = Boolean(token.revokedAt);
+                          const isExpired = new Date(token.expiresAt).getTime() <= Date.now();
+
+                          return (
+                            <div
+                              key={token.id}
+                              className="rounded-[22px] border border-slate-200 bg-white/90 p-4"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge
+                                  className={
+                                    isRevoked || isExpired
+                                      ? "border-slate-200 bg-slate-50 text-slate-500"
+                                      : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  }
+                                >
+                                  {isRevoked ? "已失效" : isExpired ? "已过期" : "有效"}
+                                </Badge>
+                                <p className="text-sm font-medium text-slate-900">
+                                  {token.label ?? token.id}
+                                </p>
+                              </div>
+                              <div className="mt-3 space-y-1 text-xs text-slate-500">
+                                <p>创建：{formatTime(token.createdAt)}</p>
+                                <p>过期：{formatTime(token.expiresAt)}</p>
+                                <p>最近使用：{formatTime(token.lastUsedAt)}</p>
+                              </div>
+                              {!isRevoked ? (
+                                <div className="mt-4">
+                                  <Button
+                                    variant="ghost"
+                                    onClick={() =>
+                                      void runAction(
+                                        `access-revoke-temp-${token.id}`,
+                                        async () => {
+                                          await workspace.revokeTempToken(accessSubscription.id, token.id);
+                                          await loadAccessState(accessSubscription);
+                                        },
+                                        "短期 Key 已失效。"
+                                      )
+                                    }
+                                  >
+                                    <Trash2 className="size-4" />
+                                    立即失效
+                                  </Button>
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  </div>
+
+                  <div className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-5">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-lg font-semibold text-slate-950">共享授权</h4>
+                      <Badge>{shareGrants.length} 个记录</Badge>
+                    </div>
+                    <ScrollArea className="mt-4 h-[320px] pr-4">
+                      <div className="space-y-3">
+                        {shareGrants.length === 0 ? (
+                          <p className="rounded-[22px] border border-dashed border-slate-200 bg-white/80 px-4 py-8 text-center text-sm text-slate-500">
+                            当前仅自己可管理。
+                          </p>
+                        ) : null}
+                        {shareGrants.map((grant) => (
+                          <div
+                            key={grant.id}
+                            className="rounded-[22px] border border-slate-200 bg-white/90 p-4"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge>
+                                {grant.scope === "public"
+                                  ? "所有用户"
+                                  : grant.scope === "user"
+                                    ? "指定用户"
+                                    : "凭链接"}
+                              </Badge>
+                              <Badge>{grant.mode === "subscribe" ? "可订阅" : grant.mode}</Badge>
+                              {grant.revokedAt ? <Badge>已撤销</Badge> : null}
+                            </div>
+                            <p className="mt-3 text-sm text-slate-600">
+                              {grant.targetEmail ?? grant.targetUserId ?? "全局共享"}
+                            </p>
+                            <p className="mt-2 text-xs text-slate-500">
+                              更新：{formatTime(grant.updatedAt)}
+                            </p>
+                            {!grant.revokedAt ? (
+                              <div className="mt-4">
+                                <Button
+                                  variant="ghost"
+                                  onClick={() =>
+                                    void runAction(
+                                      `access-revoke-share-${grant.id}`,
+                                      async () => {
+                                        await workspace.revokeShareGrant(
+                                          accessSubscription.id,
+                                          grant.id
+                                        );
+                                        await loadAccessState(accessSubscription);
+                                      },
+                                      "共享授权已撤销。"
+                                    )
+                                  }
+                                >
+                                  <Trash2 className="size-4" />
+                                  撤销共享
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={snapshotDialogOpen}

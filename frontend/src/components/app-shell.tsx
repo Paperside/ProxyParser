@@ -65,7 +65,7 @@ const navigationItems: readonly NavigationItem[] = [
         to: "/subscriptions/upstream"
       },
       {
-        label: "生成订阅",
+        label: "扩展订阅",
         matchPrefixes: ["/subscriptions/generated", "/subscriptions/drafts"],
         to: "/subscriptions/generated"
       }
@@ -102,7 +102,7 @@ const isNavigationGroup = (item: NavigationItem): item is NavigationGroupItem =>
 
 const pageTitles = {
   "/dashboard": {
-    description: "集中查看你的外部订阅、模板与生成订阅。",
+    description: "集中查看你的外部订阅、模板与扩展订阅。",
     title: "工作台"
   },
   "/settings": {
@@ -110,7 +110,7 @@ const pageTitles = {
     title: "个人设置"
   },
   "/subscriptions": {
-    description: "统一管理外部订阅和生成订阅。",
+    description: "统一管理外部订阅、扩展订阅、共享与订阅 Key。",
     title: "订阅管理"
   },
   "/templates": {
@@ -248,11 +248,10 @@ export const AppShell = ({ children }: PropsWithChildren) => {
   const displayName = auth.session?.user.displayName || auth.session?.user.username || "ProxyParser";
 
   return (
-    <div className="relative h-screen overflow-hidden bg-[#f4f7fb] text-slate-950">
+    <div className="relative h-screen overflow-hidden bg-[#eef3f8] text-slate-950">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[-12%] top-[-8%] h-72 w-72 rounded-full bg-sky-200/35 blur-3xl" />
-        <div className="absolute bottom-[-16%] right-[-8%] h-96 w-96 rounded-full bg-emerald-200/30 blur-3xl" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.88),rgba(244,247,251,0.78)_42%,rgba(240,244,248,0.9))]" />
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(232,239,247,0.88)_48%,rgba(238,243,248,0.96))]" />
+        <div className="absolute inset-0 opacity-[0.24] [background-image:linear-gradient(rgba(15,23,42,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.08)_1px,transparent_1px)] [background-size:32px_32px]" />
       </div>
 
       <div className="relative mx-auto flex h-full w-full max-w-[1600px] gap-4 p-4 lg:gap-6 lg:p-6">

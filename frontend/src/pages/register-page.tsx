@@ -35,16 +35,15 @@ export const RegisterPage = () => {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#eff4fa] px-4 py-10">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[-8%] top-[-8%] h-72 w-72 rounded-full bg-amber-200/30 blur-3xl" />
-        <div className="absolute right-[-8%] top-[18%] h-80 w-80 rounded-full bg-sky-200/35 blur-3xl" />
-        <div className="absolute bottom-[-12%] left-[15%] h-80 w-80 rounded-full bg-emerald-200/30 blur-3xl" />
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.95),rgba(232,239,247,0.86))]" />
+        <div className="absolute inset-0 opacity-[0.22] [background-image:linear-gradient(rgba(15,23,42,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.08)_1px,transparent_1px)] [background-size:30px_30px]" />
       </div>
 
       <Card className="relative w-full max-w-xl rounded-[32px] p-8">
         <div className="mb-8">
           <p className="text-sm font-medium uppercase tracking-[0.18em] text-slate-400">New Account</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">创建账号</h1>
-          <p className="mt-2 text-sm text-slate-500">注册后即可开始整理你的订阅来源、模板与生成订阅。</p>
+          <p className="mt-2 text-sm text-slate-500">注册后即可开始整理你的订阅来源、模板与扩展订阅。</p>
         </div>
 
         <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
@@ -54,7 +53,8 @@ export const RegisterPage = () => {
               <Mail className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
               <Input
                 required
-                type="email"
+                type="text"
+                inputMode="email"
                 value={form.email}
                 onChange={(event) => {
                   setForm((current) => ({

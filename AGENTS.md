@@ -23,13 +23,22 @@ Important local context:
 - Existing task tracker: `docs/TODO.md`
 - User-provided subscription sample is cached under `backend/data/mock-subscriptions/`, which is ignored by git and may contain real nodes. Do not commit or print its contents.
 
-Known high-priority gaps:
+Implemented in the current redesign branch:
 
-- Draft preview/publish/pull can replay an old selected upstream snapshot instead of the latest successful snapshot.
-- Template rendering does not currently consume `ruleProviderRefs`, so generated `RULE-SET` rules can reference missing `rule-providers`.
-- The country/region auto-grouping logic exists in the old patcher path but is not wired into the generated subscription draft/render path.
-- Render failures are not persisted to subscription status even though repository support exists.
-- Temp subscription tokens need TTL bounds and an immediate revoke API.
+- Draft preview/publish/render replays the latest successful upstream snapshot.
+- Auto grouping is wired into draft and template render paths.
+- Rule provider attachments generate matching `rule-providers` and `RULE-SET` rules.
+- Render failures are persisted as degraded subscription status.
+- Temp subscription tokens support TTL bounds, listing, and immediate revoke.
+- Drafts can import pasted subscription URLs directly.
+- Drafts can extract sanitized templates that omit real nodes.
+- Extended subscriptions expose short key, long key, and share-grant controls in the UI.
+
+Known follow-up gaps:
+
+- Template-center UI can show shareability, but it does not yet provide a one-click sanitize action for an existing source-locked template.
+- Share grants are manageable by owner; recipient-side discovery/notification can be made richer later.
+- Frontend bundle size still triggers Vite's default 500 kB warning; code splitting is a future polish task.
 
 Mihomo notes:
 

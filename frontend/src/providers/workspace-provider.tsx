@@ -17,6 +17,10 @@ import type {
   GeneratedSubscriptionDetail,
   MarketplaceRuleset,
   MarketplaceTemplate,
+  SubscriptionShareGrant,
+  SubscriptionShareGrantMode,
+  SubscriptionShareScope,
+  SubscriptionTempTokenSummary,
   Template,
   TemplateDetail,
   UpstreamSource,
@@ -82,8 +86,21 @@ interface WorkspaceContextValue {
   ) => Promise<GeneratedSubscriptionDetail>;
   deleteGeneratedSubscription: (id: string) => Promise<void>;
   renderGeneratedSubscription: (id: string) => Promise<GeneratedSubscriptionDetail>;
-  createTempLink: (id: string) => Promise<string>;
-  rotateSubscriptionSecret: () => Promise<string>;
+  listTempTokens: (id: string) => Promise<SubscriptionTempTokenSummary[]>;
+  createTempLink: (id: string, expiresInSeconds?: number) => Promise<string>;
+  revokeTempToken: (id: string, tokenId: string) => Promise<void>;
+  listShareGrants: (id: string) => Promise<SubscriptionShareGrant[]>;
+  upsertShareGrant: (
+    id: string,
+    input: {
+      scope: SubscriptionShareScope;
+      mode: SubscriptionShareGrantMode;
+      targetUserId?: string | null;
+      targetEmail?: string | null;
+    }
+  ) => Promise<SubscriptionShareGrant>;
+  revokeShareGrant: (id: string, grantId: string) => Promise<void>;
+  rotateSubscriptionSecret: (id?: string) => Promise<string>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -372,22 +389,48 @@ export const WorkspaceProvider = ({ children }: PropsWithChildren) => {
         await refreshAll();
         return updated;
       },
-      createTempLink: async (id) => {
+      listTempTokens: (id) => auth.authorizedRequest(`/api/subscriptions/${id}/temp-tokens`),
+      createTempLink: async (id, expiresInSeconds = 24 * 60 * 60) => {
         const result = await auth.authorizedRequest<{ token: string }>(
           `/api/subscriptions/${id}/temp-token`,
           {
             method: "POST",
             body: JSON.stringify({
-              expiresInSeconds: 24 * 60 * 60
+              expiresInSeconds
             })
           }
         );
 
+        await refreshAll();
         return `${API_BASE_URL}/subscribe/${id}?token=${result.token}`;
       },
-      rotateSubscriptionSecret: async () => {
+      revokeTempToken: async (id, tokenId) => {
+        await auth.authorizedRequest(`/api/subscriptions/${id}/temp-tokens/${tokenId}`, {
+          method: "DELETE"
+        });
+        await refreshAll();
+      },
+      listShareGrants: (id) => auth.authorizedRequest(`/api/subscriptions/${id}/share-grants`),
+      upsertShareGrant: async (id, input) => {
+        const created = await auth.authorizedRequest<SubscriptionShareGrant>(
+          `/api/subscriptions/${id}/share-grants`,
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        );
+        await refreshAll();
+        return created;
+      },
+      revokeShareGrant: async (id, grantId) => {
+        await auth.authorizedRequest(`/api/subscriptions/${id}/share-grants/${grantId}`, {
+          method: "DELETE"
+        });
+        await refreshAll();
+      },
+      rotateSubscriptionSecret: async (id) => {
         const result = await auth.authorizedRequest<{ secret: string }>(
-          "/api/settings/subscription-secret/rotate",
+          id ? `/api/subscriptions/${id}/secret/rotate` : "/api/settings/subscription-secret/rotate",
           {
             method: "POST"
           }

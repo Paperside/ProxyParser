@@ -183,7 +183,7 @@ const TemplateDialog = ({
         <DialogHeader>
           <DialogTitle>{editingId ? "编辑模板" : "新建模板"}</DialogTitle>
           <DialogDescription>
-            管理规则、分组、配置与自定义节点，决定最终生成订阅的重构方式。
+            管理规则、分组、配置与自定义节点，决定最终扩展订阅的重构方式。
           </DialogDescription>
         </DialogHeader>
 
@@ -695,7 +695,7 @@ export const TemplatesPage = ({
               让配置重构可复用
             </h3>
             <p className="mt-2 text-sm text-slate-500">
-              模板定义规则、规则组、配置覆盖与自定义节点，是生成订阅的核心能力。
+              模板定义规则、规则组、配置覆盖与自定义节点，是扩展订阅的核心能力。
             </p>
           </div>
 

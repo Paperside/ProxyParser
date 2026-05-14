@@ -47,6 +47,8 @@ const parseUpdateBody = (body: unknown) => {
   return {
     displayName: optionalString(body, "displayName"),
     upstreamSourceId: optionalString(body, "upstreamSourceId"),
+    sourceUrl: optionalString(body, "sourceUrl"),
+    sourceDisplayName: optionalString(body, "sourceDisplayName"),
     currentStep: optionalString(body, "currentStep") as
       | "source"
       | "proxies"
@@ -211,10 +213,10 @@ export const createGeneratedSubscriptionDraftRoutes = (
         return sendDraftError(error, set);
       }
     })
-    .patch("/:id", ({ headers, params, body, set }) => {
+    .patch("/:id", async ({ headers, params, body, set }) => {
       try {
         const user = authService.authenticate(headers.authorization);
-        return draftService.update(user.id, params.id, parseUpdateBody(body));
+        return await draftService.update(user.id, params.id, parseUpdateBody(body));
       } catch (error) {
         return sendDraftError(error, set);
       }

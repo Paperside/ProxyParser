@@ -98,9 +98,9 @@ export const DashboardPage = () => {
           description="用于重组和覆盖订阅的模板总数。"
         />
         <StatCard
-          title="生成订阅"
+          title="扩展订阅"
           value={String(workspace.generatedSubscriptions.length)}
-          description="已经绑定来源与模板的可分发订阅。"
+          description="已经完成分组、规则和共享配置的可分发订阅。"
         />
       </section>
 
@@ -118,7 +118,7 @@ export const DashboardPage = () => {
                 Recent Output
               </p>
               <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
-            最近更新的生成订阅
+            最近更新的扩展订阅
               </h3>
             </div>
             <Link
@@ -133,7 +133,7 @@ export const DashboardPage = () => {
           <div className="mt-6 space-y-4">
             {recentSubscriptions.length === 0 ? (
               <div className="rounded-[28px] border border-dashed border-slate-200 bg-slate-50/80 px-5 py-10 text-center text-sm text-slate-500">
-                还没有生成订阅，先创建一个来源和模板再开始。
+                还没有扩展订阅，进入向导粘贴外部订阅链接即可开始。
               </div>
             ) : null}
 
@@ -209,7 +209,7 @@ export const DashboardPage = () => {
               <div>
                 <h3 className="text-xl font-semibold tracking-tight text-slate-950">快速开始</h3>
                 <p className="mt-2 text-sm text-slate-500">
-                  先接入外部订阅，再进入向导构建生成订阅；模板会作为可复用蓝图逐步沉淀。
+                  进入向导粘贴或选择外部订阅，开启自动分组，再把规则与操作沉淀为可复用模板。
                 </p>
               </div>
             </div>

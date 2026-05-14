@@ -67,7 +67,7 @@ export const SettingsPage = () => {
     "user.profile.update": "更新个人资料",
     "subscription_secret.rotate": "轮换长期订阅秘钥",
     "subscription.temp_token.create": "创建临时拉取令牌",
-    "draft.publish": "发布生成订阅",
+    "draft.publish": "发布扩展订阅",
     "draft.extract_template": "从草稿提炼模板"
   };
 
@@ -209,7 +209,7 @@ export const SettingsPage = () => {
               <div>
                 <h3 className="text-xl font-semibold tracking-tight text-slate-950">订阅秘钥</h3>
                 <p className="mt-2 text-sm text-slate-500">
-                  所有生成订阅共享同一套长期秘钥，也可以单独生成临时链接。
+                  所有扩展订阅共享同一套长期秘钥，也可以单独生成短期 Key 链接。
                 </p>
               </div>
             </div>

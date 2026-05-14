@@ -36,6 +36,8 @@ interface CreateDraftInput {
 interface UpdateDraftInput {
   displayName?: string;
   upstreamSourceId?: string | null;
+  sourceUrl?: string | null;
+  sourceDisplayName?: string | null;
   currentStep?: DraftCurrentStep;
   shareabilityStatus?: ShareabilityStatus;
   selectedSourceSnapshotId?: string | null;
@@ -139,10 +141,31 @@ export class GeneratedSubscriptionDraftService {
     return created;
   }
 
-  update(ownerUserId: string, draftId: string, input: UpdateDraftInput) {
-    if (input.upstreamSourceId) {
+  async update(ownerUserId: string, draftId: string, input: UpdateDraftInput) {
+    const current = this.repository.findByIdAndOwner(draftId, ownerUserId);
+
+    if (!current) {
+      throw new GeneratedSubscriptionDraftError("未找到该生成订阅草稿。", 404);
+    }
+
+    let upstreamSourceId = input.upstreamSourceId;
+
+    if (input.sourceUrl) {
+      const displayName =
+        input.sourceDisplayName?.trim() ||
+        normalizeDisplayName(input.displayName) ||
+        current.displayName ||
+        "外部订阅";
+      const source = await this.upstreamSourceService.createAndSync(ownerUserId, {
+        displayName,
+        sourceUrl: input.sourceUrl
+      });
+      upstreamSourceId = source.id;
+    }
+
+    if (upstreamSourceId) {
       const source = this.upstreamSourceRepository.findByIdAndOwner(
-        input.upstreamSourceId,
+        upstreamSourceId,
         ownerUserId
       );
 
@@ -152,7 +175,7 @@ export class GeneratedSubscriptionDraftService {
     }
 
     const updated = this.repository.update(draftId, ownerUserId, {
-      upstreamSourceId: input.upstreamSourceId,
+      upstreamSourceId,
       displayName: normalizeDisplayName(input.displayName),
       currentStep: input.currentStep,
       shareabilityStatus: input.shareabilityStatus,
