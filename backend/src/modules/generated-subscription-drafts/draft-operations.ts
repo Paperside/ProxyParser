@@ -1,6 +1,12 @@
 import yaml from "js-yaml";
 
-import type { ClashProxyDocument, ProxyGroupEntry, ProxyNode } from "../../types";
+import type {
+  AutoGroupOptions,
+  ClashProxyDocument,
+  ProxyGroupEntry,
+  ProxyNode
+} from "../../types";
+import { renderAutoGroups } from "../../lib/render/auto-groups";
 import type { RulesetCatalogEntry } from "../marketplace/marketplace.repository";
 
 type StepPatchMode = "patch" | "full_override";
@@ -67,6 +73,7 @@ type GroupOperation =
   | GroupRemoveOperation;
 
 interface GroupsRulesStepOperations {
+  autoGroup?: AutoGroupOptions | null;
   ruleProviderRefs?: string[];
   proxyGroups?: ProxyGroupEntry[];
   items?: GroupOperation[];
@@ -291,6 +298,14 @@ const normalizeGroupsRulesStep = (
   }
 
   const candidate = isRecord(step.operations) ? step.operations : {};
+  const autoGroup: AutoGroupOptions | null = isRecord(candidate.autoGroup)
+    ? {
+        enabled: candidate.autoGroup.enabled !== false,
+        includeAutoGroup: candidate.autoGroup.includeAutoGroup === true,
+        unclassifiedPolicy:
+          candidate.autoGroup.unclassifiedPolicy === "ignore" ? "ignore" : "others"
+      }
+    : null;
   const items = Array.isArray(candidate.items)
     ? candidate.items
         .map((item): GroupOperation | null => {
@@ -342,6 +357,7 @@ const normalizeGroupsRulesStep = (
     patchMode,
     editorMode,
     operations: {
+      autoGroup,
       ruleProviderRefs: toStringArray(candidate.ruleProviderRefs),
       proxyGroups: Array.isArray(candidate.proxyGroups)
         ? candidate.proxyGroups
@@ -511,6 +527,10 @@ const applyGroupsRulesStep = (
 
   if (Object.keys(currentProviders).length > 0) {
     document["rule-providers"] = currentProviders;
+  }
+
+  if (step.operations.autoGroup?.enabled) {
+    document["proxy-groups"] = renderAutoGroups(document.proxies, step.operations.autoGroup).groups;
   }
 
   if (step.patchMode === "full_override") {

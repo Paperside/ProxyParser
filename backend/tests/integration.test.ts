@@ -312,3 +312,92 @@ test("product redesign migration exposes shareability and token metadata", () =>
   expect(tempTokenColumns).toContain("revoked_at");
   expect(shareGrantTable).toBeTruthy();
 });
+
+test("draft preview auto groups all source nodes into Proxies and regions", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService
+  } = createTestContext();
+  const registered = await authService.register({
+    email: "autogroup@example.com",
+    username: "autogroup",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "自动分组源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id, {
+    proxies: [
+      {
+        name: "HK-01",
+        type: "ss",
+        server: "1.1.1.1",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "secret"
+      },
+      {
+        name: "JP-01",
+        type: "ss",
+        server: "2.2.2.2",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "secret"
+      },
+      {
+        name: "Mystery-01",
+        type: "ss",
+        server: "3.3.3.3",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "secret"
+      }
+    ],
+    "proxy-groups": [
+      {
+        name: "Source",
+        type: "select",
+        proxies: ["HK-01", "JP-01", "Mystery-01"]
+      }
+    ],
+    rules: ["MATCH,Source"]
+  });
+
+  const draft = generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "自动分组草稿",
+    upstreamSourceId: source.id
+  });
+  generatedSubscriptionDraftService.saveStep(registered.user.id, draft.id, {
+    stepKey: "groups_rules",
+    patchMode: "patch",
+    editorMode: "visual",
+    operations: {
+      autoGroup: {
+        enabled: true,
+        includeAutoGroup: true,
+        unclassifiedPolicy: "others"
+      }
+    }
+  });
+
+  const preview = await generatedSubscriptionDraftService.preview(registered.user.id, draft.id);
+  const groupsByName = new Map(
+    preview.document["proxy-groups"].map((group) => [group.name, group] as const)
+  );
+
+  expect([...groupsByName.keys()]).toContain("Proxies");
+  expect([...groupsByName.keys()]).toContain("HK");
+  expect([...groupsByName.keys()]).toContain("JP");
+  expect([...groupsByName.keys()]).toContain("Others");
+  expect([...groupsByName.keys()]).toContain("Auto");
+  expect(groupsByName.get("Proxies")?.proxies).toContain("HK-01");
+  expect(groupsByName.get("Proxies")?.proxies).toContain("JP-01");
+  expect(groupsByName.get("Proxies")?.proxies).toContain("Mystery-01");
+  expect(groupsByName.get("HK")?.proxies).toContain("HK-01");
+  expect(groupsByName.get("JP")?.proxies).toContain("JP-01");
+  expect(groupsByName.get("Others")?.proxies).toContain("Mystery-01");
+});

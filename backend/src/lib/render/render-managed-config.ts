@@ -6,6 +6,7 @@ import type {
   ProxyNode,
   TemplatePayload
 } from "../../types";
+import { renderAutoGroups } from "./auto-groups";
 
 const RESERVED_PROXY_NAMES = new Set(["DIRECT", "REJECT", "COMPATIBLE", "PASS"]);
 
@@ -97,10 +98,14 @@ export const renderManagedConfig = (
     templatePayload.customProxiesPolicy
   );
 
+  const sourceGroups = templatePayload.autoGroup?.enabled
+    ? renderAutoGroups(rendered.proxies, templatePayload.autoGroup).groups
+    : sourceClone["proxy-groups"];
+
   rendered["proxy-groups"] =
     templatePayload.groupsMode === "full_override"
       ? deepClone(templatePayload.proxyGroups)
-      : mergeGroups(sourceClone["proxy-groups"], deepClone(templatePayload.proxyGroups));
+      : mergeGroups(sourceGroups, deepClone(templatePayload.proxyGroups));
 
   const sourceRules = sourceClone.rules ?? [];
   rendered.rules =

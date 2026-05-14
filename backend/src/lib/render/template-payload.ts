@@ -7,6 +7,8 @@ export const createDefaultTemplatePayload = (): TemplatePayload => {
     configMode: "patch",
     customProxiesPolicy: "append",
     ruleProviderRefs: [],
+    ruleProviderAttachments: [],
+    autoGroup: null,
     rules: [],
     proxyGroups: [],
     configPatch: {},
@@ -35,6 +37,13 @@ export const normalizeTemplatePayload = (value: unknown): TemplatePayload => {
     ruleProviderRefs: Array.isArray(candidate.ruleProviderRefs)
       ? candidate.ruleProviderRefs.filter((item): item is string => typeof item === "string")
       : [],
+    ruleProviderAttachments: Array.isArray(candidate.ruleProviderAttachments)
+      ? candidate.ruleProviderAttachments
+      : [],
+    autoGroup:
+      typeof candidate.autoGroup === "object" && candidate.autoGroup !== null
+        ? candidate.autoGroup
+        : null,
     rules: Array.isArray(candidate.rules)
       ? candidate.rules.filter((item): item is string => typeof item === "string")
       : [],
