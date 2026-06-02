@@ -126,40 +126,44 @@ export const SettingsPage = () => {
   return (
     <div className="space-y-6">
       {message ? (
-        <div className="rounded-[28px] border border-slate-200 bg-white/80 px-5 py-4 text-sm text-slate-600 shadow-[0_18px_45px_rgba(15,23,42,0.06)] backdrop-blur-xl">
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-lg border border-[#dedcd1] border-l-[#c96442] border-l-4 bg-[#fffdf8] px-5 py-4 text-sm text-[#5f5e58] shadow-[0_1px_2px_rgba(20,20,19,0.04)]"
+        >
           {message}
         </div>
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
-        <Card className="rounded-[32px] p-6">
+        <Card className="rounded-lg p-6">
           <div className="flex items-start gap-4">
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-[#141413] text-[#faf9f5]">
               <UserRound className="size-5" />
             </div>
             <div>
-              <h3 className="text-xl font-semibold tracking-tight text-slate-950">个人资料</h3>
-              <p className="mt-2 text-sm text-slate-500">维护展示名称与界面语言设置。</p>
+              <h3 className="text-xl font-semibold text-[#141413]">个人资料</h3>
+              <p className="mt-2 text-sm text-[#73726c]">维护展示名称与界面语言设置。</p>
             </div>
           </div>
 
           <form className="mt-6 space-y-4" onSubmit={handleSaveProfile}>
             <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-600">邮箱</span>
-              <Input value={user?.email ?? ""} readOnly className="bg-slate-50 text-slate-500" />
+              <span className="text-sm font-medium text-[#5f5e58]">邮箱</span>
+              <Input value={user?.email ?? ""} readOnly className="bg-[#f5f4ed] text-[#73726c]" />
             </label>
 
             <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-600">用户名</span>
+              <span className="text-sm font-medium text-[#5f5e58]">用户名</span>
               <Input
                 value={user?.username ?? ""}
                 readOnly
-                className="bg-slate-50 text-slate-500"
+                className="bg-[#f5f4ed] text-[#73726c]"
               />
             </label>
 
             <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-600">显示名称</span>
+              <span className="text-sm font-medium text-[#5f5e58]">显示名称</span>
               <Input
                 value={form.displayName}
                 onChange={(event) => {
@@ -173,7 +177,7 @@ export const SettingsPage = () => {
             </label>
 
             <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-600">界面语言</span>
+              <span className="text-sm font-medium text-[#5f5e58]">界面语言</span>
               <Select
                 value={form.locale}
                 onValueChange={(value) => {
@@ -201,22 +205,22 @@ export const SettingsPage = () => {
         </Card>
 
         <div className="space-y-6">
-          <Card className="rounded-[32px] p-6">
+          <Card className="rounded-lg p-6">
             <div className="flex items-start gap-4">
-              <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white">
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-[#141413] text-[#faf9f5]">
                 <KeyRound className="size-5" />
               </div>
               <div>
-                <h3 className="text-xl font-semibold tracking-tight text-slate-950">订阅秘钥</h3>
-                <p className="mt-2 text-sm text-slate-500">
+                <h3 className="text-xl font-semibold text-[#141413]">订阅秘钥</h3>
+                <p className="mt-2 text-sm text-[#73726c]">
                   所有扩展订阅共享同一套长期秘钥，也可以单独生成短期 Key 链接。
                 </p>
               </div>
             </div>
 
-            <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
+            <div className="mt-6 rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-4">
               <div className="flex items-center justify-between gap-3">
-                <Badge className="border-slate-200 bg-white text-slate-600">长期秘钥</Badge>
+                <Badge className="border-[#dedcd1] bg-white text-[#5f5e58]">长期秘钥</Badge>
                 <Button
                   variant="secondary"
                   disabled={isRotating}
@@ -227,7 +231,7 @@ export const SettingsPage = () => {
                 </Button>
               </div>
 
-              <p className="mt-4 text-sm text-slate-500">{secretHint}</p>
+              <p className="mt-4 text-sm text-[#73726c]">{secretHint}</p>
 
               {revealedSecret ? (
                 <div className="mt-4 flex flex-col gap-3 sm:flex-row">
@@ -241,53 +245,53 @@ export const SettingsPage = () => {
             </div>
           </Card>
 
-          <Card className="rounded-[32px] p-6">
-            <h3 className="text-xl font-semibold tracking-tight text-slate-950">账号信息</h3>
-            <div className="mt-5 grid gap-3 text-sm text-slate-500">
+          <Card className="rounded-lg p-6">
+            <h3 className="text-xl font-semibold text-[#141413]">账号信息</h3>
+            <div className="mt-5 grid gap-3 text-sm text-[#73726c]">
               <p>创建时间：{user ? new Date(user.createdAt).toLocaleString("zh-CN") : "暂无"}</p>
               <p>最近更新：{user ? new Date(user.updatedAt).toLocaleString("zh-CN") : "暂无"}</p>
               <p>账号状态：{user?.status === "active" ? "正常" : "已停用"}</p>
             </div>
           </Card>
 
-          <Card className="rounded-[32px] p-6">
+          <Card className="rounded-lg p-6">
             <div className="flex items-start gap-4">
-              <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white">
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-[#141413] text-[#faf9f5]">
                 <ShieldCheck className="size-5" />
               </div>
               <div>
-                <h3 className="text-xl font-semibold tracking-tight text-slate-950">最近安全活动</h3>
-                <p className="mt-2 text-sm text-slate-500">展示最近的登录、秘钥与发布相关操作。</p>
+                <h3 className="text-xl font-semibold text-[#141413]">最近安全活动</h3>
+                <p className="mt-2 text-sm text-[#73726c]">展示最近的登录、秘钥与发布相关操作。</p>
               </div>
             </div>
 
             <ScrollArea className="mt-6 h-[320px] pr-4">
               <div className="space-y-3">
                 {isLoadingAuditLogs ? (
-                  <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-500">
+                  <div className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 px-4 py-3 text-sm text-[#73726c]">
                     正在加载最近活动...
                   </div>
                 ) : auditLogs.length > 0 ? (
                   auditLogs.map((entry) => (
                     <div
                       key={entry.id}
-                      className="rounded-[24px] border border-slate-200 bg-slate-50/80 px-4 py-4"
+                      className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 px-4 py-4"
                     >
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge className="border-slate-200 bg-white text-slate-600">
+                        <Badge className="border-[#dedcd1] bg-white text-[#5f5e58]">
                           {auditActionText[entry.action] ?? entry.action}
                         </Badge>
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-[#9c9a92]">
                           {new Date(entry.createdAt).toLocaleString("zh-CN")}
                         </span>
                       </div>
-                      <p className="mt-3 text-sm text-slate-600">
+                      <p className="mt-3 text-sm text-[#5f5e58]">
                         {entry.summary ?? "已记录一条安全相关活动。"}
                       </p>
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50/70 px-4 py-5 text-sm text-slate-500">
+                  <div className="rounded-lg border border-dashed border-[#dedcd1] bg-[#f5f4ed]/70 px-4 py-5 text-sm text-[#73726c]">
                     暂无最近活动。
                   </div>
                 )}

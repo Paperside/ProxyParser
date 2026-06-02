@@ -189,14 +189,14 @@ const TemplateDialog = ({
 
         <ScrollArea className="mt-6 h-[min(78vh,820px)] pr-4">
           {isLoadingDetail ? (
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 px-5 py-10 text-center text-sm text-slate-500">
+            <div className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 px-5 py-10 text-center text-sm text-[#73726c]">
               正在载入模板详情...
             </div>
           ) : (
             <form className="space-y-6 pb-2" onSubmit={onSubmit}>
               <section className="grid gap-4 md:grid-cols-2">
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">模板名称</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">模板名称</span>
                   <Input
                     required
                     value={form.displayName}
@@ -211,7 +211,7 @@ const TemplateDialog = ({
                 </label>
 
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">Slug</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">标识</span>
                   <Input
                     value={form.slug}
                     onChange={(event) => {
@@ -225,7 +225,7 @@ const TemplateDialog = ({
                 </label>
 
                 <label className="block space-y-2 md:col-span-2">
-                  <span className="text-sm font-medium text-slate-600">描述</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">描述</span>
                   <Textarea
                     value={form.description}
                     onChange={(event) => {
@@ -241,7 +241,7 @@ const TemplateDialog = ({
 
               <section className="grid gap-4 md:grid-cols-3">
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">可见性</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">可见性</span>
                   <Select
                     value={form.visibility}
                     onValueChange={(value) => {
@@ -263,7 +263,7 @@ const TemplateDialog = ({
                 </label>
 
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">共享方式</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">共享方式</span>
                   <Select
                     value={form.shareMode}
                     onValueChange={(value) => {
@@ -285,7 +285,7 @@ const TemplateDialog = ({
                 </label>
 
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">发布状态</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">发布状态</span>
                   <Select
                     value={form.publishStatus}
                     onValueChange={(value) => {
@@ -309,7 +309,7 @@ const TemplateDialog = ({
 
               <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">规则模式</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">规则模式</span>
                   <Select
                     value={form.rulesMode}
                     onValueChange={(value) => {
@@ -330,7 +330,7 @@ const TemplateDialog = ({
                 </label>
 
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">分组模式</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">分组模式</span>
                   <Select
                     value={form.groupsMode}
                     onValueChange={(value) => {
@@ -351,7 +351,7 @@ const TemplateDialog = ({
                 </label>
 
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">配置模式</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">配置模式</span>
                   <Select
                     value={form.configMode}
                     onValueChange={(value) => {
@@ -372,7 +372,7 @@ const TemplateDialog = ({
                 </label>
 
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">自定义节点冲突策略</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">自定义节点冲突策略</span>
                   <Select
                     value={form.customProxiesPolicy}
                     onValueChange={(value) => {
@@ -396,7 +396,7 @@ const TemplateDialog = ({
 
               <section className="grid gap-4 xl:grid-cols-2">
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">规则源引用</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">规则源引用</span>
                   <Textarea
                     value={form.ruleProviderRefsText}
                     onChange={(event) => {
@@ -411,7 +411,7 @@ const TemplateDialog = ({
                 </label>
 
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">规则列表</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">规则列表</span>
                   <Textarea
                     value={form.rulesText}
                     onChange={(event) => {
@@ -428,7 +428,7 @@ const TemplateDialog = ({
 
               <section className="grid gap-4 xl:grid-cols-2">
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">规则组 JSON</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">规则组 JSON</span>
                   <Textarea
                     value={form.proxyGroupsJson}
                     onChange={(event) => {
@@ -442,7 +442,7 @@ const TemplateDialog = ({
                 </label>
 
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">配置 JSON</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">配置 JSON</span>
                   <Textarea
                     value={form.configPatchJson}
                     onChange={(event) => {
@@ -456,7 +456,7 @@ const TemplateDialog = ({
                 </label>
 
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">自定义节点 JSON</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">自定义节点 JSON</span>
                   <Textarea
                     value={form.customProxiesJson}
                     onChange={(event) => {
@@ -470,7 +470,7 @@ const TemplateDialog = ({
                 </label>
 
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">版本备注</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">版本备注</span>
                   <Textarea
                     value={form.versionNote}
                     onChange={(event) => {
@@ -487,13 +487,16 @@ const TemplateDialog = ({
 
               {form.exportedYaml ? (
                 <section className="space-y-2">
-                  <span className="text-sm font-medium text-slate-600">当前导出预览</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">当前导出预览</span>
                   <Textarea value={form.exportedYaml} readOnly className="min-h-72 font-mono text-xs" />
                 </section>
               ) : null}
 
               {errorMessage ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                <div
+                  role="alert"
+                  className="rounded-lg border border-[#cd5c58]/50 bg-[#f7ecec] px-4 py-3 text-sm text-[#7f2c28]"
+                >
                   {errorMessage}
                 </div>
               ) : null}
@@ -687,14 +690,14 @@ export const TemplatesPage = ({
 
   return (
     <div className="space-y-6">
-      <Card className="rounded-[32px] p-6">
+      <Card className="rounded-lg p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm font-medium uppercase tracking-[0.18em] text-slate-400">Templates</p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+            <p className="text-sm font-medium text-[#73726c]">模板</p>
+            <h3 className="mt-2 text-2xl font-semibold text-[#141413]">
               让配置重构可复用
             </h3>
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-sm text-[#73726c]">
               模板定义规则、规则组、配置覆盖与自定义节点，是扩展订阅的核心能力。
             </p>
           </div>
@@ -707,7 +710,11 @@ export const TemplatesPage = ({
       </Card>
 
       {feedbackMessage ? (
-        <div className="rounded-[28px] border border-slate-200 bg-white/80 px-5 py-4 text-sm text-slate-600 shadow-[0_18px_45px_rgba(15,23,42,0.06)] backdrop-blur-xl">
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-lg border border-[#dedcd1] border-l-[#c96442] border-l-4 bg-[#fffdf8] px-5 py-4 text-sm text-[#5f5e58] shadow-[0_1px_2px_rgba(20,20,19,0.04)]"
+        >
           {feedbackMessage}
         </div>
       ) : null}
@@ -715,17 +722,17 @@ export const TemplatesPage = ({
       {section === "mine" ? (
           <div className="space-y-4">
             {sortedTemplates.length === 0 ? (
-              <Card className="rounded-[32px] p-10 text-center text-sm text-slate-500">
+              <Card className="rounded-lg p-10 text-center text-sm text-[#73726c]">
                 还没有模板，创建一个模板来定义你的规则与配置重构方案。
               </Card>
             ) : null}
 
             {sortedTemplates.map((template) => (
-              <Card key={template.id} className="rounded-[32px] p-6">
+              <Card key={template.id} className="rounded-lg p-6">
                 <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="text-xl font-semibold tracking-tight text-slate-950">
+                      <h4 className="text-xl font-semibold text-[#141413]">
                         {template.displayName}
                       </h4>
                       <Badge>{publishStatusText[template.publishStatus]}</Badge>
@@ -733,14 +740,14 @@ export const TemplatesPage = ({
                       <Badge>{shareModeText[template.shareMode]}</Badge>
                       <Badge>版本 {template.latestVersion}</Badge>
                     </div>
-                    <p className="text-sm text-slate-500">{template.description ?? "暂无说明"}</p>
-                    <div className="grid gap-2 text-sm text-slate-500 sm:grid-cols-2 xl:grid-cols-3">
-                      <p>Slug：{template.slug ?? "未设置"}</p>
+                    <p className="text-sm text-[#73726c]">{template.description ?? "暂无说明"}</p>
+                    <div className="grid gap-2 text-sm text-[#73726c] sm:grid-cols-2 xl:grid-cols-3">
+                      <p>标识：{template.slug ?? "未设置"}</p>
                       <p>最近更新：{formatRelativeDate(template.updatedAt)}</p>
                       <p>版本号：{template.latestVersion}</p>
                     </div>
                     {template.sourceLabel ? (
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-[#73726c]">
                         来源：{template.sourceLabel}
                         {template.sourceUrl ? (
                           <>
@@ -749,7 +756,7 @@ export const TemplatesPage = ({
                               href={template.sourceUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-slate-700 underline-offset-4 hover:underline"
+                              className="text-[#3d3d3a] underline-offset-4 hover:underline"
                             >
                               查看来源
                             </a>
@@ -779,14 +786,14 @@ export const TemplatesPage = ({
           </div>
       ) : (
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <Card className="rounded-[32px] p-6">
+            <Card className="rounded-lg p-6">
               <div className="flex items-center gap-3">
-                <div className="flex size-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                <div className="flex size-11 items-center justify-center rounded-lg bg-[#141413] text-[#faf9f5]">
                   <Layers3 className="size-5" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-semibold tracking-tight text-slate-950">社区模板</h3>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <h3 className="text-xl font-semibold text-[#141413]">社区模板</h3>
+                  <p className="mt-1 text-sm text-[#73726c]">
                     来自公开模板库，适合作为你自己的模板参考。
                   </p>
                 </div>
@@ -794,7 +801,7 @@ export const TemplatesPage = ({
 
               <div className="mt-6 space-y-4">
                 {workspace.marketplaceTemplates.length === 0 ? (
-                  <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-sm text-slate-500">
+                  <div className="rounded-lg border border-dashed border-[#dedcd1] bg-[#f5f4ed]/80 px-4 py-8 text-center text-sm text-[#73726c]">
                     当前还没有公开模板。
                   </div>
                 ) : null}
@@ -802,24 +809,24 @@ export const TemplatesPage = ({
                 {workspace.marketplaceTemplates.map((template) => (
                   <div
                     key={template.id}
-                    className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4"
+                    className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-4"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-slate-950">{template.displayName}</p>
+                      <p className="font-medium text-[#141413]">{template.displayName}</p>
                       {template.isOfficial ? (
-                        <Badge className="border-sky-200 bg-sky-50 text-sky-700">官方</Badge>
+                        <Badge className="border-[#80aadd]/45 bg-[#d6e4f6] text-[#3266ad]">官方</Badge>
                       ) : null}
                       <Badge>{publishStatusText[template.publishStatus]}</Badge>
                       <Badge>{visibilityText[template.visibility]}</Badge>
                     </div>
-                    <p className="mt-2 text-sm text-slate-500">
+                    <p className="mt-2 text-sm text-[#73726c]">
                       {template.description ?? "暂无说明"}
                     </p>
-                    <p className="mt-3 text-sm text-slate-500">
+                    <p className="mt-3 text-sm text-[#73726c]">
                       作者：{template.ownerDisplayName ?? template.ownerUserId}
                     </p>
                     {template.sourceLabel ? (
-                      <p className="mt-2 text-sm text-slate-500">
+                      <p className="mt-2 text-sm text-[#73726c]">
                         来源：{template.sourceLabel}
                         {template.sourceUrl ? (
                           <>
@@ -828,7 +835,7 @@ export const TemplatesPage = ({
                               href={template.sourceUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-slate-700 underline-offset-4 hover:underline"
+                              className="text-[#3d3d3a] underline-offset-4 hover:underline"
                             >
                               查看
                             </a>
@@ -836,8 +843,8 @@ export const TemplatesPage = ({
                         ) : null}
                       </p>
                     ) : null}
-                    <p className="mt-3 text-xs uppercase tracking-[0.16em] text-slate-400">
-                      {template.slug ?? "未设置 Slug"}
+                    <p className="mt-3 text-xs text-[#73726c]">
+                      {template.slug ?? "未设置标识"}
                     </p>
                     <div className="mt-4">
                       <Button
@@ -854,23 +861,23 @@ export const TemplatesPage = ({
               </div>
             </Card>
 
-            <Card className="rounded-[32px] p-6">
+            <Card className="rounded-lg p-6">
               <div className="flex items-center gap-3">
-                <div className="flex size-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
+                <div className="flex size-11 items-center justify-center rounded-lg bg-[#141413] text-[#faf9f5]">
                   <ExternalLink className="size-5" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-semibold tracking-tight text-slate-950">内置规则源</h3>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <h3 className="text-xl font-semibold text-[#141413]">内置规则源</h3>
+                  <p className="mt-1 text-sm text-[#73726c]">
                     官方规则源会定时同步；你也可以导入第三方规则源，在向导和模板里直接引用。
                   </p>
                 </div>
               </div>
 
-              <form className="mt-6 space-y-4 rounded-[24px] border border-slate-200 bg-slate-50/80 p-4" onSubmit={handleCreateRuleset}>
+              <form className="mt-6 space-y-4 rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-4" onSubmit={handleCreateRuleset}>
                 <div className="grid gap-4 xl:grid-cols-2">
                   <label className="block space-y-2">
-                    <span className="text-sm font-medium text-slate-600">规则源名称</span>
+                    <span className="text-sm font-medium text-[#5f5e58]">规则源名称</span>
                     <Input
                       required
                       value={rulesetForm.name}
@@ -884,7 +891,7 @@ export const TemplatesPage = ({
                     />
                   </label>
                   <label className="block space-y-2">
-                    <span className="text-sm font-medium text-slate-600">Slug</span>
+                    <span className="text-sm font-medium text-[#5f5e58]">标识</span>
                     <Input
                       value={rulesetForm.slug}
                       onChange={(event) =>
@@ -897,7 +904,7 @@ export const TemplatesPage = ({
                     />
                   </label>
                   <label className="block space-y-2 xl:col-span-2">
-                    <span className="text-sm font-medium text-slate-600">规则源地址</span>
+                    <span className="text-sm font-medium text-[#5f5e58]">规则源地址</span>
                     <Input
                       required
                       value={rulesetForm.sourceUrl}
@@ -911,7 +918,7 @@ export const TemplatesPage = ({
                     />
                   </label>
                   <label className="block space-y-2 xl:col-span-2">
-                    <span className="text-sm font-medium text-slate-600">描述</span>
+                    <span className="text-sm font-medium text-[#5f5e58]">描述</span>
                     <Textarea
                       value={rulesetForm.description}
                       onChange={(event) =>
@@ -924,7 +931,7 @@ export const TemplatesPage = ({
                     />
                   </label>
                   <label className="block space-y-2">
-                    <span className="text-sm font-medium text-slate-600">行为类型</span>
+                    <span className="text-sm font-medium text-[#5f5e58]">行为类型</span>
                     <Select
                       value={rulesetForm.behavior}
                       onValueChange={(value) =>
@@ -945,7 +952,7 @@ export const TemplatesPage = ({
                     </Select>
                   </label>
                   <label className="block space-y-2">
-                    <span className="text-sm font-medium text-slate-600">可见性</span>
+                    <span className="text-sm font-medium text-[#5f5e58]">可见性</span>
                     <Select
                       value={rulesetForm.visibility}
                       onValueChange={(value) =>
@@ -977,23 +984,23 @@ export const TemplatesPage = ({
                 {customRulesets.length > 0 ? (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-lg font-semibold text-slate-950">我的规则源</h4>
+                      <h4 className="text-lg font-semibold text-[#141413]">我的规则源</h4>
                       <Badge>{customRulesets.length} 个</Badge>
                     </div>
                     {customRulesets.map((ruleset) => (
                       <div
                         key={ruleset.id}
-                        className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4"
+                        className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-4"
                       >
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium text-slate-950">{ruleset.name}</p>
+                          <p className="font-medium text-[#141413]">{ruleset.name}</p>
                           <Badge>{visibilityText[ruleset.visibility]}</Badge>
                           <Badge>{ruleset.metadata.behavior ? String(ruleset.metadata.behavior) : "classical"}</Badge>
                           {ruleset.latestFetchStatus ? (
                             <Badge>{ruleset.latestFetchStatus === "success" ? "已缓存" : "同步失败"}</Badge>
                           ) : null}
                         </div>
-                        <p className="mt-2 text-sm text-slate-500">
+                        <p className="mt-2 text-sm text-[#73726c]">
                           {ruleset.description ?? "暂无说明"}
                         </p>
                         <div className="mt-4 flex flex-wrap gap-2">
@@ -1034,18 +1041,18 @@ export const TemplatesPage = ({
                 {officialRulesets.map((ruleset) => (
                   <div
                     key={ruleset.id}
-                    className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4"
+                    className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-4"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-slate-950">{ruleset.name}</p>
+                      <p className="font-medium text-[#141413]">{ruleset.name}</p>
                       {ruleset.isOfficial ? (
-                        <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                        <Badge className="border-[#7ab948]/40 bg-[#e9f1dc] text-[#265b19]">
                           官方
                         </Badge>
                       ) : null}
                     </div>
-                    <p className="mt-2 text-sm text-slate-500">{ruleset.description ?? "暂无说明"}</p>
-                    <div className="mt-4 flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.16em] text-slate-400">
+                    <p className="mt-2 text-sm text-[#73726c]">{ruleset.description ?? "暂无说明"}</p>
+                    <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-[#9c9a92]">
                       <span>{ruleset.slug}</span>
                       <span>{ruleset.sourceType}</span>
                       {ruleset.latestFetchedAt ? <span>{formatRelativeDate(ruleset.latestFetchedAt)}</span> : null}

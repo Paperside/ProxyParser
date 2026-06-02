@@ -97,17 +97,17 @@ export const publishStatusText: Record<"draft" | "published" | "archived", strin
 };
 
 export const syncStatusTone: Record<SyncStatus, string> = {
-  idle: "border-slate-200 bg-slate-50 text-slate-600",
-  syncing: "border-amber-200 bg-amber-50 text-amber-700",
-  success: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  failed: "border-rose-200 bg-rose-50 text-rose-700",
-  stale: "border-orange-200 bg-orange-50 text-orange-700"
+  idle: "border-[#dedcd1] bg-[#f5f4ed] text-[#73726c]",
+  syncing: "border-[#d1a041]/40 bg-[#f6eedf] text-[#5a4815]",
+  success: "border-[#7ab948]/40 bg-[#e9f1dc] text-[#265b19]",
+  failed: "border-[#cd5c58]/50 bg-[#f7ecec] text-[#7f2c28]",
+  stale: "border-[#a87829]/40 bg-[#f6eedf] text-[#5a4815]"
 };
 
 export const renderStatusTone: Record<RenderStatus, string> = {
-  pending: "border-slate-200 bg-slate-50 text-slate-600",
-  rendering: "border-sky-200 bg-sky-50 text-sky-700",
-  success: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  failed: "border-rose-200 bg-rose-50 text-rose-700",
-  degraded: "border-orange-200 bg-orange-50 text-orange-700"
+  pending: "border-[#dedcd1] bg-[#f5f4ed] text-[#73726c]",
+  rendering: "border-[#80aadd]/45 bg-[#d6e4f6] text-[#3266ad]",
+  success: "border-[#7ab948]/40 bg-[#e9f1dc] text-[#265b19]",
+  failed: "border-[#cd5c58]/50 bg-[#f7ecec] text-[#7f2c28]",
+  degraded: "border-[#a87829]/40 bg-[#f6eedf] text-[#5a4815]"
 };

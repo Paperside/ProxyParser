@@ -1,5 +1,3 @@
-import * as Avatar from "@radix-ui/react-avatar";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   ChevronDown,
@@ -158,56 +156,56 @@ const isChildRouteActive = (pathname: string, child: NavigationLinkChild) => {
 };
 
 const navLinkBaseClassName =
-  "flex min-h-[52px] w-full items-center gap-3 rounded-2xl border-0 bg-transparent px-4 py-3 text-sm font-medium leading-5 transition-[background-color,color,box-shadow] duration-200";
+  "flex min-h-11 w-full items-center gap-3 rounded-lg border-0 bg-transparent px-3 py-2.5 text-sm font-medium leading-5 transition-[background-color,color,border-color] duration-150";
 
 const getDesktopNavLinkClassName = (isActive: boolean) =>
   cn(
     navLinkBaseClassName,
     isActive
-      ? "bg-slate-950 text-white shadow-[0_18px_40px_rgba(15,23,42,0.14)]"
-      : "text-slate-500 hover:bg-slate-100/90 hover:text-slate-950"
+      ? "bg-[#e9e5da] text-[#141413]"
+      : "text-[#73726c] hover:bg-[#f1eee6] hover:text-[#141413]"
   );
 
 const getDesktopGroupClassName = (isActive: boolean, isExpanded: boolean) =>
   cn(
     navLinkBaseClassName,
-    "relative pr-12 text-left",
+    "relative pr-10 text-left",
     isActive && !isExpanded
-      ? "bg-slate-950 text-white shadow-[0_18px_40px_rgba(15,23,42,0.14)]"
+      ? "bg-[#e9e5da] text-[#141413]"
       : isActive || isExpanded
-        ? "bg-slate-100/90 text-slate-950 ring-1 ring-slate-200/80"
-        : "text-slate-500 hover:bg-slate-100/90 hover:text-slate-950"
+        ? "bg-[#f1eee6] text-[#141413]"
+        : "text-[#73726c] hover:bg-[#f1eee6] hover:text-[#141413]"
   );
 
 const getDesktopGroupChevronClassName = (isActive: boolean, isExpanded: boolean) =>
   cn(
     "pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 shrink-0 transition-transform duration-200",
     isExpanded && "rotate-180",
-    isActive && !isExpanded ? "text-white" : "text-current"
+    "text-current"
   );
 
 const getDesktopChildLinkClassName = (isActive: boolean) =>
   cn(
-    "flex min-h-11 items-center rounded-xl px-4 py-2.5 text-sm font-medium leading-5 transition-[background-color,color,box-shadow] duration-200",
+    "flex min-h-10 items-center rounded-lg px-3 py-2 text-sm font-medium leading-5 transition-[background-color,color] duration-150",
     isActive
-      ? "bg-slate-950 text-white shadow-[0_14px_32px_rgba(15,23,42,0.12)]"
-      : "text-slate-500 hover:bg-slate-100/90 hover:text-slate-950"
+      ? "bg-[#141413] text-[#faf9f5]"
+      : "text-[#73726c] hover:bg-[#f1eee6] hover:text-[#141413]"
   );
 
 const getMobileNavLinkClassName = (isActive: boolean) =>
   cn(
-    "inline-flex shrink-0 items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-medium transition-colors",
+    "inline-flex shrink-0 items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors",
     isActive
-      ? "border-slate-950 bg-slate-950 text-white"
-      : "border-slate-200 bg-white/90 text-slate-500 hover:border-slate-300 hover:text-slate-950"
+      ? "border-[#141413] bg-[#141413] text-[#faf9f5]"
+      : "border-[#dedcd1] bg-[#fffdf8] text-[#73726c] hover:border-[#c9c6ba] hover:text-[#141413]"
   );
 
 const getMobileChildLinkClassName = (isActive: boolean) =>
   cn(
-    "inline-flex shrink-0 items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-medium transition-colors",
+    "inline-flex shrink-0 items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors",
     isActive
-      ? "border-slate-950 bg-slate-950 text-white"
-      : "border-slate-200 bg-white/90 text-slate-500 hover:border-slate-300 hover:text-slate-950"
+      ? "border-[#141413] bg-[#141413] text-[#faf9f5]"
+      : "border-[#dedcd1] bg-[#fffdf8] text-[#73726c] hover:border-[#c9c6ba] hover:text-[#141413]"
   );
 
 export const AppShell = ({ children }: PropsWithChildren) => {
@@ -248,21 +246,16 @@ export const AppShell = ({ children }: PropsWithChildren) => {
   const displayName = auth.session?.user.displayName || auth.session?.user.username || "ProxyParser";
 
   return (
-    <div className="relative h-screen overflow-hidden bg-[#eef3f8] text-slate-950">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(232,239,247,0.88)_48%,rgba(238,243,248,0.96))]" />
-        <div className="absolute inset-0 opacity-[0.24] [background-image:linear-gradient(rgba(15,23,42,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.08)_1px,transparent_1px)] [background-size:32px_32px]" />
-      </div>
-
-      <div className="relative mx-auto flex h-full w-full max-w-[1600px] gap-4 p-4 lg:gap-6 lg:p-6">
-        <aside className="hidden h-full w-72 shrink-0 flex-col rounded-[32px] border border-white/70 bg-white/70 p-5 backdrop-blur-xl lg:flex">
+    <div className="relative h-screen overflow-hidden bg-[#f5f4ed] text-[#141413]">
+      <div className="relative flex h-full w-full">
+        <aside className="hidden h-full w-60 shrink-0 flex-col border-r border-[#dedcd1] bg-[#faf9f5] p-3 lg:flex">
           <div className="flex items-center gap-3 px-2">
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-[0_12px_30px_rgba(15,23,42,0.16)]">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-[#141413] text-[#faf9f5]">
               <Sparkles className="size-5" />
             </div>
             <div>
-              <p className="text-sm font-medium text-slate-500">Mihomo Workspace</p>
-              <h1 className="text-lg font-semibold tracking-tight">ProxyParser</h1>
+              <p className="text-sm font-medium text-[#73726c]">Mihomo 订阅工作台</p>
+              <h1 className="text-lg font-semibold">ProxyParser</h1>
             </div>
           </div>
 
@@ -317,12 +310,12 @@ export const AppShell = ({ children }: PropsWithChildren) => {
 
                     <div
                       className={cn(
-                        "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
+                        "grid transition-[grid-template-rows,opacity] duration-150 ease-out",
                         isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
                       )}
                     >
                       <div className="min-h-0 overflow-hidden pl-4">
-                        <div className="space-y-1 border-l border-slate-200/80 pl-4">
+                        <div className="space-y-1 border-l border-[#dedcd1] pl-4">
                           {item.children.map((child) => (
                             <Link
                               key={child.to}
@@ -344,22 +337,27 @@ export const AppShell = ({ children }: PropsWithChildren) => {
             </nav>
           </div>
 
-          <Separator className="my-5" />
+          <Separator className="my-4" />
 
-          <Link
-            to="/settings"
-            activeOptions={{ exact: true }}
-            className={getDesktopNavLinkClassName(isRouteActive(pathname, "/settings", true))}
-          >
-            <Settings2 className="size-4 shrink-0" />
-            <span className="text-inherit">设置</span>
-          </Link>
-
-          <div className="mt-4 flex items-center justify-between gap-3 rounded-[24px] border border-slate-200/80 bg-slate-50/80 p-4">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-base font-semibold text-slate-950">{displayName}</p>
-              <p className="mt-1 truncate text-sm text-slate-500">{auth.session?.user.email}</p>
-            </div>
+          <div className="flex items-center gap-2 rounded-lg border border-[#dedcd1] bg-[#f5f4ed] p-2">
+            <Link
+              to="/settings"
+              activeOptions={{ exact: true }}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-1.5 transition hover:bg-[#fffdf8]"
+              title="个人设置"
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#141413] text-xs font-semibold text-[#faf9f5]">
+                {getInitials(displayName)}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-[#141413]">
+                  {displayName}
+                </span>
+                <span className="block truncate text-xs text-[#73726c]">
+                  {auth.session?.user.email}
+                </span>
+              </span>
+            </Link>
             <button
               type="button"
               aria-label="退出登录"
@@ -367,7 +365,7 @@ export const AppShell = ({ children }: PropsWithChildren) => {
               onClick={() => {
                 void auth.logout();
               }}
-              className="inline-flex size-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-400 transition-[background-color,border-color,color,box-shadow] duration-200 hover:border-rose-500 hover:bg-rose-500 hover:text-white hover:shadow-[0_14px_28px_rgba(244,63,94,0.18)]"
+              className="inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-[#dedcd1] bg-[#fffdf8] text-[#73726c] transition-[background-color,border-color,color] duration-150 hover:border-[#a73d39] hover:bg-[#f7ecec] hover:text-[#a73d39] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a73d39]/25"
             >
               <LogOut className="size-4" />
             </button>
@@ -375,22 +373,22 @@ export const AppShell = ({ children }: PropsWithChildren) => {
         </aside>
 
         <div className="flex min-w-0 flex-1">
-          <div className="-mx-3 flex min-h-0 flex-1 overflow-y-auto px-3 py-1 lg:-mx-4 lg:px-4 [scrollbar-gutter:stable]">
+          <div className="flex min-h-0 flex-1 overflow-y-auto px-4 py-4 lg:px-6 lg:py-6 [scrollbar-gutter:stable]">
             <div className="flex min-h-full w-full min-w-0 flex-col gap-4 lg:gap-6">
-              <header className="shrink-0 rounded-[32px] border border-white/70 bg-white/68 p-4 shadow-[0_24px_70px_rgba(15,23,42,0.08)] backdrop-blur-xl lg:p-5">
+              <header className="shrink-0 rounded-lg border border-[#dedcd1] bg-[#fffdf8] p-4 shadow-[0_1px_2px_rgba(20,20,19,0.04)] lg:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge className="border-sky-200 bg-sky-50 text-sky-700">{todayText}</Badge>
+                  <Badge className="border-[#dedcd1] bg-[#f5f4ed] text-[#5f5e58]">{todayText}</Badge>
                   {workspace.isLoading ? (
-                    <Badge className="border-amber-200 bg-amber-50 text-amber-700">
+                    <Badge className="border-[#d1a041]/40 bg-[#f6eedf] text-[#5a4815]">
                       正在同步数据
                     </Badge>
                   ) : null}
                 </div>
                 <div>
-                  <h2 className="text-2xl font-semibold tracking-tight">{pageMeta.title}</h2>
-                  <p className="mt-1 text-sm text-slate-500">{pageMeta.description}</p>
+                  <h2 className="text-2xl font-semibold">{pageMeta.title}</h2>
+                  <p className="mt-1 text-sm text-[#73726c]">{pageMeta.description}</p>
                 </div>
               </div>
 
@@ -404,47 +402,6 @@ export const AppShell = ({ children }: PropsWithChildren) => {
                   <RefreshCw className={cn("size-4", (isRefreshing || workspace.isLoading) && "animate-spin")} />
                   刷新数据
                 </Button>
-
-                <DropdownMenu.Root>
-                  <DropdownMenu.Trigger asChild>
-                    <button className="inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-left shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition hover:border-slate-300">
-                      <Avatar.Root className="flex size-10 items-center justify-center overflow-hidden rounded-2xl bg-slate-950 text-sm font-semibold text-white">
-                        <Avatar.Fallback>{getInitials(displayName)}</Avatar.Fallback>
-                      </Avatar.Root>
-                      <div className="hidden min-w-0 sm:block">
-                        <p className="truncate text-sm font-medium text-slate-950">{displayName}</p>
-                        <p className="truncate text-xs text-slate-500">{auth.session?.user.username}</p>
-                      </div>
-                    </button>
-                  </DropdownMenu.Trigger>
-
-                  <DropdownMenu.Portal>
-                    <DropdownMenu.Content
-                      align="end"
-                      sideOffset={10}
-                      className="z-50 min-w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_24px_70px_rgba(15,23,42,0.12)]"
-                    >
-                      <DropdownMenu.Item asChild>
-                        <Link
-                          to="/settings"
-                          className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-700 outline-none transition hover:bg-slate-100"
-                        >
-                          <Settings2 className="size-4" />
-                          个人设置
-                        </Link>
-                      </DropdownMenu.Item>
-                      <DropdownMenu.Item
-                        className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm text-rose-600 outline-none transition hover:bg-rose-50"
-                        onSelect={() => {
-                          void auth.logout();
-                        }}
-                      >
-                        <LogOut className="size-4" />
-                        退出登录
-                      </DropdownMenu.Item>
-                    </DropdownMenu.Content>
-                  </DropdownMenu.Portal>
-                </DropdownMenu.Root>
               </div>
             </div>
 
@@ -496,7 +453,7 @@ export const AppShell = ({ children }: PropsWithChildren) => {
             ) : null}
               </header>
 
-              <main className="min-h-0 flex-1 pb-4 lg:pb-6">{children}</main>
+              <main key={pathname} className="pp-page-motion min-h-0 flex-1 pb-4 lg:pb-6">{children}</main>
             </div>
           </div>
         </div>

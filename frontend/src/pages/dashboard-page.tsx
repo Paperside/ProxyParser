@@ -26,10 +26,10 @@ const StatCard = ({
   description: string;
 }) => {
   return (
-    <Card className="rounded-[28px] p-5">
-      <p className="text-sm text-slate-500">{title}</p>
-      <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
-      <p className="mt-2 text-sm text-slate-500">{description}</p>
+    <Card className="rounded-lg p-5">
+      <p className="text-sm text-[#73726c]">{title}</p>
+      <p className="mt-3 text-3xl font-semibold text-[#141413]">{value}</p>
+      <p className="mt-2 text-sm text-[#73726c]">{description}</p>
     </Card>
   );
 };
@@ -105,25 +105,29 @@ export const DashboardPage = () => {
       </section>
 
       {feedbackMessage ? (
-        <div className="rounded-[28px] border border-slate-200 bg-white/80 px-5 py-4 text-sm text-slate-600 shadow-[0_18px_45px_rgba(15,23,42,0.06)] backdrop-blur-xl">
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-lg border border-[#dedcd1] border-l-[#c96442] border-l-4 bg-[#fffdf8] px-5 py-4 text-sm text-[#5f5e58] shadow-[0_1px_2px_rgba(20,20,19,0.04)]"
+        >
           {feedbackMessage}
         </div>
       ) : null}
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
-        <Card className="rounded-[32px] p-6">
+        <Card className="rounded-lg p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-medium uppercase tracking-[0.18em] text-slate-400">
-                Recent Output
+              <p className="text-sm font-medium text-[#73726c]">
+                近期生成
               </p>
-              <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
-            最近更新的扩展订阅
+              <h3 className="mt-2 text-xl font-semibold text-[#141413]">
+                最近更新的扩展订阅
               </h3>
             </div>
             <Link
               to="/subscriptions"
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-950"
+              className="inline-flex items-center gap-2 rounded-lg border border-[#dedcd1] bg-[#fffdf8] px-4 py-2 text-sm font-medium text-[#3d3d3a] transition hover:border-[#c9c6ba] hover:text-[#141413]"
             >
               查看全部
               <ArrowUpRight className="size-4" />
@@ -132,7 +136,7 @@ export const DashboardPage = () => {
 
           <div className="mt-6 space-y-4">
             {recentSubscriptions.length === 0 ? (
-              <div className="rounded-[28px] border border-dashed border-slate-200 bg-slate-50/80 px-5 py-10 text-center text-sm text-slate-500">
+              <div className="rounded-lg border border-dashed border-[#dedcd1] bg-[#f5f4ed] px-5 py-10 text-center text-sm text-[#73726c]">
                 还没有扩展订阅，进入向导粘贴外部订阅链接即可开始。
               </div>
             ) : null}
@@ -144,12 +148,12 @@ export const DashboardPage = () => {
               return (
                 <div
                   key={subscription.id}
-                  className="rounded-[28px] border border-slate-200/80 bg-slate-50/70 p-5"
+                  className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed] p-5"
                 >
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-lg font-semibold tracking-tight text-slate-950">
+                        <h4 className="text-lg font-semibold text-[#141413]">
                           {subscription.displayName}
                         </h4>
                         <Badge className={renderStatusTone[subscription.lastRenderStatus]}>
@@ -159,7 +163,7 @@ export const DashboardPage = () => {
                           {syncStatusText[subscription.lastSyncStatus]}
                         </Badge>
                       </div>
-                      <div className="grid gap-2 text-sm text-slate-500 sm:grid-cols-2">
+                      <div className="grid gap-2 text-sm text-[#73726c] sm:grid-cols-2">
                         <p>外部订阅：{source?.displayName ?? "已删除"}</p>
                         <p>
                           配置来源：
@@ -171,7 +175,7 @@ export const DashboardPage = () => {
                         <p>用量：{formatUsage(subscription.latestUsage)}</p>
                       </div>
                       {subscription.lastErrorMessage ? (
-                        <p className="text-sm text-rose-600">{subscription.lastErrorMessage}</p>
+                        <p className="text-sm text-[#7f2c28]">{subscription.lastErrorMessage}</p>
                       ) : null}
                     </div>
 
@@ -201,14 +205,14 @@ export const DashboardPage = () => {
         </Card>
 
         <div className="space-y-6">
-          <Card className="rounded-[32px] p-6">
+          <Card className="rounded-lg p-6">
             <div className="flex items-start gap-4">
-              <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white">
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-[#141413] text-[#faf9f5]">
                 <Waypoints className="size-5" />
               </div>
               <div>
-                <h3 className="text-xl font-semibold tracking-tight text-slate-950">快速开始</h3>
-                <p className="mt-2 text-sm text-slate-500">
+                <h3 className="text-xl font-semibold text-[#141413]">快速开始</h3>
+                <p className="mt-2 text-sm text-[#73726c]">
                   进入向导粘贴或选择外部订阅，开启自动分组，再把规则与操作沉淀为可复用模板。
                 </p>
               </div>
@@ -217,7 +221,7 @@ export const DashboardPage = () => {
             <div className="mt-6 grid gap-3">
               <Link
                 to="/subscriptions"
-                className="flex items-center justify-between rounded-[24px] border border-slate-200 bg-slate-50/80 px-4 py-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white"
+                className="flex items-center justify-between rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 px-4 py-4 text-sm font-medium text-[#3d3d3a] transition hover:border-[#c9c6ba] hover:bg-white"
               >
                 <span className="flex items-center gap-3">
                   <Server className="size-4" />
@@ -227,7 +231,7 @@ export const DashboardPage = () => {
               </Link>
               <Link
                 to="/templates"
-                className="flex items-center justify-between rounded-[24px] border border-slate-200 bg-slate-50/80 px-4 py-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white"
+                className="flex items-center justify-between rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 px-4 py-4 text-sm font-medium text-[#3d3d3a] transition hover:border-[#c9c6ba] hover:bg-white"
               >
                 <span className="flex items-center gap-3">
                   <Sparkles className="size-4" />
@@ -238,26 +242,26 @@ export const DashboardPage = () => {
             </div>
           </Card>
 
-          <Card className="rounded-[32px] p-6">
+          <Card className="rounded-lg p-6">
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-semibold tracking-tight text-slate-950">模板市场概览</h3>
+              <h3 className="text-xl font-semibold text-[#141413]">模板市场概览</h3>
               <Badge>{workspace.marketplaceRulesets.length} 个内置规则源</Badge>
             </div>
             <div className="mt-5 space-y-3">
               {workspace.marketplaceRulesets.slice(0, 4).map((ruleset) => (
                 <div
                   key={ruleset.id}
-                  className="rounded-[24px] border border-slate-200 bg-slate-50/75 px-4 py-4"
+                  className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/75 px-4 py-4"
                 >
                   <div className="flex items-center gap-2">
-                    <p className="font-medium text-slate-900">{ruleset.name}</p>
+                    <p className="font-medium text-[#141413]">{ruleset.name}</p>
                     {ruleset.isOfficial ? (
-                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                      <Badge className="border-[#7ab948]/40 bg-[#e9f1dc] text-[#265b19]">
                         官方
                       </Badge>
                     ) : null}
                   </div>
-                  <p className="mt-2 text-sm text-slate-500">{ruleset.description ?? "暂无说明"}</p>
+                  <p className="mt-2 text-sm text-[#73726c]">{ruleset.description ?? "暂无说明"}</p>
                 </div>
               ))}
             </div>

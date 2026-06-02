@@ -11,7 +11,7 @@ export const TabsList = ({
   return (
     <TabsPrimitive.List
       className={cn(
-        "inline-flex rounded-2xl border border-slate-200 bg-white/90 p-1 shadow-[0_12px_30px_rgba(15,23,42,0.06)]",
+        "inline-flex rounded-lg border border-[#dedcd1] bg-[#f5f4ed] p-1",
         className
       )}
       {...props}
@@ -26,7 +26,7 @@ export const TabsTrigger = ({
   return (
     <TabsPrimitive.Trigger
       className={cn(
-        "inline-flex min-w-28 items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium text-slate-500 transition outline-none data-[state=active]:bg-slate-950 data-[state=active]:text-white",
+        "inline-flex min-w-28 items-center justify-center rounded-md px-4 py-2.5 text-sm font-medium text-[#73726c] transition outline-none focus-visible:ring-2 focus-visible:ring-[#c96442]/35 data-[state=active]:bg-[#141413] data-[state=active]:text-[#faf9f5]",
         className
       )}
       {...props}

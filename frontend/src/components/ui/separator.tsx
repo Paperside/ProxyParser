@@ -8,7 +8,7 @@ export const Separator = ({
 }: SeparatorPrimitive.SeparatorProps) => {
   return (
     <SeparatorPrimitive.Root
-      className={cn("h-px w-full bg-slate-200", className)}
+      className={cn("h-px w-full bg-[#dedcd1]", className)}
       {...props}
     />
   );

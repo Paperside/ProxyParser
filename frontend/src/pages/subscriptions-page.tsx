@@ -111,7 +111,7 @@ const SourceDialog = ({
 
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-600">名称</span>
+            <span className="text-sm font-medium text-[#5f5e58]">名称</span>
             <Input
               required
               value={form.displayName}
@@ -126,7 +126,7 @@ const SourceDialog = ({
           </label>
 
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-600">订阅链接</span>
+            <span className="text-sm font-medium text-[#5f5e58]">订阅链接</span>
             <Input
               required
               value={form.sourceUrl}
@@ -142,7 +142,7 @@ const SourceDialog = ({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-600">可见性</span>
+              <span className="text-sm font-medium text-[#5f5e58]">可见性</span>
               <Select
                 value={form.visibility}
                 onValueChange={(value) => {
@@ -164,7 +164,7 @@ const SourceDialog = ({
             </label>
 
             <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-600">共享方式</span>
+              <span className="text-sm font-medium text-[#5f5e58]">共享方式</span>
               <Select
                 value={form.shareMode}
                 onValueChange={(value) => {
@@ -186,7 +186,7 @@ const SourceDialog = ({
             </label>
           </div>
 
-          <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-600">
+          <label className="flex items-center gap-3 rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 px-4 py-3 text-sm text-[#5f5e58]">
             <input
               type="checkbox"
               checked={form.isEnabled}
@@ -196,13 +196,16 @@ const SourceDialog = ({
                   isEnabled: event.target.checked
                 });
               }}
-              className="size-4 rounded border-slate-300"
+              className="size-4 rounded border-[#c9c6ba] accent-[#c96442]"
             />
             启用这个订阅来源
           </label>
 
           {errorMessage ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <div
+              role="alert"
+              className="rounded-lg border border-[#cd5c58]/50 bg-[#f7ecec] px-4 py-3 text-sm text-[#7f2c28]"
+            >
               {errorMessage}
             </div>
           ) : null}
@@ -253,7 +256,7 @@ const GeneratedDialog = ({
 
         <form className="mt-6 space-y-4" onSubmit={onSubmit}>
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-600">名称</span>
+            <span className="text-sm font-medium text-[#5f5e58]">名称</span>
             <Input
               required
               value={form.displayName}
@@ -269,7 +272,7 @@ const GeneratedDialog = ({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-600">外部订阅</span>
+              <span className="text-sm font-medium text-[#5f5e58]">外部订阅</span>
               <Select
                 value={form.upstreamSourceId}
                 onValueChange={(value) => {
@@ -293,7 +296,7 @@ const GeneratedDialog = ({
             </label>
 
             <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-600">模板</span>
+              <span className="text-sm font-medium text-[#5f5e58]">模板</span>
               <Select
                 value={form.templateId}
                 onValueChange={(value) => {
@@ -319,7 +322,7 @@ const GeneratedDialog = ({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-600">可见性</span>
+              <span className="text-sm font-medium text-[#5f5e58]">可见性</span>
               <Select
                 value={form.visibility}
                 onValueChange={(value) => {
@@ -341,7 +344,7 @@ const GeneratedDialog = ({
             </label>
 
             <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-600">共享方式</span>
+              <span className="text-sm font-medium text-[#5f5e58]">共享方式</span>
               <Select
                 value={form.shareMode}
                 onValueChange={(value) => {
@@ -363,7 +366,7 @@ const GeneratedDialog = ({
             </label>
           </div>
 
-          <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-600">
+          <label className="flex items-center gap-3 rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 px-4 py-3 text-sm text-[#5f5e58]">
             <input
               type="checkbox"
               checked={form.isEnabled}
@@ -373,13 +376,16 @@ const GeneratedDialog = ({
                   isEnabled: event.target.checked
                 });
               }}
-              className="size-4 rounded border-slate-300"
+              className="size-4 rounded border-[#c9c6ba] accent-[#c96442]"
             />
             启用这个扩展订阅
           </label>
 
           {errorMessage ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <div
+              role="alert"
+              className="rounded-lg border border-[#cd5c58]/50 bg-[#f7ecec] px-4 py-3 text-sm text-[#7f2c28]"
+            >
               {errorMessage}
             </div>
           ) : null}
@@ -685,14 +691,14 @@ export const SubscriptionsPage = ({
 
   return (
     <div className="space-y-6">
-      <Card className="rounded-[32px] p-6">
+      <Card className="rounded-lg p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm font-medium uppercase tracking-[0.18em] text-slate-400">Subscriptions</p>
-            <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+            <p className="text-sm font-medium text-[#73726c]">订阅</p>
+            <h3 className="mt-2 text-2xl font-semibold text-[#141413]">
               统一管理来源与分发
             </h3>
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-sm text-[#73726c]">
               外部订阅负责接入远端数据，扩展订阅负责重组、分流、共享并向客户端分发最终配置。
             </p>
           </div>
@@ -722,7 +728,11 @@ export const SubscriptionsPage = ({
       </Card>
 
       {feedbackMessage ? (
-        <div className="rounded-[28px] border border-slate-200 bg-white/80 px-5 py-4 text-sm text-slate-600 shadow-[0_18px_45px_rgba(15,23,42,0.06)] backdrop-blur-xl">
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-lg border border-[#dedcd1] border-l-[#c96442] border-l-4 bg-[#fffdf8] px-5 py-4 text-sm text-[#5f5e58] shadow-[0_1px_2px_rgba(20,20,19,0.04)]"
+        >
           {feedbackMessage}
         </div>
       ) : null}
@@ -730,17 +740,17 @@ export const SubscriptionsPage = ({
       {section === "upstream" ? (
         <div className="space-y-4">
           {sortedSources.length === 0 ? (
-            <Card className="rounded-[32px] p-10 text-center text-sm text-slate-500">
+            <Card className="rounded-lg p-10 text-center text-sm text-[#73726c]">
               还没有外部订阅，先添加一个上游来源。
             </Card>
           ) : null}
 
           {sortedSources.map((source) => (
-            <Card key={source.id} className="rounded-[32px] p-6">
+            <Card key={source.id} className="rounded-lg p-6">
               <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0 space-y-4">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="text-xl font-semibold tracking-tight text-slate-950">
+                    <h4 className="text-xl font-semibold text-[#141413]">
                       {source.displayName}
                     </h4>
                     <Badge className={syncStatusTone[source.lastSyncStatus]}>
@@ -751,9 +761,9 @@ export const SubscriptionsPage = ({
                     {!source.isEnabled ? <Badge>已停用</Badge> : null}
                   </div>
 
-                  <p className="break-all text-sm text-slate-500">{source.sourceUrl}</p>
+                  <p className="break-all text-sm text-[#73726c]">{source.sourceUrl}</p>
 
-                  <div className="grid gap-3 text-sm text-slate-500 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="grid gap-3 text-sm text-[#73726c] sm:grid-cols-2 xl:grid-cols-4">
                     <p>代理数量：{source.proxyCount}</p>
                     <p>分组数量：{source.groupCount}</p>
                     <p>规则数量：{source.ruleCount}</p>
@@ -808,13 +818,13 @@ export const SubscriptionsPage = ({
       ) : (
         <div className="space-y-4">
           {sortedGeneratedDrafts.length > 0 ? (
-            <Card className="rounded-[32px] p-6">
+            <Card className="rounded-lg p-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h4 className="text-xl font-semibold tracking-tight text-slate-950">
+                  <h4 className="text-xl font-semibold text-[#141413]">
                     进行中的草稿
                   </h4>
-                  <p className="mt-2 text-sm text-slate-500">
+                  <p className="mt-2 text-sm text-[#73726c]">
                     这些草稿还没有发布完成，可以继续进入向导补完。
                   </p>
                 </div>
@@ -825,10 +835,10 @@ export const SubscriptionsPage = ({
                 {sortedGeneratedDrafts.slice(0, 6).map((draft) => (
                   <div
                     key={draft.id}
-                    className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-5"
+                    className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-5"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-base font-semibold text-slate-950">{draft.displayName}</p>
+                      <p className="text-base font-semibold text-[#141413]">{draft.displayName}</p>
                       <Badge>{draft.currentStep}</Badge>
                       <Badge>
                         {draft.shareabilityStatus === "source_locked"
@@ -838,7 +848,7 @@ export const SubscriptionsPage = ({
                             : "待预览"}
                       </Badge>
                     </div>
-                    <p className="mt-3 text-sm text-slate-500">
+                    <p className="mt-3 text-sm text-[#73726c]">
                       最近更新：{formatTime(draft.updatedAt)}
                     </p>
                     <div className="mt-4">
@@ -864,7 +874,7 @@ export const SubscriptionsPage = ({
           ) : null}
 
           {sortedGeneratedSubscriptions.length === 0 ? (
-            <Card className="rounded-[32px] p-10 text-center text-sm text-slate-500">
+            <Card className="rounded-lg p-10 text-center text-sm text-[#73726c]">
               还没有扩展订阅，可以直接进入向导粘贴外部订阅链接并开始构建。
             </Card>
           ) : null}
@@ -874,11 +884,11 @@ export const SubscriptionsPage = ({
             const template = workspace.templates.find((item) => item.id === subscription.templateId);
 
             return (
-              <Card key={subscription.id} className="rounded-[32px] p-6">
+              <Card key={subscription.id} className="rounded-lg p-6">
                 <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0 space-y-4">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="text-xl font-semibold tracking-tight text-slate-950">
+                      <h4 className="text-xl font-semibold text-[#141413]">
                         {subscription.displayName}
                       </h4>
                       <Badge className={renderStatusTone[subscription.lastRenderStatus]}>
@@ -892,7 +902,7 @@ export const SubscriptionsPage = ({
                       {!subscription.isEnabled ? <Badge>已停用</Badge> : null}
                     </div>
 
-                    <div className="grid gap-3 text-sm text-slate-500 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="grid gap-3 text-sm text-[#73726c] sm:grid-cols-2 xl:grid-cols-4">
                       <p>外部订阅：{source?.displayName ?? "已删除"}</p>
                       <p>
                         配置来源：
@@ -907,7 +917,7 @@ export const SubscriptionsPage = ({
                     </div>
 
                     {subscription.lastErrorMessage ? (
-                      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                      <div className="rounded-lg border border-[#cd5c58]/50 bg-[#f7ecec] px-4 py-3 text-sm text-[#7f2c28]">
                         {subscription.lastErrorMessage}
                       </div>
                     ) : null}
@@ -1158,20 +1168,20 @@ export const SubscriptionsPage = ({
               </div>
 
               {accessLoading ? (
-                <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 px-5 py-8 text-center text-sm text-slate-500">
+                <div className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 px-5 py-8 text-center text-sm text-[#73726c]">
                   正在载入访问控制...
                 </div>
               ) : (
                 <div className="grid gap-6 xl:grid-cols-2">
-                  <div className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-5">
+                  <div className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-5">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-lg font-semibold text-slate-950">短期 Key</h4>
+                      <h4 className="text-lg font-semibold text-[#141413]">短期 Key</h4>
                       <Badge>{tempTokens.length} 个记录</Badge>
                     </div>
                     <ScrollArea className="mt-4 h-[320px] pr-4">
                       <div className="space-y-3">
                         {tempTokens.length === 0 ? (
-                          <p className="rounded-[22px] border border-dashed border-slate-200 bg-white/80 px-4 py-8 text-center text-sm text-slate-500">
+                          <p className="rounded-lg border border-dashed border-[#dedcd1] bg-[#fffdf8] px-4 py-8 text-center text-sm text-[#73726c]">
                             还没有短期 Key。
                           </p>
                         ) : null}
@@ -1182,23 +1192,23 @@ export const SubscriptionsPage = ({
                           return (
                             <div
                               key={token.id}
-                              className="rounded-[22px] border border-slate-200 bg-white/90 p-4"
+                              className="rounded-lg border border-[#dedcd1] bg-[#fffdf8] p-4"
                             >
                               <div className="flex flex-wrap items-center gap-2">
                                 <Badge
                                   className={
                                     isRevoked || isExpired
-                                      ? "border-slate-200 bg-slate-50 text-slate-500"
-                                      : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                      ? "border-[#dedcd1] bg-[#f5f4ed] text-[#73726c]"
+                                      : "border-[#7ab948]/40 bg-[#e9f1dc] text-[#265b19]"
                                   }
                                 >
                                   {isRevoked ? "已失效" : isExpired ? "已过期" : "有效"}
                                 </Badge>
-                                <p className="text-sm font-medium text-slate-900">
+                                <p className="text-sm font-medium text-[#141413]">
                                   {token.label ?? token.id}
                                 </p>
                               </div>
-                              <div className="mt-3 space-y-1 text-xs text-slate-500">
+                              <div className="mt-3 space-y-1 text-xs text-[#73726c]">
                                 <p>创建：{formatTime(token.createdAt)}</p>
                                 <p>过期：{formatTime(token.expiresAt)}</p>
                                 <p>最近使用：{formatTime(token.lastUsedAt)}</p>
@@ -1230,22 +1240,22 @@ export const SubscriptionsPage = ({
                     </ScrollArea>
                   </div>
 
-                  <div className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-5">
+                  <div className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-5">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-lg font-semibold text-slate-950">共享授权</h4>
+                      <h4 className="text-lg font-semibold text-[#141413]">共享授权</h4>
                       <Badge>{shareGrants.length} 个记录</Badge>
                     </div>
                     <ScrollArea className="mt-4 h-[320px] pr-4">
                       <div className="space-y-3">
                         {shareGrants.length === 0 ? (
-                          <p className="rounded-[22px] border border-dashed border-slate-200 bg-white/80 px-4 py-8 text-center text-sm text-slate-500">
+                          <p className="rounded-lg border border-dashed border-[#dedcd1] bg-[#fffdf8] px-4 py-8 text-center text-sm text-[#73726c]">
                             当前仅自己可管理。
                           </p>
                         ) : null}
                         {shareGrants.map((grant) => (
                           <div
                             key={grant.id}
-                            className="rounded-[22px] border border-slate-200 bg-white/90 p-4"
+                            className="rounded-lg border border-[#dedcd1] bg-[#fffdf8] p-4"
                           >
                             <div className="flex flex-wrap items-center gap-2">
                               <Badge>
@@ -1258,10 +1268,10 @@ export const SubscriptionsPage = ({
                               <Badge>{grant.mode === "subscribe" ? "可订阅" : grant.mode}</Badge>
                               {grant.revokedAt ? <Badge>已撤销</Badge> : null}
                             </div>
-                            <p className="mt-3 text-sm text-slate-600">
+                            <p className="mt-3 text-sm text-[#5f5e58]">
                               {grant.targetEmail ?? grant.targetUserId ?? "全局共享"}
                             </p>
-                            <p className="mt-2 text-xs text-slate-500">
+                            <p className="mt-2 text-xs text-[#73726c]">
                               更新：{formatTime(grant.updatedAt)}
                             </p>
                             {!grant.revokedAt ? (
@@ -1319,27 +1329,27 @@ export const SubscriptionsPage = ({
           </DialogHeader>
 
           {snapshotLoading ? (
-            <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50/80 px-5 py-10 text-center text-sm text-slate-500">
+            <div className="mt-6 rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 px-5 py-10 text-center text-sm text-[#73726c]">
               正在载入快照历史...
             </div>
           ) : (
             <div className="mt-6 grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-sm font-semibold text-slate-950">历史快照</p>
+              <div className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-4">
+                <p className="text-sm font-semibold text-[#141413]">历史快照</p>
                 <ScrollArea className="mt-4 h-[560px] pr-4">
                   <div className="space-y-3">
                     {snapshotItems.map((snapshot) => (
                       <div
                         key={snapshot.id}
-                        className="rounded-[20px] border border-slate-200 bg-white/90 p-4"
+                        className="rounded-lg border border-[#dedcd1] bg-[#fffdf8] p-4"
                       >
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge>{snapshot.validationStatus === "success" ? "成功" : "失败"}</Badge>
-                          <p className="text-sm font-medium text-slate-900">
+                          <p className="text-sm font-medium text-[#141413]">
                             {formatTime(snapshot.createdAt)}
                           </p>
                         </div>
-                        <p className="mt-2 break-all text-xs text-slate-400">{snapshot.id}</p>
+                        <p className="mt-2 break-all text-xs text-[#9c9a92]">{snapshot.id}</p>
                       </div>
                     ))}
                   </div>
@@ -1347,9 +1357,9 @@ export const SubscriptionsPage = ({
               </div>
 
               <div className="space-y-4">
-                <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
+                <div className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-4">
                   <div className="flex flex-wrap items-center gap-3">
-                    <p className="text-sm font-semibold text-slate-950">最近两次对比</p>
+                    <p className="text-sm font-semibold text-[#141413]">最近两次对比</p>
                     {snapshotCompare ? (
                       <>
                         <Badge>新增 {snapshotCompare.summary.addedLineCount} 行</Badge>
@@ -1361,7 +1371,7 @@ export const SubscriptionsPage = ({
                   {snapshotCompare ? (
                     <div className="mt-4 grid gap-4 xl:grid-cols-2">
                       <label className="block space-y-2">
-                        <span className="text-sm font-medium text-emerald-700">新增行</span>
+                        <span className="text-sm font-medium text-[#265b19]">新增行</span>
                         <Textarea
                           readOnly
                           value={snapshotCompare.addedLines.join("\n")}
@@ -1369,7 +1379,7 @@ export const SubscriptionsPage = ({
                         />
                       </label>
                       <label className="block space-y-2">
-                        <span className="text-sm font-medium text-rose-700">移除行</span>
+                        <span className="text-sm font-medium text-[#7f2c28]">移除行</span>
                         <Textarea
                           readOnly
                           value={snapshotCompare.removedLines.join("\n")}
@@ -1378,13 +1388,13 @@ export const SubscriptionsPage = ({
                       </label>
                     </div>
                   ) : (
-                    <div className="mt-4 text-sm text-slate-500">还没有足够的快照用于对比。</div>
+                    <div className="mt-4 text-sm text-[#73726c]">还没有足够的快照用于对比。</div>
                   )}
                 </div>
 
                 {snapshotItems[0] ? (
                   <label className="block space-y-2">
-                    <span className="text-sm font-medium text-slate-600">最新快照 YAML</span>
+                    <span className="text-sm font-medium text-[#5f5e58]">最新快照 YAML</span>
                     <Textarea
                       readOnly
                       value={snapshotItems[0].renderedYaml}
