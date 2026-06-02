@@ -44,6 +44,12 @@ const parseDocument = (parsedJson: string | null): ClashProxyDocument | null => 
   return JSON.parse(parsedJson) as ClashProxyDocument;
 };
 
+const assertValidSourceUrl = (sourceUrl: string) => {
+  if (!/^https?:\/\//i.test(sourceUrl.trim())) {
+    throw new UpstreamSourceError("订阅链接必须是 http 或 https 地址。", 400);
+  }
+};
+
 const toSummary = (
   source: UpstreamSourceRecord,
   parsedConfig: ClashProxyDocument | null
@@ -117,9 +123,7 @@ export class UpstreamSourceService {
       throw new UpstreamSourceError("订阅源名称不能为空。", 400);
     }
 
-    if (!/^https?:\/\//i.test(input.sourceUrl.trim())) {
-      throw new UpstreamSourceError("订阅链接必须是 http 或 https 地址。", 400);
-    }
+    assertValidSourceUrl(input.sourceUrl);
 
     const created = this.repository.create({
       id: createId("src"),
@@ -137,7 +141,16 @@ export class UpstreamSourceService {
     return this.getById(ownerUserId, created.id);
   }
 
+  async createAndSync(ownerUserId: string, input: CreateSourceInput) {
+    const created = this.create(ownerUserId, input);
+    return this.sync(ownerUserId, created.id);
+  }
+
   update(ownerUserId: string, sourceId: string, input: UpdateSourceInput) {
+    if (input.sourceUrl !== undefined) {
+      assertValidSourceUrl(input.sourceUrl);
+    }
+
     const updated = this.repository.update(sourceId, ownerUserId, {
       displayName: input.displayName?.trim(),
       sourceUrl: input.sourceUrl?.trim(),

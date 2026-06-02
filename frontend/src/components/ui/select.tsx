@@ -14,14 +14,14 @@ export const SelectTrigger = ({
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        "inline-flex h-12 w-full items-center justify-between rounded-2xl border border-slate-200 bg-white/90 px-4 text-sm text-slate-900 outline-none focus:border-slate-950",
+        "inline-flex h-12 w-full items-center justify-between rounded-lg border border-[#dedcd1] bg-[#fffdf8] px-4 text-sm text-[#141413] outline-none transition-[border-color,box-shadow,background-color] focus:border-[#c96442] focus:bg-white focus:shadow-[0_0_0_3px_rgba(201,100,66,0.12)]",
         className
       )}
       {...props}
     >
       {children}
       <SelectPrimitive.Icon>
-        <ChevronDown className="size-4 text-slate-400" />
+        <ChevronDown className="size-4 text-[#73726c]" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );
@@ -36,7 +36,7 @@ export const SelectContent = ({
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
         className={cn(
-          "z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-[0_22px_50px_rgba(15,23,42,0.16)]",
+          "z-50 overflow-hidden rounded-lg border border-[#dedcd1] bg-[#fffdf8] p-1 shadow-[0_12px_28px_rgba(20,20,19,0.12)]",
           className
         )}
         position="popper"
@@ -56,7 +56,7 @@ export const SelectItem = ({
   return (
     <SelectPrimitive.Item
       className={cn(
-        "relative flex cursor-default select-none items-center rounded-xl py-2 pl-9 pr-3 text-sm text-slate-700 outline-none data-[highlighted]:bg-slate-100 data-[highlighted]:text-slate-950",
+        "relative flex cursor-default select-none items-center rounded-md py-2 pl-9 pr-3 text-sm text-[#3d3d3a] outline-none data-[highlighted]:bg-[#f1eee6] data-[highlighted]:text-[#141413]",
         className
       )}
       {...props}

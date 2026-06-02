@@ -31,12 +31,14 @@ import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
 import { formatTime, shareModeText, visibilityText } from "../lib/format";
 import type {
+  AutoGroupOptions,
   GeneratedSubscriptionDetail,
   GeneratedSubscriptionDraftCurrentStep,
   GeneratedSubscriptionDraftDetail,
   GeneratedSubscriptionDraftPreview,
   GeneratedSubscriptionDraftStep,
   MarketplaceRuleset,
+  RuleProviderAttachment,
   ShareMode,
   UpstreamSourceDetail,
   Visibility
@@ -89,9 +91,9 @@ const stepItems: Array<{ key: StepKey; label: string; short: string }> = [
 ];
 
 const shareabilityTone = {
-  unknown: "border-slate-200 bg-slate-50 text-slate-600",
-  shareable: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  source_locked: "border-amber-200 bg-amber-50 text-amber-800"
+  unknown: "border-[#dedcd1] bg-[#f5f4ed] text-[#5f5e58]",
+  shareable: "border-[#7ab948]/40 bg-[#e9f1dc] text-[#265b19]",
+  source_locked: "border-[#d1a041]/40 bg-[#f6eedf] text-[#5a4815]"
 } as const;
 
 const shareabilityText = {
@@ -113,6 +115,12 @@ const defaultGroupDraft = () => ({
   name: "",
   type: "select",
   proxies: ["DIRECT"]
+});
+
+const defaultAutoGroupOptions = (): AutoGroupOptions => ({
+  enabled: true,
+  includeAutoGroup: true,
+  unclassifiedPolicy: "others"
 });
 
 const defaultSettingForm = () => ({
@@ -207,6 +215,16 @@ const parseScalar = (value: string): unknown => {
 
 const describeObjectEntries = (value: Record<string, unknown>) => {
   return Object.entries(value).filter(([key]) => !key.startsWith("_"));
+};
+
+const sensitiveFieldPattern = /(password|passwd|secret|token|uuid|private-key|public-key|server|host|sni)/i;
+
+const formatObjectEntryValue = (key: string, value: unknown) => {
+  if (sensitiveFieldPattern.test(key)) {
+    return "已隐藏";
+  }
+
+  return typeof value === "string" ? value : JSON.stringify(value);
 };
 
 const buildId = (prefix: string) => {
@@ -318,17 +336,17 @@ const StepButton = ({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "flex min-w-[160px] items-center gap-3 rounded-[24px] border px-4 py-3 text-left transition",
+        "flex min-w-[160px] items-center gap-3 rounded-lg border px-4 py-3 text-left transition",
         active
-          ? "border-slate-950 bg-slate-950 text-white shadow-[0_18px_40px_rgba(15,23,42,0.16)]"
-          : "border-slate-200 bg-white/80 text-slate-600 hover:border-slate-300 hover:text-slate-950",
+          ? "border-[#141413] bg-[#141413] text-[#faf9f5] shadow-[0_2px_6px_rgba(20,20,19,0.16)]"
+          : "border-[#dedcd1] bg-[#fffdf8] text-[#5f5e58] hover:border-[#c9c6ba] hover:text-[#141413]",
         disabled && "cursor-not-allowed opacity-50"
       )}
     >
       <span
         className={cn(
           "flex size-8 items-center justify-center rounded-full text-xs font-semibold",
-          active ? "bg-white/18 text-white" : "bg-slate-100 text-slate-500"
+          active ? "bg-white/18 text-[#faf9f5]" : "bg-[#f1eee6] text-[#73726c]"
         )}
       >
         {completed ? <Check className="size-4" /> : short}
@@ -349,7 +367,7 @@ const RawToggle = ({
     <button
       type="button"
       onClick={onToggle}
-      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-950"
+      className="inline-flex items-center gap-2 rounded-xl border border-[#dedcd1] bg-[#fffdf8] px-3 py-2 text-xs font-medium text-[#5f5e58] transition hover:border-[#c9c6ba] hover:text-[#141413]"
     >
       {enabled ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
       {enabled ? "隐藏 RAW" : "查看 RAW"}
@@ -699,7 +717,7 @@ const ProxyOperationForm = ({
   return (
     <div className="space-y-4">
       {proxyType === "vless" ? (
-        <div className="rounded-[24px] border border-sky-200 bg-sky-50/90 px-4 py-3 text-sm text-sky-800">
+        <div className="rounded-lg border border-[#80aadd]/45 bg-[#d6e4f6] px-4 py-3 text-sm text-[#3266ad]">
           REALITY 常用组合：开启 `TLS`，填写 `servername`、`client-fingerprint`，再补
           `reality-opts.public-key` 与 `reality-opts.short-id`。`fingerprint` 是证书指纹，和
           `client-fingerprint` 不是同一个概念。
@@ -712,7 +730,7 @@ const ProxyOperationForm = ({
             key={field.key}
             className={cn("block space-y-2", field.type === "textarea" && "xl:col-span-2")}
           >
-            <span className="text-sm font-medium text-slate-600">{field.label}</span>
+            <span className="text-sm font-medium text-[#5f5e58]">{field.label}</span>
             {renderFieldControl(field, record, onChange, rawText)}
           </label>
         ))}
@@ -734,7 +752,7 @@ const ProxyGroupOperationForm = ({
     <div className="grid gap-4 xl:grid-cols-2">
       {proxyGroupFields.map((field) => (
         <label key={field.key} className={cn("block space-y-2", field.type === "textarea" && "xl:col-span-2")}>
-          <span className="text-sm font-medium text-slate-600">{field.label}</span>
+          <span className="text-sm font-medium text-[#5f5e58]">{field.label}</span>
           {renderFieldControl(field, record, onChange, rawText)}
         </label>
       ))}
@@ -761,6 +779,8 @@ export const GeneratedSubscriptionWizardPage = () => {
 
   const [displayName, setDisplayName] = useState("");
   const [upstreamSourceId, setUpstreamSourceId] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [sourceDisplayName, setSourceDisplayName] = useState("");
 
   const [proxiesPatchMode, setProxiesPatchMode] = useState<PatchMode>("patch");
   const [proxiesEditorMode, setProxiesEditorMode] = useState<EditorMode>("visual");
@@ -774,12 +794,20 @@ export const GeneratedSubscriptionWizardPage = () => {
   const [groupVisualItems, setGroupVisualItems] = useState<VisualGroupOperation[]>([]);
   const [groupFullOverrideItems, setGroupFullOverrideItems] = useState<FormRecordItem[]>([]);
   const [selectedRulesets, setSelectedRulesets] = useState<string[]>([]);
+  const [autoGroupOptions, setAutoGroupOptions] = useState<AutoGroupOptions>(
+    defaultAutoGroupOptions
+  );
+  const [ruleTargetPolicy, setRuleTargetPolicy] = useState("Proxies");
+  const [ruleInsertPosition, setRuleInsertPosition] =
+    useState<RuleProviderAttachment["insert"]["position"]>("before-match");
   const [prependRulesText, setPrependRulesText] = useState("");
   const [appendRulesText, setAppendRulesText] = useState("");
   const [removeRulesText, setRemoveRulesText] = useState("");
   const [groupsRawText, setGroupsRawText] = useState(
     prettyJson({
+      autoGroup: defaultAutoGroupOptions(),
       ruleProviderRefs: [],
+      ruleProviderAttachments: [],
       proxyGroups: [],
       rules: []
     })
@@ -826,6 +854,8 @@ export const GeneratedSubscriptionWizardPage = () => {
     setDraft(nextDraft);
     setDisplayName(nextDraft.displayName);
     setUpstreamSourceId(nextDraft.upstreamSourceId ?? "");
+    setSourceUrl("");
+    setSourceDisplayName("");
     setActiveStep(nextDraft.currentStep);
     setPreview(
       nextDraft.lastPreviewYaml
@@ -856,6 +886,12 @@ export const GeneratedSubscriptionWizardPage = () => {
     const sourceSummary = sourceStep?.summary ?? null;
     if (typeof sourceSummary?.displayName === "string") {
       setDisplayName(sourceSummary.displayName);
+    }
+    if (typeof sourceSummary?.sourceUrl === "string") {
+      setSourceUrl(sourceSummary.sourceUrl);
+    }
+    if (typeof sourceSummary?.sourceDisplayName === "string") {
+      setSourceDisplayName(sourceSummary.sourceDisplayName);
     }
 
     const proxiesStep = getDraftStep(nextDraft, "proxies");
@@ -915,15 +951,44 @@ export const GeneratedSubscriptionWizardPage = () => {
 
     const groupsStep = getDraftStep(nextDraft, "groups_rules");
     const groupOperations = isRecord(groupsStep?.operations) ? groupsStep.operations : {};
+    const ruleProviderAttachments = Array.isArray(groupOperations.ruleProviderAttachments)
+      ? groupOperations.ruleProviderAttachments.filter(isRecord)
+      : [];
     setGroupsPatchMode(groupsStep?.patchMode === "full_override" ? "full_override" : "patch");
     setGroupsEditorMode(groupsStep?.editorMode === "raw" ? "raw" : "visual");
     setSelectedRulesets(
-      Array.isArray(groupOperations.ruleProviderRefs)
+      ruleProviderAttachments.length > 0
+        ? ruleProviderAttachments.flatMap((item) =>
+            typeof item.providerSlug === "string" && item.providerSlug.trim().length > 0
+              ? [item.providerSlug]
+              : []
+          )
+        : Array.isArray(groupOperations.ruleProviderRefs)
         ? groupOperations.ruleProviderRefs.filter(
             (item): item is string => typeof item === "string" && item.trim().length > 0
           )
         : []
     );
+    const firstAttachment = ruleProviderAttachments[0];
+    setRuleTargetPolicy(
+      typeof firstAttachment?.targetPolicy === "string" ? firstAttachment.targetPolicy : "Proxies"
+    );
+    const firstInsert = isRecord(firstAttachment?.insert) ? firstAttachment.insert : null;
+    const firstInsertPosition = firstInsert?.position;
+    setRuleInsertPosition(
+      firstInsertPosition === "top" ||
+        firstInsertPosition === "bottom" ||
+        firstInsertPosition === "before-match"
+        ? firstInsertPosition
+        : "before-match"
+    );
+    const autoGroup = isRecord(groupOperations.autoGroup) ? groupOperations.autoGroup : null;
+    setAutoGroupOptions({
+      enabled: typeof autoGroup?.enabled === "boolean" ? autoGroup.enabled : true,
+      includeAutoGroup:
+        typeof autoGroup?.includeAutoGroup === "boolean" ? autoGroup.includeAutoGroup : true,
+      unclassifiedPolicy: autoGroup?.unclassifiedPolicy === "ignore" ? "ignore" : "others"
+    });
     setGroupVisualItems(
       Array.isArray(groupOperations.items)
         ? groupOperations.items.flatMap<VisualGroupOperation>((item) => {
@@ -979,7 +1044,9 @@ export const GeneratedSubscriptionWizardPage = () => {
     setGroupsRawText(
       prettyJson(
         groupsStep?.raw ?? {
+          autoGroup: defaultAutoGroupOptions(),
           ruleProviderRefs: [],
+          ruleProviderAttachments: [],
           proxyGroups: [],
           rules: []
         }
@@ -1081,6 +1148,31 @@ export const GeneratedSubscriptionWizardPage = () => {
   const nextStep =
     draftStepIndex < stepItems.length - 1 ? stepItems[draftStepIndex + 1]?.key ?? null : null;
 
+  const buildRuleProviderAttachments = (): RuleProviderAttachment[] => {
+    const targetPolicy = ruleTargetPolicy.trim() || "Proxies";
+
+    return selectedRulesets.map((providerSlug) => ({
+      type: "attach-rule-provider",
+      providerSlug,
+      targetPolicy,
+      insert: {
+        position: ruleInsertPosition
+      }
+    }));
+  };
+
+  const ensureTerminalMatchRule = (rules: string[]) => {
+    if (!autoGroupOptions.enabled && selectedRulesets.length === 0) {
+      return rules;
+    }
+
+    if (rules.some((rule) => /^MATCH\s*,/i.test(rule))) {
+      return rules;
+    }
+
+    return [...rules, `MATCH,${ruleTargetPolicy.trim() || "Proxies"}`];
+  };
+
   const buildProxiesRequest = () => {
     if (proxiesEditorMode === "raw") {
       return {
@@ -1157,23 +1249,32 @@ export const GeneratedSubscriptionWizardPage = () => {
         patchMode: "full_override" as const,
         editorMode: "visual" as const,
         operations: {
+          autoGroup: autoGroupOptions,
           ruleProviderRefs: selectedRulesets,
+          ruleProviderAttachments: buildRuleProviderAttachments(),
           proxyGroups: groupFullOverrideItems.map((item) =>
             parseObjectText(item.rawText, "完整代理组列表")
           ),
-          rules: linesToArray(rulesFullOverrideText)
+          rules: ensureTerminalMatchRule(linesToArray(rulesFullOverrideText))
         },
         summary: {
+          autoGroup: autoGroupOptions.enabled,
           ruleProviderCount: selectedRulesets.length
         }
       };
     }
 
+    const prependRules = linesToArray(prependRulesText);
+    const appendRules = ensureTerminalMatchRule(linesToArray(appendRulesText));
+    const removeRules = linesToArray(removeRulesText);
+
     return {
       patchMode: "patch" as const,
       editorMode: "visual" as const,
       operations: {
+        autoGroup: autoGroupOptions,
         ruleProviderRefs: selectedRulesets,
+        ruleProviderAttachments: buildRuleProviderAttachments(),
         items: groupVisualItems.map((item) => {
           if (item.type === "add") {
             return {
@@ -1195,11 +1296,12 @@ export const GeneratedSubscriptionWizardPage = () => {
             targetName: item.targetName
           };
         }),
-        prependRules: linesToArray(prependRulesText),
-        appendRules: linesToArray(appendRulesText),
-        removeRules: linesToArray(removeRulesText)
+        prependRules,
+        appendRules,
+        removeRules
       },
       summary: {
+        autoGroup: autoGroupOptions.enabled,
         ruleProviderCount: selectedRulesets.length,
         groupChangeCount: groupVisualItems.length
       }
@@ -1249,31 +1351,46 @@ export const GeneratedSubscriptionWizardPage = () => {
 
   const handleSaveSource = async (nextStepKey?: StepKey) => {
     if (!displayName.trim()) {
-      setErrorMessage("请先填写生成订阅名称。");
+      setErrorMessage("请先填写扩展订阅名称。");
+      return;
+    }
+
+    if (!upstreamSourceId && !sourceUrl.trim()) {
+      setErrorMessage("请选择一个已有外部订阅，或粘贴一个新的订阅链接。");
       return;
     }
 
     await runAction("save-source", async () => {
+      const importingFromUrl = sourceUrl.trim().length > 0;
       const updated = await workspace.updateGeneratedSubscriptionDraft(draftId, {
         displayName: displayName.trim(),
-        upstreamSourceId: upstreamSourceId || null,
+        upstreamSourceId: importingFromUrl ? null : upstreamSourceId || null,
+        sourceUrl: importingFromUrl ? sourceUrl.trim() : undefined,
+        sourceDisplayName: importingFromUrl
+          ? sourceDisplayName.trim() || `${displayName.trim()} 外部订阅`
+          : undefined,
         currentStep: nextStepKey ?? activeStep
       });
-      await workspace.saveGeneratedSubscriptionDraftStep(draftId, {
+      const nextSourceId = updated.upstreamSourceId ?? "";
+      const saved = await workspace.saveGeneratedSubscriptionDraftStep(draftId, {
         stepKey: "source",
         editorMode: "visual",
         operations: {
-          upstreamSourceId: upstreamSourceId || null
+          upstreamSourceId: nextSourceId || null,
+          sourceUrl: importingFromUrl ? sourceUrl.trim() : undefined,
+          sourceDisplayName: importingFromUrl ? sourceDisplayName.trim() : undefined
         },
         summary: {
           displayName: displayName.trim(),
-          upstreamSourceId: upstreamSourceId || null
+          upstreamSourceId: nextSourceId || null,
+          sourceUrl: importingFromUrl ? sourceUrl.trim() : undefined,
+          sourceDisplayName: importingFromUrl ? sourceDisplayName.trim() : undefined
         },
         currentStep: nextStepKey ?? activeStep
       });
-      await hydrateFromDraft(updated);
+      await hydrateFromDraft(saved);
       setActiveStep(nextStepKey ?? "source");
-      setFeedbackMessage("已保存外部订阅选择。");
+      setFeedbackMessage("已保存外部订阅来源。");
     });
   };
 
@@ -1338,49 +1455,54 @@ export const GeneratedSubscriptionWizardPage = () => {
         isEnabled: publishEnabled
       });
       setPublishedSubscription(created);
-      setFeedbackMessage("生成订阅已发布并完成首次生成。");
+      setFeedbackMessage("扩展订阅已发布并完成首次生成。");
     });
   };
 
-  const handleExtractTemplate = async () => {
+  const handleExtractTemplate = async (sanitized = false) => {
     await runAction("extract-template", async () => {
       const created = await workspace.extractTemplateFromDraft(draftId, {
-        displayName: `${displayName.trim() || "未命名生成订阅"} 模板`
+        displayName: `${displayName.trim() || "未命名扩展订阅"} ${sanitized ? "脱敏模板" : "模板"}`,
+        sanitized
       });
       setExtractedTemplateId(created.id);
-      setFeedbackMessage("已从当前草稿提炼出一个模板副本。");
+      setFeedbackMessage(
+        sanitized
+          ? "已提炼脱敏模板，真实节点不会进入共享模板。"
+          : "已从当前草稿提炼出一个模板副本。"
+      );
     });
   };
 
-  const handleCopyTempLink = async () => {
+  const handleCopyTempLink = async (expiresInSeconds = 24 * 60 * 60) => {
     if (!publishedSubscription) {
       return;
     }
 
     await runAction("copy-link", async () => {
-      const link = await workspace.createTempLink(publishedSubscription.id);
+      const link = await workspace.createTempLink(publishedSubscription.id, expiresInSeconds);
       await copyText(link);
-      setFeedbackMessage("已复制 24 小时有效的临时拉取链接。");
+      setFeedbackMessage("已复制临时拉取链接。");
     });
   };
 
   if (isLoading) {
     return (
-      <Card className="rounded-[32px] p-10 text-center text-sm text-slate-500">
-        正在载入生成订阅向导...
+      <Card className="rounded-lg p-10 text-center text-sm text-[#73726c]">
+        正在载入扩展订阅向导...
       </Card>
     );
   }
 
   return (
     <div className="space-y-6">
-      <Card className="rounded-[32px] p-6">
+      <Card className="rounded-lg p-6">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-3">
               <Link
                 to="/subscriptions"
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/90 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-950"
+                className="inline-flex items-center gap-2 rounded-lg border border-[#dedcd1] bg-[#fffdf8] px-4 py-2 text-sm font-medium text-[#5f5e58] transition hover:border-[#c9c6ba] hover:text-[#141413]"
               >
                 <ArrowLeft className="size-4" />
                 返回订阅
@@ -1389,27 +1511,27 @@ export const GeneratedSubscriptionWizardPage = () => {
                 {shareabilityText[draft?.shareabilityStatus ?? "unknown"]}
               </Badge>
               {publishedSubscription ? (
-                <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                <Badge className="border-[#7ab948]/40 bg-[#e9f1dc] text-[#265b19]">
                   已发布
                 </Badge>
               ) : null}
             </div>
-            <h3 className="mt-4 text-2xl font-semibold tracking-tight text-slate-950">
-              生成订阅向导
+            <h3 className="mt-4 text-2xl font-semibold text-[#141413]">
+              扩展订阅向导
             </h3>
-            <p className="mt-2 text-sm text-slate-500">
-              直接基于外部订阅记录操作流，刷新上游后会按同一条编辑链重新生成配置。
+            <p className="mt-2 text-sm text-[#73726c]">
+              把外部订阅、自动分组、规则源和你的操作模板组合成可长期分发的订阅。
             </p>
           </div>
 
-          <div className="grid gap-3 text-sm text-slate-500 sm:grid-cols-2">
+          <div className="grid gap-3 text-sm text-[#73726c] sm:grid-cols-2">
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">草稿名称</p>
-              <p className="mt-2 font-medium text-slate-900">{displayName || "未命名草稿"}</p>
+              <p className="text-xs text-[#9c9a92]">草稿名称</p>
+              <p className="mt-2 font-medium text-[#141413]">{displayName || "未命名草稿"}</p>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">最近更新</p>
-              <p className="mt-2 font-medium text-slate-900">{formatTime(draft?.updatedAt ?? null)}</p>
+              <p className="text-xs text-[#9c9a92]">最近更新</p>
+              <p className="mt-2 font-medium text-[#141413]">{formatTime(draft?.updatedAt ?? null)}</p>
             </div>
           </div>
         </div>
@@ -1429,32 +1551,39 @@ export const GeneratedSubscriptionWizardPage = () => {
       </Card>
 
       {feedbackMessage ? (
-        <div className="rounded-[28px] border border-emerald-200 bg-emerald-50/90 px-5 py-4 text-sm text-emerald-800">
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-lg border border-[#7ab948]/40 border-l-[#437426] border-l-4 bg-[#e9f1dc] px-5 py-4 text-sm text-[#265b19]"
+        >
           {feedbackMessage}
         </div>
       ) : null}
 
       {errorMessage ? (
-        <div className="rounded-[28px] border border-rose-200 bg-rose-50/90 px-5 py-4 text-sm text-rose-700">
+        <div
+          role="alert"
+          className="rounded-lg border border-[#cd5c58]/50 border-l-[#a73d39] border-l-4 bg-[#f7ecec] px-5 py-4 text-sm text-[#7f2c28]"
+        >
           {errorMessage}
         </div>
       ) : null}
 
       {activeStep === "source" ? (
-        <Card className="rounded-[32px] p-6">
+        <Card className="rounded-lg p-6">
           <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
             <div className="max-w-2xl space-y-4">
               <div>
-                <p className="text-sm font-medium uppercase tracking-[0.18em] text-slate-400">
-                  Step 1
+              <p className="text-sm font-medium text-[#73726c]">
+                  第 1 步
                 </p>
-                <h4 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
-                  选择一个外部订阅作为修补底稿
+                <h4 className="mt-2 text-xl font-semibold text-[#141413]">
+                  接入一个外部订阅作为底稿
                 </h4>
               </div>
 
               <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-600">生成订阅名称</span>
+                <span className="text-sm font-medium text-[#5f5e58]">扩展订阅名称</span>
                 <Input
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value)}
@@ -1462,36 +1591,66 @@ export const GeneratedSubscriptionWizardPage = () => {
                 />
               </label>
 
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-slate-600">外部订阅</span>
-                <Select
-                  value={upstreamSourceId}
-                  onValueChange={(value) => {
-                    setUpstreamSourceId(value);
-                    void loadSourceDetail(value);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="选择一个外部订阅" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sourceOptions.map((source) => (
-                      <SelectItem key={source.id} value={source.id}>
-                        {source.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
+              <div className="grid gap-4 2xl:grid-cols-2">
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium text-[#5f5e58]">已有外部订阅</span>
+                  <Select
+                    value={upstreamSourceId}
+                    onValueChange={(value) => {
+                      setUpstreamSourceId(value);
+                      setSourceUrl("");
+                      setSourceDisplayName("");
+                      void loadSourceDetail(value);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="选择一个外部订阅" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sourceOptions.map((source) => (
+                        <SelectItem key={source.id} value={source.id}>
+                          {source.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium text-[#5f5e58]">粘贴新的订阅链接</span>
+                  <Input
+                    value={sourceUrl}
+                    onChange={(event) => {
+                      setSourceUrl(event.target.value);
+                      if (event.target.value.trim()) {
+                        setUpstreamSourceId("");
+                        setSourceDetail(null);
+                      }
+                    }}
+                    placeholder="https://example.com/subscription.yaml"
+                  />
+                </label>
+              </div>
+
+              {sourceUrl.trim() ? (
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium text-[#5f5e58]">新来源名称</span>
+                  <Input
+                    value={sourceDisplayName}
+                    onChange={(event) => setSourceDisplayName(event.target.value)}
+                    placeholder={`${displayName || "扩展订阅"} 外部订阅`}
+                  />
+                </label>
+              ) : null}
             </div>
 
-            <div className="w-full max-w-xl rounded-[28px] border border-slate-200 bg-slate-50/80 p-5">
+            <div className="w-full max-w-xl rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">
+                  <p className="text-sm font-semibold text-[#141413]">
                     {sourceDetail?.displayName ?? "尚未选择外部订阅"}
                   </p>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-[#73726c]">
                     {sourceDetail?.sourceUrl ?? "选择后这里会显示当前快照概况"}
                   </p>
                 </div>
@@ -1513,7 +1672,7 @@ export const GeneratedSubscriptionWizardPage = () => {
                 ) : null}
               </div>
 
-              <div className="mt-5 grid gap-3 text-sm text-slate-500 sm:grid-cols-3">
+              <div className="mt-5 grid gap-3 text-sm text-[#73726c] sm:grid-cols-3">
                 <p>节点数：{sourceDetail?.proxyCount ?? 0}</p>
                 <p>代理组：{sourceDetail?.groupCount ?? 0}</p>
                 <p>规则数：{sourceDetail?.ruleCount ?? 0}</p>
@@ -1523,7 +1682,11 @@ export const GeneratedSubscriptionWizardPage = () => {
 
           <div className="mt-6 flex justify-end">
             <Button
-              disabled={busyAction === "save-source" || !upstreamSourceId || !displayName.trim()}
+              disabled={
+                busyAction === "save-source" ||
+                (!upstreamSourceId && !sourceUrl.trim()) ||
+                !displayName.trim()
+              }
               onClick={() => void handleSaveSource("proxies")}
             >
               <Save className="size-4" />
@@ -1534,17 +1697,15 @@ export const GeneratedSubscriptionWizardPage = () => {
       ) : null}
 
       {activeStep === "proxies" ? (
-        <Card className="rounded-[32px] p-6">
+        <Card className="rounded-lg p-6">
           <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <p className="text-sm font-medium uppercase tracking-[0.18em] text-slate-400">
-                  Step 2
-                </p>
-                <h4 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+                <p className="text-sm font-medium text-[#9c9a92]">第 2 步</p>
+                <h4 className="mt-2 text-xl font-semibold text-[#141413]">
                   编辑当前外部订阅中的节点
                 </h4>
-                <p className="mt-2 text-sm text-slate-500">
+                <p className="mt-2 text-sm text-[#73726c]">
                   默认以 Patch 模式工作。你可以删除源节点、覆盖源节点，或者新增自定义节点。
                 </p>
               </div>
@@ -1583,7 +1744,7 @@ export const GeneratedSubscriptionWizardPage = () => {
               />
             ) : proxiesPatchMode === "full_override" ? (
               <div className="space-y-3">
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-[#73726c]">
                   Full Overrides 下会完全替换节点列表，请直接维护最终节点集。
                 </p>
                 <div className="flex items-center justify-between">
@@ -1608,10 +1769,10 @@ export const GeneratedSubscriptionWizardPage = () => {
                   {proxyFullOverrideItems.map((item) => (
                     <div
                       key={item.id}
-                      className="rounded-[28px] border border-slate-200 bg-white/90 p-5"
+                      className="rounded-lg border border-[#dedcd1] bg-[#fffdf8] p-5"
                     >
                       <div className="flex items-center justify-between">
-                        <p className="text-sm font-semibold text-slate-900">节点条目</p>
+                        <p className="text-sm font-semibold text-[#141413]">节点条目</p>
                         <Button
                           variant="ghost"
                           onClick={() =>
@@ -1649,7 +1810,7 @@ export const GeneratedSubscriptionWizardPage = () => {
               <div className="space-y-6">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h5 className="text-lg font-semibold text-slate-950">源节点</h5>
+                    <h5 className="text-lg font-semibold text-[#141413]">源节点</h5>
                     <Badge>{currentSourceProxies.length} 个节点</Badge>
                   </div>
 
@@ -1665,28 +1826,28 @@ export const GeneratedSubscriptionWizardPage = () => {
                       return (
                         <div
                           key={proxy.name}
-                          className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-5"
+                          className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-5"
                         >
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-base font-semibold text-slate-950">{proxy.name}</p>
+                            <p className="text-base font-semibold text-[#141413]">{proxy.name}</p>
                             <Badge>{String(previewProxy.type ?? "unknown")}</Badge>
                             {operation?.type === "remove" ? (
-                              <Badge className="border-rose-200 bg-rose-50 text-rose-700">
+                              <Badge className="border-[#cd5c58]/50 bg-[#f7ecec] text-[#7f2c28]">
                                 将删除
                               </Badge>
                             ) : null}
                             {operation?.type === "replace" ? (
-                              <Badge className="border-sky-200 bg-sky-50 text-sky-700">
+                              <Badge className="border-[#80aadd]/45 bg-[#d6e4f6] text-[#3266ad]">
                                 已覆写
                               </Badge>
                             ) : null}
                           </div>
 
-                          <div className="mt-4 grid gap-2 text-sm text-slate-500 sm:grid-cols-2">
+                          <div className="mt-4 grid gap-2 text-sm text-[#73726c] sm:grid-cols-2">
                             {describeObjectEntries(previewProxy).map(([key, value]) => (
                               <p key={key} className="truncate">
-                                <span className="font-medium text-slate-700">{key}：</span>
-                                {typeof value === "string" ? value : JSON.stringify(value)}
+                                <span className="font-medium text-[#3d3d3a]">{key}：</span>
+                                {formatObjectEntryValue(key, value)}
                               </p>
                             ))}
                           </div>
@@ -1800,7 +1961,7 @@ export const GeneratedSubscriptionWizardPage = () => {
 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h5 className="text-lg font-semibold text-slate-950">新增自定义节点</h5>
+                    <h5 className="text-lg font-semibold text-[#141413]">新增自定义节点</h5>
                     <Button
                       variant="secondary"
                       onClick={() =>
@@ -1825,10 +1986,10 @@ export const GeneratedSubscriptionWizardPage = () => {
                       .map((item) => (
                         <div
                           key={item.id}
-                          className="rounded-[28px] border border-slate-200 bg-white/90 p-5"
+                          className="rounded-lg border border-[#dedcd1] bg-[#fffdf8] p-5"
                         >
                           <div className="flex items-center justify-between">
-                            <p className="text-sm font-semibold text-slate-900">自定义节点</p>
+                            <p className="text-sm font-semibold text-[#141413]">自定义节点</p>
                             <Button
                               variant="ghost"
                               onClick={() =>
@@ -1897,17 +2058,15 @@ export const GeneratedSubscriptionWizardPage = () => {
       ) : null}
 
       {activeStep === "groups_rules" ? (
-        <Card className="rounded-[32px] p-6">
+        <Card className="rounded-lg p-6">
           <div className="space-y-6">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <p className="text-sm font-medium uppercase tracking-[0.18em] text-slate-400">
-                  Step 3
-                </p>
-                <h4 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+                <p className="text-sm font-medium text-[#9c9a92]">第 3 步</p>
+                <h4 className="mt-2 text-xl font-semibold text-[#141413]">
                   编辑代理组、规则源与规则链
                 </h4>
-                <p className="mt-2 text-sm text-slate-500">
+                <p className="mt-2 text-sm text-[#73726c]">
                   内置规则源已经落库并定时更新，可以直接在这里勾选引用。
                 </p>
               </div>
@@ -1946,9 +2105,113 @@ export const GeneratedSubscriptionWizardPage = () => {
               />
             ) : (
               <div className="space-y-6">
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+                  <div className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-5">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h5 className="text-lg font-semibold text-[#141413]">自动节点分组</h5>
+                        <p className="mt-2 text-sm text-[#73726c]">
+                          系统会提取所有节点放入 Proxies，并按国家/地区生成 HK、JP、US、TW、SG、KR、Others。
+                        </p>
+                      </div>
+                      <label className="flex shrink-0 items-center gap-3 rounded-lg border border-[#dedcd1] bg-[#fffdf8] px-4 py-3 text-sm font-medium text-[#3d3d3a]">
+                        <input
+                          type="checkbox"
+                          checked={autoGroupOptions.enabled}
+                          onChange={(event) =>
+                            setAutoGroupOptions((current) => ({
+                              ...current,
+                              enabled: event.target.checked
+                            }))
+                          }
+                          className="size-4 rounded border-[#c9c6ba] accent-[#c96442]"
+                        />
+                        启用
+                      </label>
+                    </div>
+
+                    <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                      <label className="flex items-center gap-3 rounded-lg border border-[#dedcd1] bg-[#fffdf8] px-4 py-3 text-sm text-[#5f5e58]">
+                        <input
+                          type="checkbox"
+                          checked={autoGroupOptions.includeAutoGroup}
+                          disabled={!autoGroupOptions.enabled}
+                          onChange={(event) =>
+                            setAutoGroupOptions((current) => ({
+                              ...current,
+                              includeAutoGroup: event.target.checked
+                            }))
+                          }
+                          className="size-4 rounded border-[#c9c6ba] accent-[#c96442]"
+                        />
+                        添加 Auto 延迟测试组
+                      </label>
+
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-[#5f5e58]">未识别节点</span>
+                        <Select
+                          value={autoGroupOptions.unclassifiedPolicy}
+                          disabled={!autoGroupOptions.enabled}
+                          onValueChange={(value) =>
+                            setAutoGroupOptions((current) => ({
+                              ...current,
+                              unclassifiedPolicy: value === "ignore" ? "ignore" : "others"
+                            }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="others">放入 Others</SelectItem>
+                            <SelectItem value="ignore">只保留在 Proxies</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-[#dedcd1] bg-[#fffdf8] p-5">
+                    <h5 className="text-lg font-semibold text-[#141413]">规则源落点</h5>
+                    <p className="mt-2 text-sm text-[#73726c]">
+                      勾选的 GitHub 规则源会写入 rule-providers，并自动插入 RULE-SET 规则。
+                    </p>
+                    <div className="mt-5 space-y-4">
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-[#5f5e58]">目标策略组</span>
+                        <Input
+                          value={ruleTargetPolicy}
+                          onChange={(event) => setRuleTargetPolicy(event.target.value)}
+                          placeholder="Proxies"
+                        />
+                      </label>
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-[#5f5e58]">插入位置</span>
+                        <Select
+                          value={ruleInsertPosition}
+                          onValueChange={(value) =>
+                            setRuleInsertPosition(
+                              value === "top" || value === "bottom" ? value : "before-match"
+                            )
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="before-match">MATCH 前</SelectItem>
+                            <SelectItem value="top">规则顶部</SelectItem>
+                            <SelectItem value="bottom">规则底部</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h5 className="text-lg font-semibold text-slate-950">内置规则源</h5>
+                    <h5 className="text-lg font-semibold text-[#141413]">内置规则源</h5>
                     <Badge>{workspace.marketplaceRulesets.length} 个可用</Badge>
                   </div>
 
@@ -1966,18 +2229,18 @@ export const GeneratedSubscriptionWizardPage = () => {
                                 : [...current, ruleset.slug]
                             );
                           }}
-                          className={cn(
-                            "rounded-[22px] border px-4 py-3 text-left transition",
+                            className={cn(
+                            "rounded-lg border px-4 py-3 text-left transition",
                             selected
-                              ? "border-slate-950 bg-slate-950 text-white"
-                              : "border-slate-200 bg-white/90 text-slate-600 hover:border-slate-300 hover:text-slate-950"
+                              ? "border-[#141413] bg-[#141413] text-[#faf9f5]"
+                              : "border-[#dedcd1] bg-[#fffdf8] text-[#5f5e58] hover:border-[#c9c6ba] hover:text-[#141413]"
                           )}
                         >
                           <p className="text-sm font-medium">{ruleset.name}</p>
                           <p
                             className={cn(
                               "mt-1 max-w-64 text-xs",
-                              selected ? "text-white/75" : "text-slate-400"
+                              selected ? "text-[#faf9f5]/75" : "text-[#9c9a92]"
                             )}
                           >
                             {ruleset.description ?? "暂无描述"}
@@ -2012,10 +2275,10 @@ export const GeneratedSubscriptionWizardPage = () => {
                       {groupFullOverrideItems.map((item) => (
                         <div
                           key={item.id}
-                          className="rounded-[28px] border border-slate-200 bg-white/90 p-5"
+                          className="rounded-lg border border-[#dedcd1] bg-[#fffdf8] p-5"
                         >
                           <div className="flex items-center justify-between">
-                            <p className="text-sm font-semibold text-slate-900">代理组条目</p>
+                            <p className="text-sm font-semibold text-[#141413]">代理组条目</p>
                             <Button
                               variant="ghost"
                               onClick={() =>
@@ -2050,7 +2313,7 @@ export const GeneratedSubscriptionWizardPage = () => {
                     </div>
                     <div className="grid gap-4 xl:grid-cols-2">
                     <div className="space-y-2">
-                        <p className="text-sm font-medium text-slate-600">完整规则列表</p>
+                        <p className="text-sm font-medium text-[#5f5e58]">完整规则列表</p>
                         <Textarea
                           value={rulesFullOverrideText}
                           onChange={(event) => setRulesFullOverrideText(event.target.value)}
@@ -2064,7 +2327,7 @@ export const GeneratedSubscriptionWizardPage = () => {
                   <>
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <h5 className="text-lg font-semibold text-slate-950">源代理组</h5>
+                        <h5 className="text-lg font-semibold text-[#141413]">源代理组</h5>
                         <Button
                           variant="secondary"
                           onClick={() =>
@@ -2095,23 +2358,23 @@ export const GeneratedSubscriptionWizardPage = () => {
                           return (
                             <div
                               key={group.name}
-                              className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-5"
+                              className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-5"
                             >
                               <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-base font-semibold text-slate-950">{group.name}</p>
+                                <p className="text-base font-semibold text-[#141413]">{group.name}</p>
                                 <Badge>{String(previewGroup.type ?? "select")}</Badge>
                                 {operation?.type === "remove" ? (
-                                  <Badge className="border-rose-200 bg-rose-50 text-rose-700">
+                                  <Badge className="border-[#cd5c58]/50 bg-[#f7ecec] text-[#7f2c28]">
                                     将删除
                                   </Badge>
                                 ) : null}
                               </div>
 
-                              <div className="mt-4 grid gap-2 text-sm text-slate-500">
+                              <div className="mt-4 grid gap-2 text-sm text-[#73726c]">
                                 {describeObjectEntries(previewGroup).map(([key, value]) => (
                                   <p key={key} className="truncate">
-                                    <span className="font-medium text-slate-700">{key}：</span>
-                                    {typeof value === "string" ? value : JSON.stringify(value)}
+                                    <span className="font-medium text-[#3d3d3a]">{key}：</span>
+                                    {formatObjectEntryValue(key, value)}
                                   </p>
                                 ))}
                               </div>
@@ -2223,10 +2486,10 @@ export const GeneratedSubscriptionWizardPage = () => {
                         .map((item) => (
                           <div
                             key={item.id}
-                            className="rounded-[28px] border border-slate-200 bg-white/90 p-5"
+                            className="rounded-lg border border-[#dedcd1] bg-[#fffdf8] p-5"
                           >
                             <div className="flex items-center justify-between">
-                              <p className="text-sm font-semibold text-slate-900">新增代理组</p>
+                              <p className="text-sm font-semibold text-[#141413]">新增代理组</p>
                               <Button
                                 variant="ghost"
                                 onClick={() =>
@@ -2262,7 +2525,7 @@ export const GeneratedSubscriptionWizardPage = () => {
 
                     <div className="grid gap-4 xl:grid-cols-3">
                       <label className="block space-y-2">
-                        <span className="text-sm font-medium text-slate-600">前置规则</span>
+                        <span className="text-sm font-medium text-[#5f5e58]">前置规则</span>
                         <Textarea
                           value={prependRulesText}
                           onChange={(event) => setPrependRulesText(event.target.value)}
@@ -2271,7 +2534,7 @@ export const GeneratedSubscriptionWizardPage = () => {
                         />
                       </label>
                       <label className="block space-y-2">
-                        <span className="text-sm font-medium text-slate-600">后置规则</span>
+                        <span className="text-sm font-medium text-[#5f5e58]">后置规则</span>
                         <Textarea
                           value={appendRulesText}
                           onChange={(event) => setAppendRulesText(event.target.value)}
@@ -2280,7 +2543,7 @@ export const GeneratedSubscriptionWizardPage = () => {
                         />
                       </label>
                       <label className="block space-y-2">
-                        <span className="text-sm font-medium text-slate-600">移除规则</span>
+                        <span className="text-sm font-medium text-[#5f5e58]">移除规则</span>
                         <Textarea
                           value={removeRulesText}
                           onChange={(event) => setRemoveRulesText(event.target.value)}
@@ -2322,17 +2585,15 @@ export const GeneratedSubscriptionWizardPage = () => {
       ) : null}
 
       {activeStep === "settings" ? (
-        <Card className="rounded-[32px] p-6">
+        <Card className="rounded-lg p-6">
           <div className="space-y-6">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <p className="text-sm font-medium uppercase tracking-[0.18em] text-slate-400">
-                  Step 4
-                </p>
-                <h4 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+                <p className="text-sm font-medium text-[#9c9a92]">第 4 步</p>
+                <h4 className="mt-2 text-xl font-semibold text-[#141413]">
                   编辑其他配置项
                 </h4>
-                <p className="mt-2 text-sm text-slate-500">
+                <p className="mt-2 text-sm text-[#73726c]">
                   建议先处理常用顶层设置，复杂嵌套配置可以切换到 RAW 模式。
                 </p>
               </div>
@@ -2374,7 +2635,7 @@ export const GeneratedSubscriptionWizardPage = () => {
                 <div className="grid gap-4 xl:grid-cols-4">
                   {Object.entries(settingsForm).map(([key, value]) => (
                     <label key={key} className="block space-y-2">
-                      <span className="text-sm font-medium text-slate-600">{key}</span>
+                      <span className="text-sm font-medium text-[#5f5e58]">{key}</span>
                       <Input
                         value={value}
                         onChange={(event) =>
@@ -2391,7 +2652,7 @@ export const GeneratedSubscriptionWizardPage = () => {
 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h5 className="text-lg font-semibold text-slate-950">额外配置项</h5>
+                    <h5 className="text-lg font-semibold text-[#141413]">额外配置项</h5>
                     <Button
                       variant="secondary"
                       onClick={() =>
@@ -2414,7 +2675,7 @@ export const GeneratedSubscriptionWizardPage = () => {
                     {settingPairs.map((pair) => (
                       <div
                         key={pair.id}
-                        className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 xl:grid-cols-[minmax(180px,0.6fr)_minmax(0,1fr)_auto]"
+                        className="grid gap-3 rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-4 xl:grid-cols-[minmax(180px,0.6fr)_minmax(0,1fr)_auto]"
                       >
                         <Input
                           value={pair.key}
@@ -2467,7 +2728,7 @@ export const GeneratedSubscriptionWizardPage = () => {
 
                 {settingsPatchMode === "patch" ? (
                   <label className="block space-y-2">
-                    <span className="text-sm font-medium text-slate-600">移除源配置项</span>
+                    <span className="text-sm font-medium text-[#5f5e58]">移除源配置项</span>
                     <Textarea
                       value={unsetKeysText}
                       onChange={(event) => setUnsetKeysText(event.target.value)}
@@ -2476,7 +2737,7 @@ export const GeneratedSubscriptionWizardPage = () => {
                     />
                   </label>
                 ) : (
-                  <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-500">
+                  <div className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 px-4 py-3 text-sm text-[#73726c]">
                     Full Overrides 下会将这里填写的配置作为最终顶层设置，未填写的键不会保留。
                   </div>
                 )}
@@ -2512,13 +2773,11 @@ export const GeneratedSubscriptionWizardPage = () => {
 
       {activeStep === "preview" ? (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_360px]">
-          <Card className="rounded-[32px] p-6">
+          <Card className="rounded-lg p-6">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div>
-                <p className="text-sm font-medium uppercase tracking-[0.18em] text-slate-400">
-                  Step 5
-                </p>
-                <h4 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+                <p className="text-sm font-medium text-[#9c9a92]">第 5 步</p>
+                <h4 className="mt-2 text-xl font-semibold text-[#141413]">
                   预览最终生成的 Mihomo 配置
                 </h4>
               </div>
@@ -2526,10 +2785,18 @@ export const GeneratedSubscriptionWizardPage = () => {
                 <Button
                   variant="secondary"
                   disabled={busyAction === "extract-template"}
-                  onClick={() => void handleExtractTemplate()}
+                  onClick={() => void handleExtractTemplate(false)}
                 >
                   <Sparkles className="size-4" />
                   沉淀为模板
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={busyAction === "extract-template"}
+                  onClick={() => void handleExtractTemplate(true)}
+                >
+                  <Sparkles className="size-4" />
+                  提炼脱敏模板
                 </Button>
                 <Button
                   variant="secondary"
@@ -2564,7 +2831,7 @@ export const GeneratedSubscriptionWizardPage = () => {
             </div>
 
             {preview?.lockedReasons?.length ? (
-              <div className="mt-5 rounded-[24px] border border-amber-200 bg-amber-50/90 p-4 text-sm text-amber-800">
+              <div className="mt-5 rounded-lg border border-[#d1a041]/40 bg-[#f6eedf] p-4 text-sm text-[#5a4815]">
                 <p className="font-medium">当前草稿已锁定到这个外部订阅：</p>
                 <div className="mt-2 space-y-1">
                   {preview.lockedReasons.map((reason) => (
@@ -2582,15 +2849,15 @@ export const GeneratedSubscriptionWizardPage = () => {
           </Card>
 
           <div className="space-y-6">
-            <Card className="rounded-[32px] p-6">
-              <h4 className="text-xl font-semibold tracking-tight text-slate-950">发布设置</h4>
-              <p className="mt-2 text-sm text-slate-500">
-                发布后会立即完成首次生成，并为该生成订阅保留后续刷新能力。
+            <Card className="rounded-lg p-6">
+              <h4 className="text-xl font-semibold text-[#141413]">发布设置</h4>
+                <p className="mt-2 text-sm text-[#73726c]">
+                发布后会立即完成首次生成，并为该扩展订阅保留后续刷新能力。
               </p>
 
               <div className="mt-6 space-y-4">
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">可见性</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">可见性</span>
                   <Select
                     value={publishVisibility}
                     onValueChange={(value) => setPublishVisibility(value as Visibility)}
@@ -2607,7 +2874,7 @@ export const GeneratedSubscriptionWizardPage = () => {
                 </label>
 
                 <label className="block space-y-2">
-                  <span className="text-sm font-medium text-slate-600">共享方式</span>
+                  <span className="text-sm font-medium text-[#5f5e58]">共享方式</span>
                   <Select
                     value={publishShareMode}
                     onValueChange={(value) => setPublishShareMode(value as ShareMode)}
@@ -2623,12 +2890,12 @@ export const GeneratedSubscriptionWizardPage = () => {
                   </Select>
                 </label>
 
-                <label className="flex items-center gap-3 rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-600">
+                <label className="flex items-center gap-3 rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 px-4 py-3 text-sm text-[#5f5e58]">
                   <input
                     type="checkbox"
                     checked={publishEnabled}
                     onChange={(event) => setPublishEnabled(event.target.checked)}
-                    className="size-4 rounded border-slate-300"
+                    className="size-4 rounded border-[#c9c6ba] accent-[#c96442]"
                   />
                   发布后立即启用
                 </label>
@@ -2640,16 +2907,16 @@ export const GeneratedSubscriptionWizardPage = () => {
                   onClick={() => void handlePublish()}
                 >
                 <Sparkles className="size-4" />
-                发布生成订阅
+                发布扩展订阅
               </Button>
             </Card>
 
             {publishedSubscription ? (
-              <Card className="rounded-[32px] p-6">
-                <h4 className="text-xl font-semibold tracking-tight text-slate-950">
-                  已发布的生成订阅
+              <Card className="rounded-lg p-6">
+                <h4 className="text-xl font-semibold text-[#141413]">
+                  已发布的扩展订阅
                 </h4>
-                <div className="mt-4 space-y-2 text-sm text-slate-500">
+                <div className="mt-4 space-y-2 text-sm text-[#73726c]">
                   <p>名称：{publishedSubscription.displayName}</p>
                   <p>可见性：{visibilityText[publishedSubscription.visibility]}</p>
                   <p>共享方式：{shareModeText[publishedSubscription.shareMode]}</p>
@@ -2660,6 +2927,17 @@ export const GeneratedSubscriptionWizardPage = () => {
                   <Button variant="secondary" onClick={() => void handleCopyTempLink()}>
                     <Copy className="size-4" />
                     复制临时拉取链接
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      const hours = Number(window.prompt("短期 Key 有效小时数", "24"));
+                      const normalizedHours = Number.isFinite(hours) && hours > 0 ? hours : 24;
+                      void handleCopyTempLink(Math.round(normalizedHours * 60 * 60));
+                    }}
+                  >
+                    <Copy className="size-4" />
+                    自定义短期 Key
                   </Button>
                   <Button
                     variant="ghost"
@@ -2676,9 +2954,9 @@ export const GeneratedSubscriptionWizardPage = () => {
             ) : null}
 
             {extractedTemplateId ? (
-              <Card className="rounded-[32px] p-6">
-                <h4 className="text-xl font-semibold tracking-tight text-slate-950">已提炼模板</h4>
-                <p className="mt-2 text-sm text-slate-500">
+              <Card className="rounded-lg p-6">
+                <h4 className="text-xl font-semibold text-[#141413]">已提炼模板</h4>
+                <p className="mt-2 text-sm text-[#73726c]">
                   当前草稿已经生成一个可继续编辑的模板副本。
                 </p>
                 <div className="mt-4">

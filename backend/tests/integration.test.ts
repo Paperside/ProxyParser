@@ -180,7 +180,7 @@ test("生成订阅草稿可以预览、提炼模板并发布", async () => {
   });
   seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
 
-  const draft = generatedSubscriptionDraftService.create(registered.user.id, {
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
     displayName: "日常分流",
     upstreamSourceId: source.id
   });
@@ -247,7 +247,7 @@ test("订阅拉取在上游同步失败时会回退到最近一次成功快照",
   });
   seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
 
-  const draft = generatedSubscriptionDraftService.create(registered.user.id, {
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
     displayName: "回退草稿",
     upstreamSourceId: source.id
   });
@@ -287,4 +287,555 @@ test("订阅拉取在上游同步失败时会回退到最近一次成功快照",
   expect(delivered.status).toBe("degraded");
   expect(delivered.yamlText).toContain("HK-01");
   expect(delivered.headers["subscription-userinfo"]).toBe("upload=1; download=2; total=3; expire=4");
+});
+
+test("product redesign migration exposes shareability and token metadata", () => {
+  const { db } = createTestContext();
+  const tableColumns = (tableName: string) =>
+    db
+      .query<{ name: string }>(`PRAGMA table_info(${tableName})`)
+      .all()
+      .map((column) => column.name);
+
+  const templateColumns = tableColumns("templates");
+  const tempTokenColumns = tableColumns("user_subscription_temp_tokens");
+  const shareGrantTable = db
+    .query<{ name: string }>(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'subscription_share_grants'`
+    )
+    .get();
+
+  expect(templateColumns).toContain("shareability_status");
+  expect(templateColumns).toContain("sanitized_from_template_id");
+  expect(templateColumns).toContain("locked_reasons_json");
+  expect(tempTokenColumns).toContain("label");
+  expect(tempTokenColumns).toContain("revoked_at");
+  expect(shareGrantTable).toBeTruthy();
+});
+
+test("draft preview auto groups all source nodes into Proxies and regions", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService
+  } = createTestContext();
+  const registered = await authService.register({
+    email: "autogroup@example.com",
+    username: "autogroup",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "自动分组源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id, {
+    proxies: [
+      {
+        name: "HK-01",
+        type: "ss",
+        server: "1.1.1.1",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "secret"
+      },
+      {
+        name: "JP-01",
+        type: "ss",
+        server: "2.2.2.2",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "secret"
+      },
+      {
+        name: "Mystery-01",
+        type: "ss",
+        server: "3.3.3.3",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "secret"
+      }
+    ],
+    "proxy-groups": [
+      {
+        name: "Source",
+        type: "select",
+        proxies: ["HK-01", "JP-01", "Mystery-01"]
+      }
+    ],
+    rules: ["MATCH,Source"]
+  });
+
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "自动分组草稿",
+    upstreamSourceId: source.id
+  });
+  generatedSubscriptionDraftService.saveStep(registered.user.id, draft.id, {
+    stepKey: "groups_rules",
+    patchMode: "patch",
+    editorMode: "visual",
+    operations: {
+      autoGroup: {
+        enabled: true,
+        includeAutoGroup: true,
+        unclassifiedPolicy: "others"
+      }
+    }
+  });
+
+  const preview = await generatedSubscriptionDraftService.preview(registered.user.id, draft.id);
+  const groupsByName = new Map(
+    preview.document["proxy-groups"].map((group) => [group.name, group] as const)
+  );
+
+  expect([...groupsByName.keys()]).toContain("Proxies");
+  expect([...groupsByName.keys()]).toContain("HK");
+  expect([...groupsByName.keys()]).toContain("JP");
+  expect([...groupsByName.keys()]).toContain("Others");
+  expect([...groupsByName.keys()]).toContain("Auto");
+  expect(groupsByName.get("Proxies")?.proxies).toContain("HK-01");
+  expect(groupsByName.get("Proxies")?.proxies).toContain("JP-01");
+  expect(groupsByName.get("Proxies")?.proxies).toContain("Mystery-01");
+  expect(groupsByName.get("HK")?.proxies).toContain("HK-01");
+  expect(groupsByName.get("JP")?.proxies).toContain("JP-01");
+  expect(groupsByName.get("Others")?.proxies).toContain("Mystery-01");
+});
+
+test("draft preview emits rule providers and RULE-SET rules", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService
+  } = createTestContext();
+  const registered = await authService.register({
+    email: "ruleset@example.com",
+    username: "ruleset",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "规则源测试源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
+
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "规则源草稿",
+    upstreamSourceId: source.id
+  });
+  generatedSubscriptionDraftService.saveStep(registered.user.id, draft.id, {
+    stepKey: "groups_rules",
+    patchMode: "patch",
+    editorMode: "visual",
+    operations: {
+      autoGroup: {
+        enabled: true,
+        includeAutoGroup: false,
+        unclassifiedPolicy: "others"
+      },
+      ruleProviderAttachments: [
+        {
+          type: "attach-rule-provider",
+          providerSlug: "metacubex-geosite-openai",
+          targetPolicy: "Proxies",
+          insert: {
+            position: "before-match"
+          }
+        }
+      ],
+      rules: ["MATCH,Proxies"]
+    }
+  });
+
+  const preview = await generatedSubscriptionDraftService.preview(registered.user.id, draft.id);
+  const ruleProviders = preview.document["rule-providers"] as Record<string, unknown> | undefined;
+  const rules = preview.document.rules ?? [];
+
+  expect(ruleProviders).toBeTruthy();
+  expect(Object.keys(ruleProviders ?? {})).toContain("metacubex-geosite-openai");
+  expect(preview.yamlText).toContain(
+    "/api/marketplace/rulesets/metacubex-geosite-openai/content"
+  );
+  expect(rules).toContain("RULE-SET,metacubex-geosite-openai,Proxies");
+  expect(rules.indexOf("RULE-SET,metacubex-geosite-openai,Proxies")).toBeLessThan(
+    rules.indexOf("MATCH,Proxies")
+  );
+});
+
+test("subscription render replays draft against latest successful upstream snapshot", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService,
+    managedSubscriptionService
+  } = createTestContext();
+  const registered = await authService.register({
+    email: "latest@example.com",
+    username: "latest",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "最新快照源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id, createSourceDocument());
+
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "最新快照草稿",
+    upstreamSourceId: source.id
+  });
+  const published = await managedSubscriptionService.publishFromDraft(registered.user.id, draft.id, {
+    displayName: "最新快照订阅",
+    isEnabled: true
+  });
+
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id, {
+    proxies: [
+      {
+        name: "HK-02",
+        type: "ss",
+        server: "9.9.9.9",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "secret"
+      }
+    ],
+    "proxy-groups": [
+      {
+        name: "Proxy",
+        type: "select",
+        proxies: ["HK-02", "DIRECT"]
+      }
+    ],
+    rules: ["MATCH,Proxy"]
+  });
+
+  const rerendered = await managedSubscriptionService.render(registered.user.id, published.id);
+
+  expect(rerendered.renderedYaml).toContain("HK-02");
+  expect(rerendered.renderedYaml).not.toContain("HK-01");
+});
+
+test("render failure is persisted on subscription", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService,
+    managedSubscriptionService
+  } = createTestContext();
+  const registered = await authService.register({
+    email: "renderfail@example.com",
+    username: "renderfail",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "失败落库源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
+
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "失败落库草稿",
+    upstreamSourceId: source.id
+  });
+  const published = await managedSubscriptionService.publishFromDraft(registered.user.id, draft.id, {
+    displayName: "失败落库订阅",
+    isEnabled: true
+  });
+
+  generatedSubscriptionDraftService.saveStep(registered.user.id, draft.id, {
+    stepKey: "groups_rules",
+    patchMode: "patch",
+    editorMode: "visual",
+    operations: {
+      items: [
+        {
+          type: "add",
+          group: {
+            name: "BrokenGroup",
+            type: "select",
+            proxies: ["MissingProxy"]
+          }
+        }
+      ]
+    }
+  });
+
+  await expect(managedSubscriptionService.render(registered.user.id, published.id)).rejects.toThrow(
+    "MissingProxy"
+  );
+
+  const detail = managedSubscriptionService.getById(registered.user.id, published.id);
+
+  expect(detail.lastRenderStatus).toBe("degraded");
+  expect(detail.lastErrorMessage).toContain("MissingProxy");
+});
+
+test("upstream source rejects invalid URL on update", async () => {
+  const { authService, upstreamSourceService } = createTestContext();
+  const registered = await authService.register({
+    email: "sourceupdate@example.com",
+    username: "sourceupdate",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "可更新订阅",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  expect(() =>
+    upstreamSourceService.update(registered.user.id, source.id, {
+      sourceUrl: "notaurl"
+    })
+  ).toThrow("订阅链接必须是 http 或 https 地址。");
+});
+
+test("draft can create an upstream source from a pasted URL", async () => {
+  const { authService, generatedSubscriptionDraftService, upstreamSourceRepository } =
+    createTestContext();
+  const registered = await authService.register({
+    email: "sourceurl@example.com",
+    username: "sourceurl",
+    password: "password123"
+  });
+
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "粘贴 URL 草稿",
+    sourceDisplayName: "粘贴导入源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  expect(draft.upstreamSourceId).toBeTruthy();
+
+  const source = upstreamSourceRepository.findByIdAndOwner(
+    draft.upstreamSourceId ?? "",
+    registered.user.id
+  );
+
+  expect(source?.displayName).toBe("粘贴导入源");
+  expect(source?.lastSyncStatus).toBe("failed");
+});
+
+test("draft can bind a pasted source URL during source step update", async () => {
+  const { authService, generatedSubscriptionDraftService, upstreamSourceRepository } =
+    createTestContext();
+  const registered = await authService.register({
+    email: "sourceurlupdate@example.com",
+    username: "sourceurlupdate",
+    password: "password123"
+  });
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "空白草稿"
+  });
+
+  const updated = await generatedSubscriptionDraftService.update(registered.user.id, draft.id, {
+    displayName: "URL 更新草稿",
+    sourceDisplayName: "更新导入源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  expect(updated.id).toBe(draft.id);
+  expect(updated.displayName).toBe("URL 更新草稿");
+  expect(updated.upstreamSourceId).toBeTruthy();
+
+  const source = upstreamSourceRepository.findByIdAndOwner(
+    updated.upstreamSourceId ?? "",
+    registered.user.id
+  );
+
+  expect(source?.displayName).toBe("更新导入源");
+  expect(source?.lastSyncStatus).toBe("failed");
+});
+
+test("temporary token enforces TTL bounds and revoke denies delivery", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService,
+    managedSubscriptionService
+  } = createTestContext();
+  const registered = await authService.register({
+    email: "tokenctl@example.com",
+    username: "tokenctl",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "Key 测试源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "Key 测试草稿",
+    upstreamSourceId: source.id
+  });
+  const published = await managedSubscriptionService.publishFromDraft(registered.user.id, draft.id, {
+    displayName: "Key 测试订阅",
+    isEnabled: true
+  });
+
+  const shortToken = managedSubscriptionService.createTempToken(
+    registered.user.id,
+    published.id,
+    60
+  );
+  const longToken = managedSubscriptionService.createTempToken(
+    registered.user.id,
+    published.id,
+    31 * 24 * 60 * 60
+  );
+  const shortTtlMs = new Date(shortToken.expiresAt).getTime() - Date.now();
+  const longTtlMs = new Date(longToken.expiresAt).getTime() - Date.now();
+
+  expect(shortTtlMs).toBeGreaterThanOrEqual(59 * 60 * 1000);
+  expect(longTtlMs).toBeLessThanOrEqual(30 * 24 * 60 * 60 * 1000 + 5_000);
+  expect(shortToken.id).toBeTruthy();
+
+  managedSubscriptionService.revokeTempToken(registered.user.id, published.id, shortToken.id);
+
+  await expect(
+    managedSubscriptionService.deliver(published.id, shortToken.token, "127.0.0.1", "bun:test")
+  ).rejects.toThrow("订阅访问令牌无效或已过期。");
+});
+
+test("subscription can be shared publicly and to a user", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService,
+    managedSubscriptionService
+  } = createTestContext();
+  const owner = await authService.register({
+    email: "share-owner@example.com",
+    username: "shareowner",
+    password: "password123"
+  });
+  const target = await authService.register({
+    email: "share-target@example.com",
+    username: "sharetarget",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(owner.user.id, {
+    displayName: "共享源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id);
+  const draft = await generatedSubscriptionDraftService.create(owner.user.id, {
+    displayName: "共享草稿",
+    upstreamSourceId: source.id
+  });
+  const published = await managedSubscriptionService.publishFromDraft(owner.user.id, draft.id, {
+    displayName: "共享订阅",
+    isEnabled: true
+  });
+
+  managedSubscriptionService.upsertShareGrant(owner.user.id, published.id, {
+    scope: "public",
+    mode: "view"
+  });
+  managedSubscriptionService.upsertShareGrant(owner.user.id, published.id, {
+    scope: "user",
+    mode: "fork",
+    targetUserId: target.user.id
+  });
+
+  const grants = managedSubscriptionService.listShareGrants(owner.user.id, published.id);
+
+  expect(grants.some((grant) => grant.scope === "public" && grant.mode === "view")).toBe(true);
+  expect(
+    grants.some(
+      (grant) =>
+        grant.scope === "user" && grant.mode === "fork" && grant.targetUserId === target.user.id
+    )
+  ).toBe(true);
+});
+
+test("sanitized template removes real proxy nodes but keeps rules and groups", async () => {
+  const {
+    authService,
+    upstreamSourceRepository,
+    upstreamSourceService,
+    generatedSubscriptionDraftService
+  } = createTestContext();
+  const registered = await authService.register({
+    email: "sanitize@example.com",
+    username: "sanitize",
+    password: "password123"
+  });
+  const source = upstreamSourceService.create(registered.user.id, {
+    displayName: "脱敏源",
+    sourceUrl: "http://127.0.0.1:1/unreachable"
+  });
+
+  seedSuccessfulSourceSnapshot(upstreamSourceRepository, source.id, {
+    proxies: [
+      {
+        name: "HK-Secret-Node",
+        type: "ss",
+        server: "10.10.10.10",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "secret-password"
+      }
+    ],
+    "proxy-groups": [
+      {
+        name: "Proxy",
+        type: "select",
+        proxies: ["HK-Secret-Node", "DIRECT"]
+      }
+    ],
+    rules: ["MATCH,Proxy"]
+  });
+
+  const draft = await generatedSubscriptionDraftService.create(registered.user.id, {
+    displayName: "脱敏草稿",
+    upstreamSourceId: source.id
+  });
+  generatedSubscriptionDraftService.saveStep(registered.user.id, draft.id, {
+    stepKey: "groups_rules",
+    patchMode: "patch",
+    editorMode: "visual",
+    operations: {
+      autoGroup: {
+        enabled: true,
+        includeAutoGroup: false,
+        unclassifiedPolicy: "others"
+      },
+      ruleProviderAttachments: [
+        {
+          type: "attach-rule-provider",
+          providerSlug: "metacubex-geosite-openai",
+          targetPolicy: "Proxies",
+          insert: {
+            position: "before-match"
+          }
+        }
+      ],
+      rules: ["MATCH,Proxies"]
+    }
+  });
+
+  const sanitized = await generatedSubscriptionDraftService.extractTemplate(
+    registered.user.id,
+    draft.id,
+    {
+      displayName: "脱敏模板",
+      sanitized: true
+    }
+  );
+
+  expect(sanitized.shareabilityStatus).toBe("sanitized");
+  expect(sanitized.payload.customProxies).toHaveLength(0);
+  expect(JSON.stringify(sanitized.payload)).not.toContain("HK-Secret-Node");
+  expect(JSON.stringify(sanitized.payload)).not.toContain("10.10.10.10");
+  expect(JSON.stringify(sanitized.payload)).toContain("RULE-SET,metacubex-geosite-openai,Proxies");
+  expect(sanitized.payload.proxyGroups.some((group) => group.name === "Proxies")).toBe(true);
+  expect(sanitized.exportedYaml ?? "").not.toContain("secret-password");
 });

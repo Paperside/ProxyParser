@@ -16,7 +16,7 @@ export const ScrollArea = ({
         orientation="vertical"
         className="flex w-2.5 touch-none select-none p-0.5"
       >
-        <ScrollAreaPrimitive.Thumb className="relative flex-1 rounded-full bg-slate-300" />
+        <ScrollAreaPrimitive.Thumb className="relative flex-1 rounded-full bg-[#c9c6ba]" />
       </ScrollAreaPrimitive.Scrollbar>
       <ScrollAreaPrimitive.Corner />
     </ScrollAreaPrimitive.Root>

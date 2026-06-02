@@ -1,6 +1,7 @@
 import { createId } from "../../lib/ids";
 import { createDefaultTemplatePayload } from "../../lib/render/template-payload";
 import { renderManagedConfig } from "../../lib/render/render-managed-config";
+import { sanitizeTemplatePayload } from "../../lib/render/template-sanitizer";
 import { MarketplaceRepository } from "../marketplace/marketplace.repository";
 import { TemplateRepository } from "../templates/template.repository";
 import { UpstreamSourceRepository } from "../upstream-sources/upstream-source.repository";
@@ -28,11 +29,15 @@ type ShareabilityStatus = "unknown" | "shareable" | "source_locked";
 interface CreateDraftInput {
   displayName: string;
   upstreamSourceId?: string | null;
+  sourceUrl?: string | null;
+  sourceDisplayName?: string | null;
 }
 
 interface UpdateDraftInput {
   displayName?: string;
   upstreamSourceId?: string | null;
+  sourceUrl?: string | null;
+  sourceDisplayName?: string | null;
   currentStep?: DraftCurrentStep;
   shareabilityStatus?: ShareabilityStatus;
   selectedSourceSnapshotId?: string | null;
@@ -56,6 +61,11 @@ interface ExtractTemplateInput {
   visibility?: "private" | "unlisted" | "public";
   shareMode?: "disabled" | "view" | "fork";
   publishStatus?: "draft" | "published" | "archived";
+  sanitized?: boolean;
+}
+
+interface PreviewOptions {
+  preferSelectedSnapshot?: boolean;
 }
 
 const normalizeDisplayName = (value: string | undefined) => {
@@ -85,16 +95,26 @@ export class GeneratedSubscriptionDraftService {
     return detail;
   }
 
-  create(ownerUserId: string, input: CreateDraftInput) {
+  async create(ownerUserId: string, input: CreateDraftInput) {
     const displayName = normalizeDisplayName(input.displayName);
 
     if (!displayName) {
       throw new GeneratedSubscriptionDraftError("草稿名称不能为空。", 400);
     }
 
-    if (input.upstreamSourceId) {
+    let upstreamSourceId = input.upstreamSourceId ?? null;
+
+    if (input.sourceUrl) {
+      const source = await this.upstreamSourceService.createAndSync(ownerUserId, {
+        displayName: input.sourceDisplayName?.trim() || displayName || "外部订阅",
+        sourceUrl: input.sourceUrl
+      });
+      upstreamSourceId = source.id;
+    }
+
+    if (upstreamSourceId) {
       const source = this.upstreamSourceRepository.findByIdAndOwner(
-        input.upstreamSourceId,
+        upstreamSourceId,
         ownerUserId
       );
 
@@ -106,7 +126,7 @@ export class GeneratedSubscriptionDraftService {
     const created = this.repository.create({
       id: createId("gsd"),
       ownerUserId,
-      upstreamSourceId: input.upstreamSourceId ?? null,
+      upstreamSourceId,
       displayName,
       currentStep: "source",
       shareabilityStatus: "unknown",
@@ -121,10 +141,31 @@ export class GeneratedSubscriptionDraftService {
     return created;
   }
 
-  update(ownerUserId: string, draftId: string, input: UpdateDraftInput) {
-    if (input.upstreamSourceId) {
+  async update(ownerUserId: string, draftId: string, input: UpdateDraftInput) {
+    const current = this.repository.findByIdAndOwner(draftId, ownerUserId);
+
+    if (!current) {
+      throw new GeneratedSubscriptionDraftError("未找到该生成订阅草稿。", 404);
+    }
+
+    let upstreamSourceId = input.upstreamSourceId;
+
+    if (input.sourceUrl) {
+      const displayName =
+        input.sourceDisplayName?.trim() ||
+        normalizeDisplayName(input.displayName) ||
+        current.displayName ||
+        "外部订阅";
+      const source = await this.upstreamSourceService.createAndSync(ownerUserId, {
+        displayName,
+        sourceUrl: input.sourceUrl
+      });
+      upstreamSourceId = source.id;
+    }
+
+    if (upstreamSourceId) {
       const source = this.upstreamSourceRepository.findByIdAndOwner(
-        input.upstreamSourceId,
+        upstreamSourceId,
         ownerUserId
       );
 
@@ -134,7 +175,7 @@ export class GeneratedSubscriptionDraftService {
     }
 
     const updated = this.repository.update(draftId, ownerUserId, {
-      upstreamSourceId: input.upstreamSourceId,
+      upstreamSourceId,
       displayName: normalizeDisplayName(input.displayName),
       currentStep: input.currentStep,
       shareabilityStatus: input.shareabilityStatus,
@@ -181,7 +222,7 @@ export class GeneratedSubscriptionDraftService {
     return updated;
   }
 
-  async preview(ownerUserId: string, draftId: string) {
+  async preview(ownerUserId: string, draftId: string, options: PreviewOptions = {}) {
     const draft = this.repository.findByIdAndOwner(draftId, ownerUserId);
 
     if (!draft) {
@@ -202,7 +243,7 @@ export class GeneratedSubscriptionDraftService {
     }
 
     let sourceSnapshot =
-      (draft.selectedSourceSnapshotId
+      (options.preferSelectedSnapshot && draft.selectedSourceSnapshotId
         ? this.upstreamSourceRepository.findSnapshotById(draft.selectedSourceSnapshotId)
         : null) ??
       (source.lastSuccessfulSnapshotId
@@ -216,7 +257,7 @@ export class GeneratedSubscriptionDraftService {
       const refreshedSource = this.upstreamSourceRepository.findByIdAndOwner(source.id, ownerUserId);
 
       sourceSnapshot =
-        (draft.selectedSourceSnapshotId
+        (options.preferSelectedSnapshot && draft.selectedSourceSnapshotId
           ? this.upstreamSourceRepository.findSnapshotById(draft.selectedSourceSnapshotId)
           : null) ??
         (refreshedSource?.lastSuccessfulSnapshotId
@@ -317,8 +358,15 @@ export class GeneratedSubscriptionDraftService {
       throw new GeneratedSubscriptionDraftError("模板名称不能为空。", 400);
     }
 
-    const payload = this.buildTemplatePayloadFromPreview(preview);
-    const isShareable = preview.shareabilityStatus === "shareable";
+    const initialPayload = this.buildTemplatePayloadFromPreview(preview);
+    const sanitized = input.sanitized ? sanitizeTemplatePayload(initialPayload) : null;
+    const payload = sanitized?.payload ?? initialPayload;
+    const shareabilityStatus = sanitized
+      ? "sanitized"
+      : preview.shareabilityStatus === "shareable"
+        ? "shareable"
+        : "source_locked";
+    const isShareable = shareabilityStatus === "shareable" || shareabilityStatus === "sanitized";
     const created = this.templateRepository.create({
       id: createId("tpl"),
       ownerUserId,
@@ -335,6 +383,8 @@ export class GeneratedSubscriptionDraftService {
       visibility: isShareable ? input.visibility ?? "private" : "private",
       shareMode: isShareable ? input.shareMode ?? "disabled" : "disabled",
       publishStatus: isShareable ? input.publishStatus ?? "draft" : "draft",
+      shareabilityStatus,
+      lockedReasonsJson: JSON.stringify(sanitized?.lockedReasons ?? preview.lockedReasons),
       versionId: createId("tplv"),
       versionNote: "从生成订阅草稿提炼",
       payloadJson: JSON.stringify(payload),

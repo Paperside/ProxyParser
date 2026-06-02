@@ -11,8 +11,11 @@ interface TempTokenRow {
   userId: string;
   managedSubscriptionId: string | null;
   tokenHash: string;
+  label: string | null;
   expiresAt: string;
   revokedAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
 }
 
 export class SubscriptionAccessRepository {
@@ -57,6 +60,7 @@ export class SubscriptionAccessRepository {
     userId: string;
     managedSubscriptionId: string;
     tokenHash: string;
+    label?: string | null;
     expiresAt: string;
   }) {
     const query = this.db.query(`
@@ -65,12 +69,13 @@ export class SubscriptionAccessRepository {
         user_id,
         managed_subscription_id,
         token_hash,
+        label,
         expires_at,
         revoked_at,
         last_used_at,
         created_at
       )
-      VALUES (?, ?, ?, ?, ?, NULL, NULL, ?)
+      VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?)
     `);
     const now = new Date().toISOString();
 
@@ -79,9 +84,44 @@ export class SubscriptionAccessRepository {
       input.userId,
       input.managedSubscriptionId,
       input.tokenHash,
+      input.label ?? null,
       input.expiresAt,
       now
     );
+  }
+
+  listTempTokens(userId: string, managedSubscriptionId: string) {
+    const query = this.db.query<TempTokenRow>(`
+      SELECT
+        id,
+        user_id AS userId,
+        managed_subscription_id AS managedSubscriptionId,
+        token_hash AS tokenHash,
+        label,
+        expires_at AS expiresAt,
+        revoked_at AS revokedAt,
+        last_used_at AS lastUsedAt,
+        created_at AS createdAt
+      FROM user_subscription_temp_tokens
+      WHERE user_id = ?
+        AND managed_subscription_id = ?
+      ORDER BY created_at DESC
+    `);
+
+    return query.all(userId, managedSubscriptionId);
+  }
+
+  revokeTempToken(userId: string, managedSubscriptionId: string, tokenId: string) {
+    const query = this.db.query(`
+      UPDATE user_subscription_temp_tokens
+      SET revoked_at = ?
+      WHERE id = ?
+        AND user_id = ?
+        AND managed_subscription_id = ?
+        AND revoked_at IS NULL
+    `);
+
+    return query.run(new Date().toISOString(), tokenId, userId, managedSubscriptionId).changes > 0;
   }
 
   findValidTempToken(tokenHash: string, managedSubscriptionId: string) {
@@ -91,8 +131,11 @@ export class SubscriptionAccessRepository {
         user_id AS userId,
         managed_subscription_id AS managedSubscriptionId,
         token_hash AS tokenHash,
+        label,
         expires_at AS expiresAt,
-        revoked_at AS revokedAt
+        revoked_at AS revokedAt,
+        last_used_at AS lastUsedAt,
+        created_at AS createdAt
       FROM user_subscription_temp_tokens
       WHERE token_hash = ?
         AND (managed_subscription_id = ? OR managed_subscription_id IS NULL)

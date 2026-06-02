@@ -33,28 +33,34 @@ export const RegisterPage = () => {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#eff4fa] px-4 py-10">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[-8%] top-[-8%] h-72 w-72 rounded-full bg-amber-200/30 blur-3xl" />
-        <div className="absolute right-[-8%] top-[18%] h-80 w-80 rounded-full bg-sky-200/35 blur-3xl" />
-        <div className="absolute bottom-[-12%] left-[15%] h-80 w-80 rounded-full bg-emerald-200/30 blur-3xl" />
-      </div>
+    <div className="flex min-h-screen items-center bg-[#faf9f5] px-5 py-8 text-[#141413]">
+      <div className="mx-auto grid w-full max-w-5xl gap-8 md:grid-cols-[minmax(0,0.8fr)_minmax(520px,1fr)] md:items-center">
+        <section className="hidden border-l border-[#c96442] px-8 py-4 md:block">
+          <p className="text-sm font-medium text-[#73726c]">ProxyParser</p>
+          <h1 className="mt-6 text-4xl font-semibold leading-tight">创建一个本地工作区账号。</h1>
+          <p className="mt-4 max-w-md text-base leading-7 text-[#5f5e58]">
+            用它隔离你的外部订阅、模板和分发密钥。这里是本地测试环境，可以放心试流程。
+          </p>
+        </section>
 
-      <Card className="relative w-full max-w-xl rounded-[32px] p-8">
-        <div className="mb-8">
-          <p className="text-sm font-medium uppercase tracking-[0.18em] text-slate-400">New Account</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">创建账号</h1>
-          <p className="mt-2 text-sm text-slate-500">注册后即可开始整理你的订阅来源、模板与生成订阅。</p>
+        <Card className="w-full p-6 md:p-7">
+          <div className="mb-7">
+            <p className="text-sm font-medium text-[#c96442]">账户注册</p>
+            <h1 className="mt-3 text-3xl font-semibold text-[#141413]">创建账号</h1>
+            <p className="mt-2 text-sm leading-6 text-[#73726c]">
+              注册后即可开始整理你的订阅来源、模板与扩展订阅。
+            </p>
         </div>
 
         <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
           <label className="block space-y-2 md:col-span-2">
-            <span className="text-sm font-medium text-slate-600">邮箱</span>
+            <span className="text-sm font-medium text-[#5f5e58]">邮箱</span>
             <div className="relative">
-              <Mail className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <Mail className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#9c9a92]" />
               <Input
                 required
-                type="email"
+                type="text"
+                inputMode="email"
                 value={form.email}
                 onChange={(event) => {
                   setForm((current) => ({
@@ -69,9 +75,9 @@ export const RegisterPage = () => {
           </label>
 
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-600">用户名</span>
+            <span className="text-sm font-medium text-[#5f5e58]">用户名</span>
             <div className="relative">
-              <UserRound className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <UserRound className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#9c9a92]" />
               <Input
                 required
                 value={form.username}
@@ -88,9 +94,9 @@ export const RegisterPage = () => {
           </label>
 
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-600">显示名称</span>
+            <span className="text-sm font-medium text-[#5f5e58]">显示名称</span>
             <div className="relative">
-              <Signature className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <Signature className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#9c9a92]" />
               <Input
                 value={form.displayName}
                 onChange={(event) => {
@@ -106,9 +112,9 @@ export const RegisterPage = () => {
           </label>
 
           <label className="block space-y-2 md:col-span-2">
-            <span className="text-sm font-medium text-slate-600">密码</span>
+            <span className="text-sm font-medium text-[#5f5e58]">密码</span>
             <div className="relative">
-              <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#9c9a92]" />
               <Input
                 required
                 type="password"
@@ -126,7 +132,10 @@ export const RegisterPage = () => {
           </label>
 
           {errorMessage ? (
-            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 md:col-span-2">
+            <div
+              role="alert"
+              className="rounded-lg border border-[#cd5c58]/50 bg-[#f7ecec] px-4 py-3 text-sm text-[#7f2c28] md:col-span-2"
+            >
               {errorMessage}
             </div>
           ) : null}
@@ -142,13 +151,14 @@ export const RegisterPage = () => {
         <div className="mt-6 text-center">
           <Link
             to="/login"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
+            className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-[#73726c] transition hover:bg-[#f1eee6] hover:text-[#141413]"
           >
             <ArrowLeft className="size-4" />
             返回登录
           </Link>
         </div>
       </Card>
+      </div>
     </div>
   );
 };

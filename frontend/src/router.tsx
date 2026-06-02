@@ -19,8 +19,8 @@ import { TemplatesPage } from "./pages/templates-page";
 
 const FullscreenLoader = () => {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#eff4fa]">
-      <div className="rounded-[28px] border border-white/70 bg-white/80 px-6 py-4 text-sm text-slate-500 shadow-[0_24px_70px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+    <div className="flex min-h-screen items-center justify-center bg-[#faf9f5]">
+      <div className="rounded-lg border border-[#dedcd1] bg-[#fffdf8] px-6 py-4 text-sm text-[#73726c] shadow-[0_1px_2px_rgba(20,20,19,0.04)]">
         正在载入工作区...
       </div>
     </div>

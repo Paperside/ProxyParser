@@ -1,6 +1,12 @@
 import type { Database } from "bun:sqlite";
 
-import type { ShareMode, TemplateDetail, TemplateSummary, Visibility } from "../../types";
+import type {
+  ShareMode,
+  TemplateDetail,
+  TemplateShareabilityStatus,
+  TemplateSummary,
+  Visibility
+} from "../../types";
 import { createDefaultTemplatePayload, normalizeTemplatePayload } from "../../lib/render/template-payload";
 
 interface TemplateRow {
@@ -14,6 +20,9 @@ interface TemplateRow {
   sourceTemplateId: string | null;
   sourceLabel: string | null;
   sourceUrl: string | null;
+  shareabilityStatus: TemplateShareabilityStatus;
+  sanitizedFromTemplateId: string | null;
+  lockedReasonsJson: string;
   visibility: Visibility;
   shareMode: ShareMode;
   publishStatus: "draft" | "published" | "archived";
@@ -47,6 +56,9 @@ export interface CreateTemplateInput {
   shareMode: ShareMode;
   publishStatus: "draft" | "published" | "archived";
   isInternal?: boolean;
+  shareabilityStatus?: TemplateShareabilityStatus;
+  sanitizedFromTemplateId?: string | null;
+  lockedReasonsJson?: string;
   versionId: string;
   versionNote?: string | null;
   payloadJson: string;
@@ -63,6 +75,9 @@ export interface UpdateTemplateInput {
   visibility?: Visibility;
   shareMode?: ShareMode;
   publishStatus?: "draft" | "published" | "archived";
+  shareabilityStatus?: TemplateShareabilityStatus;
+  sanitizedFromTemplateId?: string | null;
+  lockedReasonsJson?: string;
   versionId: string;
   versionNote?: string | null;
   payloadJson: string;
@@ -81,6 +96,9 @@ const TEMPLATE_SELECT = `
     templates.source_template_id AS sourceTemplateId,
     templates.source_label AS sourceLabel,
     templates.source_url AS sourceUrl,
+    templates.shareability_status AS shareabilityStatus,
+    templates.sanitized_from_template_id AS sanitizedFromTemplateId,
+    templates.locked_reasons_json AS lockedReasonsJson,
     templates.visibility AS visibility,
     templates.share_mode AS shareMode,
     templates.publish_status AS publishStatus,
@@ -112,6 +130,9 @@ const mapSummary = (row: TemplateRow | null): TemplateSummary | null => {
     sourceTemplateId: row.sourceTemplateId,
     sourceLabel: row.sourceLabel,
     sourceUrl: row.sourceUrl,
+    shareabilityStatus: row.shareabilityStatus,
+    sanitizedFromTemplateId: row.sanitizedFromTemplateId,
+    lockedReasons: JSON.parse(row.lockedReasonsJson) as string[],
     visibility: row.visibility,
     shareMode: row.shareMode,
     publishStatus: row.publishStatus,
@@ -202,11 +223,14 @@ export class TemplateRepository {
         share_mode,
         publish_status,
         is_internal,
+        shareability_status,
+        sanitized_from_template_id,
+        locked_reasons_json,
         latest_version_id,
         created_at,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertVersion = this.db.query(`
       INSERT INTO template_versions (
@@ -237,6 +261,9 @@ export class TemplateRepository {
         input.shareMode,
         input.publishStatus,
         input.isInternal ? 1 : 0,
+        input.shareabilityStatus ?? "unknown",
+        input.sanitizedFromTemplateId ?? null,
+        input.lockedReasonsJson ?? "[]",
         input.versionId,
         now,
         now
@@ -279,6 +306,9 @@ export class TemplateRepository {
         visibility = ?,
         share_mode = ?,
         publish_status = ?,
+        shareability_status = ?,
+        sanitized_from_template_id = ?,
+        locked_reasons_json = ?,
         latest_version_id = ?,
         updated_at = ?
       WHERE id = ? AND owner_user_id = ?
@@ -318,6 +348,11 @@ export class TemplateRepository {
         input.visibility ?? current.visibility,
         input.shareMode ?? current.shareMode,
         input.publishStatus ?? current.publishStatus,
+        input.shareabilityStatus ?? current.shareabilityStatus,
+        input.sanitizedFromTemplateId === undefined
+          ? current.sanitizedFromTemplateId
+          : input.sanitizedFromTemplateId,
+        input.lockedReasonsJson ?? JSON.stringify(current.lockedReasons),
         input.versionId,
         now,
         templateId,
