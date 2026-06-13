@@ -78,5 +78,9 @@ Built image archives:
   $OUTPUT_DIR/proxyparser-frontend-$TAG.tar.gz
 
 Deploy with:
-  $ROOT_DIR/scripts/deploy-images.sh root@59.110.154.29 $TAG
+  $ROOT_DIR/scripts/deploy-images.sh --target <user@host> --tag $TAG
+
+Or copy deploy/deploy.env.example to deploy/deploy.env, set PROXYPARSER_DEPLOY_TARGET,
+and run:
+  $ROOT_DIR/scripts/deploy-images.sh --tag $TAG
 EOF

@@ -8,6 +8,18 @@ backend/config.ts
 backend/config.js
 config.js
 package-lock.json
+test_subscription_url
+
+# Local scratch files. Keep real subscription URLs and ad-hoc test inputs here.
+tmp/*
+!tmp/.gitkeep
+
+# Local deployment configuration. Commit only *.example files.
+.env
+.env.*
+!.env.example
+deploy/deploy.env
+deploy/nginx-proxyparser.conf
 
 # Local deployment artifacts. Build images locally and upload them; do not commit image archives.
 dist/
