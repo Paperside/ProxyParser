@@ -5,9 +5,9 @@ This project is deployed as Docker images built away from the production server.
 ## Architecture
 
 ```text
-https://proxy.ikai.chat
+https://proxyparser.example.com
   |
-  | host Nginx, existing wildcard TLS cert for *.ikai.chat
+  | host Nginx, existing TLS cert for proxyparser.example.com
   |
   +-- /             -> 127.0.0.1:8080  frontend container, nginx static files
   +-- /api/*        -> 127.0.0.1:3001  backend container, Bun/Elysia
@@ -71,17 +71,27 @@ scripts/build-images.sh 2026-06-11-1
 ## Upload and start on the server
 
 ```bash
-scripts/deploy-images.sh root@59.110.154.29 <tag>
+scripts/deploy-images.sh --target deploy@example.com --tag <tag>
+```
+
+The target can also be stored in a local ignored env file:
+
+```bash
+cp deploy/deploy.env.example deploy/deploy.env
+$EDITOR deploy/deploy.env
+scripts/deploy-images.sh --tag <tag>
 ```
 
 The script:
 
 1. uploads image archives to `/opt/proxyparser/images`,
-2. uploads Compose/Nginx deployment files to `/opt/proxyparser/deploy`,
+2. uploads Compose deployment files to `/opt/proxyparser/deploy`,
 3. runs `docker load`,
 4. creates `/opt/proxyparser/deploy/.env` from `.env.example` if missing,
 5. sets `IMAGE_TAG=<tag>`,
 6. runs `docker compose up -d`.
+
+If `deploy/nginx-proxyparser.conf` exists locally, the script also uploads it to the remote deploy directory. That file is ignored by git because it may contain real domains and certificate paths. Keep only `deploy/nginx-proxyparser.conf.example` tracked.
 
 The generated `.env` includes a random `JWT_SECRET` on first deploy. Keep it stable after users exist, because changing it invalidates tokens.
 
@@ -108,10 +118,17 @@ mkdir -p /var/lib/proxyparser
 The repository includes the host Nginx vhost template:
 
 ```text
-deploy/nginx-proxyparser.conf
+deploy/nginx-proxyparser.conf.example
 ```
 
-Install/reload it on the server:
+Create the local ignored config and fill in the real server name and certificate paths:
+
+```bash
+cp deploy/nginx-proxyparser.conf.example deploy/nginx-proxyparser.conf
+$EDITOR deploy/nginx-proxyparser.conf
+```
+
+Install/reload it on the server after upload:
 
 ```bash
 cp /opt/proxyparser/deploy/nginx-proxyparser.conf /etc/nginx/conf.d/proxyparser.conf
@@ -119,24 +136,24 @@ nginx -t
 systemctl reload nginx
 ```
 
-The config expects the existing wildcard certificate:
+The config expects an existing TLS certificate. Replace these example paths before deploying:
 
 ```text
-/etc/nginx/ssl/ikai.chat/fullchain.cer
-/etc/nginx/ssl/ikai.chat/ikai.key
+/etc/nginx/ssl/example.com/fullchain.cer
+/etc/nginx/ssl/example.com/example.key
 ```
 
-The certificate must include `DNS:*.ikai.chat`.
+The certificate must include the configured `server_name`.
 
 ## Health checks
 
 After deploy:
 
 ```bash
-curl -I https://proxy.ikai.chat
-curl https://proxy.ikai.chat/api/health
-ssh root@59.110.154.29 'cd /opt/proxyparser/deploy && docker compose ps'
-ssh root@59.110.154.29 'docker logs --tail=100 proxyparser-backend'
+curl -I https://proxyparser.example.com
+curl https://proxyparser.example.com/api/health
+ssh deploy@example.com 'cd /opt/proxyparser/deploy && docker compose ps'
+ssh deploy@example.com 'docker logs --tail=100 proxyparser-backend'
 ```
 
 Expected API health response includes `status: "ok"` and database health fields.

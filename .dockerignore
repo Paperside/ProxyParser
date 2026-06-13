@@ -7,5 +7,11 @@ backend/data
 .gitignore
 .DS_Store
 dist
+tmp
+test_subscription_url
+deploy/deploy.env
+deploy/nginx-proxyparser.conf
+.env
+.env.*
 *.tar
 *.tar.gz
