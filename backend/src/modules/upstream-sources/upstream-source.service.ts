@@ -20,15 +20,26 @@ interface CreateSourceInput {
   shareMode?: "disabled" | "view" | "fork";
 }
 
+interface CreateUploadedSourceInput {
+  displayName: string;
+  yamlContent: string;
+  uploadedFileName?: string | null;
+  visibility?: "private" | "unlisted" | "public";
+  shareMode?: "disabled" | "view" | "fork";
+}
+
 interface UpdateSourceInput {
   displayName?: string;
   sourceUrl?: string;
+  yamlContent?: string;
+  uploadedFileName?: string | null;
   visibility?: "private" | "unlisted" | "public";
   shareMode?: "disabled" | "view" | "fork";
   isEnabled?: boolean;
 }
 
 const STALE_AFTER_MS = 36 * 60 * 60 * 1000;
+const UPLOADED_SOURCE_URL_PREFIX = "uploaded://";
 
 export class UpstreamSourceError extends Error {
   constructor(
@@ -53,6 +64,30 @@ const assertValidSourceUrl = (sourceUrl: string) => {
   }
 };
 
+const normalizeUploadedFileName = (uploadedFileName: string | null | undefined) => {
+  const normalized = uploadedFileName?.trim();
+  return normalized ? normalized.slice(0, 255) : null;
+};
+
+const parseUploadedYaml = (yamlContent: string) => {
+  const normalized = yamlContent.trim();
+
+  if (!normalized) {
+    throw new UpstreamSourceError("上传的 YAML 内容不能为空。", 400);
+  }
+
+  const parsed = parseProxyWithString(normalized);
+
+  if (!parsed) {
+    throw new UpstreamSourceError("上传的 YAML 不是有效的 Mihomo / Clash 订阅。", 400);
+  }
+
+  return {
+    yamlContent: normalized,
+    parsed
+  };
+};
+
 const toSummary = (
   source: UpstreamSourceRecord,
   parsedConfig: ClashProxyDocument | null
@@ -72,6 +107,8 @@ const toSummary = (
     ownerUserId: source.ownerUserId,
     displayName: source.displayName,
     sourceUrl: source.sourceUrl,
+    sourceKind: source.sourceKind,
+    uploadedFileName: source.uploadedFileName,
     visibility: source.visibility,
     shareMode: source.shareMode,
     isEnabled: source.isEnabled,
@@ -144,19 +181,64 @@ export class UpstreamSourceService {
     return this.getById(ownerUserId, created.id);
   }
 
+  createFromUpload(ownerUserId: string, input: CreateUploadedSourceInput) {
+    if (!input.displayName.trim()) {
+      throw new UpstreamSourceError("订阅源名称不能为空。", 400);
+    }
+
+    const parsedUpload = parseUploadedYaml(input.yamlContent);
+    const sourceId = createId("src");
+    const created = this.repository.create({
+      id: sourceId,
+      ownerUserId,
+      displayName: input.displayName.trim(),
+      sourceUrl: `${UPLOADED_SOURCE_URL_PREFIX}${sourceId}`,
+      sourceKind: "uploaded_yaml",
+      uploadedFileName: normalizeUploadedFileName(input.uploadedFileName),
+      visibility: input.visibility ?? "private",
+      shareMode: input.shareMode ?? "disabled"
+    });
+
+    if (!created) {
+      throw new UpstreamSourceError("创建上游订阅源失败。", 500);
+    }
+
+    this.createUploadedSnapshot(sourceId, parsedUpload.yamlContent, parsedUpload.parsed);
+
+    return this.getById(ownerUserId, sourceId);
+  }
+
   async createAndSync(ownerUserId: string, input: CreateSourceInput) {
     const created = this.create(ownerUserId, input);
     return this.sync(ownerUserId, created.id);
   }
 
   update(ownerUserId: string, sourceId: string, input: UpdateSourceInput) {
+    const current = this.repository.findByIdAndOwner(sourceId, ownerUserId);
+
+    if (!current) {
+      throw new UpstreamSourceError("未找到该上游订阅源。", 404);
+    }
+
     if (input.sourceUrl !== undefined) {
+      if (current.sourceKind === "uploaded_yaml") {
+        throw new UpstreamSourceError("上传文件来源不能改为远端订阅链接。", 400);
+      }
+
       assertValidSourceUrl(input.sourceUrl);
+    }
+
+    if (input.yamlContent !== undefined && current.sourceKind !== "uploaded_yaml") {
+      throw new UpstreamSourceError("远端链接来源不能直接替换为上传文件。", 400);
     }
 
     const updated = this.repository.update(sourceId, ownerUserId, {
       displayName: input.displayName?.trim(),
       sourceUrl: input.sourceUrl?.trim(),
+      uploadedFileName:
+        input.yamlContent === undefined
+          ? input.uploadedFileName
+          : normalizeUploadedFileName(input.uploadedFileName),
       visibility: input.visibility,
       shareMode: input.shareMode,
       isEnabled: input.isEnabled
@@ -164,6 +246,11 @@ export class UpstreamSourceService {
 
     if (!updated) {
       throw new UpstreamSourceError("未找到该上游订阅源。", 404);
+    }
+
+    if (input.yamlContent !== undefined) {
+      const parsedUpload = parseUploadedYaml(input.yamlContent);
+      this.createUploadedSnapshot(sourceId, parsedUpload.yamlContent, parsedUpload.parsed);
     }
 
     return this.getById(ownerUserId, updated.id);
@@ -174,6 +261,10 @@ export class UpstreamSourceService {
 
     if (!source) {
       throw new UpstreamSourceError("未找到该上游订阅源。", 404);
+    }
+
+    if (source.sourceKind === "uploaded_yaml") {
+      return this.getById(ownerUserId, sourceId);
     }
 
     const startedAt = new Date().toISOString();
@@ -308,5 +399,43 @@ export class UpstreamSourceService {
     return {
       success: true
     };
+  }
+
+  private createUploadedSnapshot(
+    sourceId: string,
+    yamlContent: string,
+    parsed: ClashProxyDocument
+  ) {
+    const now = new Date().toISOString();
+    const syncLogId = createId("sync");
+    const snapshotId = createId("snap");
+    const headersJson = JSON.stringify({});
+
+    this.repository.createSyncLog({
+      id: syncLogId,
+      sourceId,
+      status: "success",
+      httpStatus: null,
+      responseHeadersJson: headersJson,
+      startedAt: now,
+      finishedAt: now
+    });
+    this.repository.createSnapshot({
+      id: snapshotId,
+      sourceId,
+      syncLogId,
+      rawContent: yamlContent,
+      parsedJson: JSON.stringify(parsed),
+      responseHeadersJson: headersJson,
+      contentHash: createHash("sha256").update(yamlContent).digest("hex"),
+      createdAt: now
+    });
+    this.repository.updateSyncResult({
+      sourceId,
+      status: "success",
+      syncedAt: now,
+      latestHeadersJson: headersJson,
+      lastSuccessfulSnapshotId: snapshotId
+    });
   }
 }

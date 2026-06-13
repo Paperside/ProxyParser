@@ -50,6 +50,8 @@ const parseCreateBody = (body: unknown) => {
   return {
     displayName: optionalString(body, "displayName") ?? "",
     sourceUrl: optionalString(body, "sourceUrl") ?? "",
+    yamlContent: optionalString(body, "yamlContent"),
+    uploadedFileName: optionalString(body, "uploadedFileName"),
     visibility: optionalString(body, "visibility") as
       | "private"
       | "unlisted"
@@ -71,6 +73,8 @@ const parseUpdateBody = (body: unknown) => {
   return {
     displayName: optionalString(body, "displayName"),
     sourceUrl: optionalString(body, "sourceUrl"),
+    yamlContent: optionalString(body, "yamlContent"),
+    uploadedFileName: optionalString(body, "uploadedFileName"),
     visibility: optionalString(body, "visibility") as
       | "private"
       | "unlisted"
@@ -102,7 +106,13 @@ export const createUpstreamSourceRoutes = (
     })
     .post("/", ({ body, currentUser, set }: { body: unknown; currentUser: UserRecord; set: { status?: number | string } }) => {
       try {
-        const created = upstreamSourceService.create(currentUser.id, parseCreateBody(body));
+        const parsedBody = parseCreateBody(body);
+        const created = parsedBody.yamlContent
+          ? upstreamSourceService.createFromUpload(currentUser.id, {
+              ...parsedBody,
+              yamlContent: parsedBody.yamlContent
+            })
+          : upstreamSourceService.create(currentUser.id, parsedBody);
         set.status = 201;
         return created;
       } catch (error) {

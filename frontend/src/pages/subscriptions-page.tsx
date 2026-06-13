@@ -41,6 +41,7 @@ import type {
   SubscriptionShareGrant,
   SubscriptionTempTokenSummary,
   UpstreamSource,
+  UpstreamSourceKind,
   Visibility
 } from "../lib/types";
 import { useAuth } from "../providers/auth-provider";
@@ -48,7 +49,10 @@ import { useWorkspace } from "../providers/workspace-provider";
 
 type SourceFormState = {
   displayName: string;
+  sourceKind: UpstreamSourceKind;
   sourceUrl: string;
+  yamlContent: string;
+  uploadedFileName: string;
   visibility: Visibility;
   shareMode: ShareMode;
   isEnabled: boolean;
@@ -65,7 +69,10 @@ type GeneratedFormState = {
 
 const emptySourceForm = (): SourceFormState => ({
   displayName: "",
+  sourceKind: "url",
   sourceUrl: "",
+  yamlContent: "",
+  uploadedFileName: "",
   visibility: "private",
   shareMode: "disabled",
   isEnabled: true
@@ -85,6 +92,7 @@ const SourceDialog = ({
   title,
   description,
   form,
+  isEditing,
   isSaving,
   errorMessage,
   onOpenChange,
@@ -95,6 +103,7 @@ const SourceDialog = ({
   title: string;
   description: string;
   form: SourceFormState;
+  isEditing: boolean;
   isSaving: boolean;
   errorMessage: string | null;
   onOpenChange: (nextOpen: boolean) => void;
@@ -126,19 +135,87 @@ const SourceDialog = ({
           </label>
 
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-[#5f5e58]">订阅链接</span>
-            <Input
-              required
-              value={form.sourceUrl}
-              onChange={(event) => {
+            <span className="text-sm font-medium text-[#5f5e58]">来源类型</span>
+            <Select
+              disabled={isEditing}
+              value={form.sourceKind}
+              onValueChange={(value) => {
                 onChange({
                   ...form,
-                  sourceUrl: event.target.value
+                  sourceKind: value as UpstreamSourceKind,
+                  sourceUrl: value === "url" ? form.sourceUrl : "",
+                  yamlContent: value === "uploaded_yaml" ? form.yamlContent : "",
+                  uploadedFileName: value === "uploaded_yaml" ? form.uploadedFileName : ""
                 });
               }}
-              placeholder="https://example.com/subscription.yaml"
-            />
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="url">订阅链接</SelectItem>
+                <SelectItem value="uploaded_yaml">YAML 文件</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
+
+          {form.sourceKind === "url" ? (
+            <label className="block space-y-2">
+              <span className="text-sm font-medium text-[#5f5e58]">订阅链接</span>
+              <Input
+                required
+                value={form.sourceUrl}
+                onChange={(event) => {
+                  onChange({
+                    ...form,
+                    sourceUrl: event.target.value
+                  });
+                }}
+                placeholder="https://example.com/subscription.yaml"
+              />
+            </label>
+          ) : (
+            <div className="space-y-4">
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-[#5f5e58]">YAML 文件</span>
+                <Input
+                  type="file"
+                  accept=".yaml,.yml,text/yaml,text/plain"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+
+                    if (!file) {
+                      return;
+                    }
+
+                    void file.text().then((content) => {
+                      onChange({
+                        ...form,
+                        yamlContent: content,
+                        uploadedFileName: file.name
+                      });
+                    });
+                  }}
+                />
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium text-[#5f5e58]">YAML 内容</span>
+                <Textarea
+                  required={!isEditing}
+                  value={form.yamlContent}
+                  onChange={(event) => {
+                    onChange({
+                      ...form,
+                      yamlContent: event.target.value
+                    });
+                  }}
+                  placeholder="proxies:"
+                  rows={8}
+                />
+              </label>
+            </div>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block space-y-2">
@@ -413,11 +490,52 @@ const buildSourceForm = (source?: UpstreamSource): SourceFormState => {
 
   return {
     displayName: source.displayName,
-    sourceUrl: source.sourceUrl,
+    sourceKind: source.sourceKind,
+    sourceUrl: source.sourceKind === "url" ? source.sourceUrl : "",
+    yamlContent: "",
+    uploadedFileName: source.uploadedFileName ?? "",
     visibility: source.visibility,
     shareMode: source.shareMode,
     isEnabled: source.isEnabled
   };
+};
+
+const buildSourcePayload = (form: SourceFormState, isEditing: boolean) => {
+  const common = {
+    displayName: form.displayName,
+    visibility: form.visibility,
+    shareMode: form.shareMode,
+    isEnabled: form.isEnabled
+  };
+
+  if (form.sourceKind === "url") {
+    return {
+      ...common,
+      sourceUrl: form.sourceUrl
+    };
+  }
+
+  const yamlContent = form.yamlContent.trim();
+
+  if (!isEditing && !yamlContent) {
+    throw new Error("请选择或粘贴 YAML 内容。");
+  }
+
+  return {
+    ...common,
+    ...(yamlContent ? { yamlContent } : {}),
+    ...(form.uploadedFileName.trim()
+      ? { uploadedFileName: form.uploadedFileName.trim() }
+      : {})
+  };
+};
+
+const formatSourceLocator = (source: UpstreamSource) => {
+  if (source.sourceKind === "uploaded_yaml") {
+    return source.uploadedFileName ? `YAML 文件：${source.uploadedFileName}` : "YAML 文件";
+  }
+
+  return source.sourceUrl;
 };
 
 export const SubscriptionsPage = ({
@@ -543,11 +661,13 @@ export const SubscriptionsPage = ({
     setSourceErrorMessage(null);
 
     try {
+      const payload = buildSourcePayload(sourceForm, Boolean(sourceEditingId));
+
       if (sourceEditingId) {
-        await workspace.updateSource(sourceEditingId, sourceForm);
+        await workspace.updateSource(sourceEditingId, payload);
         setFeedbackMessage("外部订阅已更新。");
       } else {
-        await workspace.createSource(sourceForm);
+        await workspace.createSource(payload);
         setFeedbackMessage("新的外部订阅已创建。");
       }
 
@@ -756,12 +876,13 @@ export const SubscriptionsPage = ({
                     <Badge className={syncStatusTone[source.lastSyncStatus]}>
                       {syncStatusText[source.lastSyncStatus]}
                     </Badge>
+                    <Badge>{source.sourceKind === "uploaded_yaml" ? "YAML 文件" : "订阅链接"}</Badge>
                     <Badge>{visibilityText[source.visibility]}</Badge>
                     <Badge>{shareModeText[source.shareMode]}</Badge>
                     {!source.isEnabled ? <Badge>已停用</Badge> : null}
                   </div>
 
-                  <p className="break-all text-sm text-[#73726c]">{source.sourceUrl}</p>
+                  <p className="break-all text-sm text-[#73726c]">{formatSourceLocator(source)}</p>
 
                   <div className="grid gap-3 text-sm text-[#73726c] sm:grid-cols-2 xl:grid-cols-4">
                     <p>代理数量：{source.proxyCount}</p>
@@ -774,20 +895,22 @@ export const SubscriptionsPage = ({
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    disabled={busyActionKey === `source-sync-${source.id}`}
-                    onClick={() =>
-                      void runAction(
-                        `source-sync-${source.id}`,
-                        () => workspace.syncSource(source.id).then(() => undefined),
-                        "外部订阅已同步。"
-                      )
-                    }
-                  >
-                    <RefreshCw className="size-4" />
-                    同步
-                  </Button>
+                  {source.sourceKind === "url" ? (
+                    <Button
+                      variant="secondary"
+                      disabled={busyActionKey === `source-sync-${source.id}`}
+                      onClick={() =>
+                        void runAction(
+                          `source-sync-${source.id}`,
+                          () => workspace.syncSource(source.id).then(() => undefined),
+                          "外部订阅已同步。"
+                        )
+                      }
+                    >
+                      <RefreshCw className="size-4" />
+                      同步
+                    </Button>
+                  ) : null}
                   <Button variant="ghost" onClick={() => openEditSourceDialog(source)}>
                     <PencilLine className="size-4" />
                     编辑
@@ -1022,8 +1145,9 @@ export const SubscriptionsPage = ({
       <SourceDialog
         open={sourceDialogOpen}
         title={sourceEditingId ? "编辑外部订阅" : "新建外部订阅"}
-        description="接入原始 Mihomo 订阅链接，并控制它的共享方式。"
+        description="接入原始 Mihomo 配置，并控制它的共享方式。"
         form={sourceForm}
+        isEditing={Boolean(sourceEditingId)}
         isSaving={sourceSaving}
         errorMessage={sourceErrorMessage}
         onOpenChange={(nextOpen) => {

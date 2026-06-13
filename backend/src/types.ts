@@ -7,6 +7,7 @@ export type Visibility = "private" | "unlisted" | "public";
 export type ShareMode = "disabled" | "view" | "fork";
 export type SyncStatus = "idle" | "syncing" | "success" | "failed" | "stale";
 export type RenderStatus = "pending" | "rendering" | "success" | "failed" | "degraded";
+export type UpstreamSourceKind = "url" | "uploaded_yaml";
 export type ManagedSubscriptionMode = "template" | "draft";
 export type TemplateSectionMode = "patch" | "full_override";
 export type CustomProxyPolicy = "append" | "replace_same_name" | "fail_on_conflict";
@@ -88,6 +89,8 @@ export interface UpstreamSourceSummary {
   ownerUserId: string;
   displayName: string;
   sourceUrl: string;
+  sourceKind: UpstreamSourceKind;
+  uploadedFileName: string | null;
   visibility: Visibility;
   shareMode: ShareMode;
   isEnabled: boolean;

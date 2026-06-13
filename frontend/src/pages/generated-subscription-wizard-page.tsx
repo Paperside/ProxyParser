@@ -833,6 +833,14 @@ export const GeneratedSubscriptionWizardPage = () => {
     }));
   }, [workspace.sources]);
 
+  const sourceLocator = sourceDetail
+    ? sourceDetail.sourceKind === "uploaded_yaml"
+      ? sourceDetail.uploadedFileName
+        ? `YAML 文件：${sourceDetail.uploadedFileName}`
+        : "YAML 文件"
+      : sourceDetail.sourceUrl
+    : "选择后这里会显示当前快照概况";
+
   const currentSourceProxies = (sourceDetail?.parsedConfig?.proxies ?? []) as Array<
     Record<string, unknown> & { name: string }
   >;
@@ -1651,10 +1659,10 @@ export const GeneratedSubscriptionWizardPage = () => {
                     {sourceDetail?.displayName ?? "尚未选择外部订阅"}
                   </p>
                   <p className="mt-1 text-sm text-[#73726c]">
-                    {sourceDetail?.sourceUrl ?? "选择后这里会显示当前快照概况"}
+                    {sourceLocator}
                   </p>
                 </div>
-                {sourceDetail ? (
+                {sourceDetail?.sourceKind === "url" ? (
                   <Button
                     variant="secondary"
                     disabled={busyAction === "sync-source"}

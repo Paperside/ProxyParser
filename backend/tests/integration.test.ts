@@ -159,6 +159,72 @@ test("认证主链路可用，并且注销后 refresh token 会失效", async ()
   expect(() => authService.refresh(refreshed.tokens.refreshToken)).toThrow(AuthError);
 });
 
+test("上传 YAML 可以创建不依赖链接的外部订阅快照", async () => {
+  const { db, authService, upstreamSourceRepository, upstreamSourceService } = createTestContext();
+  const registered = await authService.register({
+    email: "uploaded-source@example.com",
+    username: "uploadedsource",
+    password: "password123"
+  });
+  const yamlText = yaml.dump(createSourceDocument());
+
+  const source = upstreamSourceService.createFromUpload(registered.user.id, {
+    displayName: "上传订阅",
+    yamlContent: yamlText,
+    uploadedFileName: "flower.yaml"
+  });
+  const snapshot = upstreamSourceRepository.findSnapshotById(source.latestSnapshotId!);
+  const syncLog = db
+    .query<{ status: string; httpStatus: number | null }>(`
+      SELECT status, http_status AS httpStatus
+      FROM upstream_source_sync_logs
+      WHERE source_id = ?
+      ORDER BY started_at DESC
+      LIMIT 1
+    `)
+    .get(source.id);
+
+  expect(source.sourceKind).toBe("uploaded_yaml");
+  expect(source.sourceUrl).toBe("");
+  expect(source.uploadedFileName).toBe("flower.yaml");
+  expect(source.lastSyncStatus).toBe("success");
+  expect(source.proxyCount).toBe(1);
+  expect(source.groupCount).toBe(1);
+  expect(source.ruleCount).toBe(1);
+  expect(snapshot?.rawContent).toContain("HK-01");
+  expect(syncLog?.status).toBe("success");
+  expect(syncLog?.httpStatus).toBeNull();
+});
+
+test("上传 YAML 来源可以通过编辑替换最新快照", async () => {
+  const { authService, upstreamSourceRepository, upstreamSourceService } = createTestContext();
+  const registered = await authService.register({
+    email: "replace-uploaded-source@example.com",
+    username: "replaceuploadedsource",
+    password: "password123"
+  });
+  const source = upstreamSourceService.createFromUpload(registered.user.id, {
+    displayName: "可替换上传订阅",
+    yamlContent: yaml.dump(createSourceDocument()),
+    uploadedFileName: "old.yaml"
+  });
+  const nextDocument = createSourceDocument();
+  nextDocument.proxies[0]!.name = "JP-01";
+  nextDocument["proxy-groups"][0]!.proxies = ["JP-01", "DIRECT"];
+
+  const updated = upstreamSourceService.update(registered.user.id, source.id, {
+    yamlContent: yaml.dump(nextDocument),
+    uploadedFileName: "new.yaml"
+  });
+  const snapshot = upstreamSourceRepository.findSnapshotById(updated.latestSnapshotId!);
+
+  expect(updated.sourceKind).toBe("uploaded_yaml");
+  expect(updated.uploadedFileName).toBe("new.yaml");
+  expect(updated.proxyCount).toBe(1);
+  expect(snapshot?.rawContent).toContain("JP-01");
+  expect(snapshot?.rawContent).not.toContain("HK-01");
+});
+
 test("生成订阅草稿可以预览、提炼模板并发布", async () => {
   const {
     authService,

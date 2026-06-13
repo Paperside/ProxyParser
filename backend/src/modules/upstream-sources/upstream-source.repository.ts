@@ -4,6 +4,7 @@ import type {
   ShareMode,
   SubscriptionUsageInfo,
   SyncStatus,
+  UpstreamSourceKind,
   UpstreamSourceSummary,
   Visibility
 } from "../../types";
@@ -13,6 +14,8 @@ interface SourceRow {
   ownerUserId: string;
   displayName: string;
   sourceUrl: string;
+  sourceKind: UpstreamSourceKind;
+  uploadedFileName: string | null;
   visibility: Visibility;
   shareMode: ShareMode;
   isEnabled: number;
@@ -56,6 +59,8 @@ export interface UpstreamSourceRecord {
   ownerUserId: string;
   displayName: string;
   sourceUrl: string;
+  sourceKind: UpstreamSourceKind;
+  uploadedFileName: string | null;
   visibility: Visibility;
   shareMode: ShareMode;
   isEnabled: boolean;
@@ -88,6 +93,8 @@ export interface CreateUpstreamSourceInput {
   ownerUserId: string;
   displayName: string;
   sourceUrl: string;
+  sourceKind?: UpstreamSourceKind;
+  uploadedFileName?: string | null;
   visibility: Visibility;
   shareMode: ShareMode;
 }
@@ -95,6 +102,8 @@ export interface CreateUpstreamSourceInput {
 export interface UpdateUpstreamSourceInput {
   displayName?: string;
   sourceUrl?: string;
+  sourceKind?: UpstreamSourceKind;
+  uploadedFileName?: string | null;
   visibility?: Visibility;
   shareMode?: ShareMode;
   isEnabled?: boolean;
@@ -140,6 +149,8 @@ const SOURCE_SELECT = `
     owner_user_id AS ownerUserId,
     display_name AS displayName,
     source_url AS sourceUrl,
+    source_kind AS sourceKind,
+    uploaded_file_name AS uploadedFileName,
     visibility,
     share_mode AS shareMode,
     is_enabled AS isEnabled,
@@ -179,7 +190,9 @@ const mapSource = (row: SourceRow | null): UpstreamSourceRecord | null => {
     id: row.id,
     ownerUserId: row.ownerUserId,
     displayName: row.displayName,
-    sourceUrl: row.sourceUrl,
+    sourceUrl: row.sourceKind === "uploaded_yaml" ? "" : row.sourceUrl,
+    sourceKind: row.sourceKind,
+    uploadedFileName: row.uploadedFileName,
     visibility: row.visibility,
     shareMode: row.shareMode,
     isEnabled: row.isEnabled === 1,
@@ -253,6 +266,8 @@ export class UpstreamSourceRepository {
         owner_user_id,
         display_name,
         source_url,
+        source_kind,
+        uploaded_file_name,
         visibility,
         share_mode,
         is_enabled,
@@ -260,7 +275,7 @@ export class UpstreamSourceRepository {
         created_at,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, 1, 'idle', ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'idle', ?, ?)
     `);
 
     query.run(
@@ -268,6 +283,8 @@ export class UpstreamSourceRepository {
       input.ownerUserId,
       input.displayName,
       input.sourceUrl,
+      input.sourceKind ?? "url",
+      input.uploadedFileName ?? null,
       input.visibility,
       input.shareMode,
       now,
@@ -289,6 +306,8 @@ export class UpstreamSourceRepository {
       SET
         display_name = ?,
         source_url = ?,
+        source_kind = ?,
+        uploaded_file_name = ?,
         visibility = ?,
         share_mode = ?,
         is_enabled = ?,
@@ -299,6 +318,8 @@ export class UpstreamSourceRepository {
     query.run(
       input.displayName ?? current.displayName,
       input.sourceUrl ?? current.sourceUrl,
+      input.sourceKind ?? current.sourceKind,
+      input.uploadedFileName === undefined ? current.uploadedFileName : input.uploadedFileName,
       input.visibility ?? current.visibility,
       input.shareMode ?? current.shareMode,
       input.isEnabled === undefined ? (current.isEnabled ? 1 : 0) : input.isEnabled ? 1 : 0,
