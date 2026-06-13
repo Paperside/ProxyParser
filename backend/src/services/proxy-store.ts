@@ -6,6 +6,7 @@ import type {
 } from "../types";
 import { getPatchedProxy } from "../lib/proxy-patcher";
 import { getFullRules } from "../lib/proxy-rules";
+import { findSubscriptionUserInfoHeader } from "../lib/subscription-userinfo";
 
 export class ProxyStore {
   private readonly urlMap = new Map<string, string>();
@@ -94,7 +95,7 @@ export class ProxyStore {
       proxyCount: data?.proxies.length ?? 0,
       groupCount: data?.["proxy-groups"].length ?? 0,
       ruleCount: data?.rules?.length ?? 0,
-      subscriptionUserInfo: record.headers?.["subscription-userinfo"] ?? null,
+      subscriptionUserInfo: findSubscriptionUserInfoHeader(record.headers),
       error: record.errMsg ?? null
     };
   }

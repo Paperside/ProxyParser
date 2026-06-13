@@ -8,3 +8,8 @@ backend/config.ts
 backend/config.js
 config.js
 package-lock.json
+
+# Local deployment artifacts. Build images locally and upload them; do not commit image archives.
+dist/
+*.tar
+*.tar.gz

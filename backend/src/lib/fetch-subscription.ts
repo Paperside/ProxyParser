@@ -1,11 +1,17 @@
-import type { ProxyFetchResult } from "../types";
+import yaml from "js-yaml";
+
+import type { ClashProxyDocument, ProxyFetchResult } from "../types";
 
 interface FetchSubscriptionOptions {
   etag?: string | null;
   lastModified?: string | null;
   timeoutMs?: number;
   retries?: number;
+  userAgent?: string;
 }
+
+const DEFAULT_SUBSCRIPTION_USER_AGENT = "clash-verge/v2.5.2";
+const DEFAULT_SUBSCRIPTION_ACCEPT = "application/x-yaml, text/yaml, application/yaml, text/plain, */*";
 
 const buildAbortSignal = (timeoutMs: number) => {
   const controller = new AbortController();
@@ -17,6 +23,37 @@ const buildAbortSignal = (timeoutMs: number) => {
   };
 };
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const looksLikeClashDocument = (text: string) => {
+  try {
+    const parsed = yaml.load(text) as Partial<ClashProxyDocument> | null;
+
+    return (
+      isObject(parsed) &&
+      (Array.isArray(parsed.proxies) || Array.isArray(parsed["proxy-providers"]))
+    );
+  } catch {
+    return false;
+  }
+};
+
+const looksLikeHtmlDocument = (text: string) => /^\s*<!doctype html\b|^\s*<html\b/i.test(text);
+
+const looksLikeRedirectToBaidu = (response: Response, text: string) => {
+  const location = response.headers.get("location") ?? "";
+  return /baidu\.com/i.test(location) || /<title>\s*百度一下/i.test(text);
+};
+
+const looksLikeInvalidSubscriptionResponse = (response: Response, text: string) => {
+  if (!looksLikeHtmlDocument(text)) {
+    return false;
+  }
+
+  return response.status >= 300 || looksLikeRedirectToBaidu(response, text);
+};
+
 const shouldRetry = (error: unknown, attempt: number, retries: number) => {
   if (attempt >= retries) {
     return false;
@@ -26,7 +63,10 @@ const shouldRetry = (error: unknown, attempt: number, retries: number) => {
     return false;
   }
 
-  return error.name === "AbortError" || /network|fetch|timeout|5\d\d/i.test(error.message);
+  return (
+    error.name === "AbortError" ||
+    /network|fetch|timeout|5\d\d|html redirect/i.test(error.message)
+  );
 };
 
 export const fetchSubscriptionByUrl = async (
@@ -34,8 +74,11 @@ export const fetchSubscriptionByUrl = async (
   options: FetchSubscriptionOptions = {}
 ): Promise<ProxyFetchResult & { text?: string; notModified?: boolean; httpStatus?: number }> => {
   const retries = options.retries ?? 2;
-  const timeoutMs = options.timeoutMs ?? 12_000;
+  const timeoutMs = options.timeoutMs ?? 20_000;
   let lastError: unknown = null;
+  let lastResponse:
+    | { headers: Record<string, string>; text: string; httpStatus: number }
+    | null = null;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     const { signal, cleanup } = buildAbortSignal(timeoutMs);
@@ -43,23 +86,37 @@ export const fetchSubscriptionByUrl = async (
     try {
       const response = await fetch(url, {
         signal,
+        redirect: "manual",
         headers: {
-          "User-Agent": "clash-verge/v1.6.6",
-          ...(options.etag ? { "If-None-Match": options.etag } : {}),
-          ...(options.lastModified ? { "If-Modified-Since": options.lastModified } : {})
+          "user-agent": options.userAgent ?? DEFAULT_SUBSCRIPTION_USER_AGENT,
+          accept: DEFAULT_SUBSCRIPTION_ACCEPT,
+          ...(options.etag ? { "if-none-match": options.etag } : {}),
+          ...(options.lastModified ? { "if-modified-since": options.lastModified } : {})
         }
       });
+      const headers = Object.fromEntries(response.headers.entries());
 
       if (response.status === 304) {
         return {
           status: "success",
           data: null,
-          headers: Object.fromEntries(response.headers.entries()),
+          headers,
           lastModified: new Date(),
           errMsg: undefined,
           notModified: true,
           httpStatus: 304
         };
+      }
+
+      const text = await response.text();
+      lastResponse = {
+        headers,
+        text,
+        httpStatus: response.status
+      };
+
+      if (looksLikeInvalidSubscriptionResponse(response, text)) {
+        throw new Error("Subscription endpoint returned an HTML redirect page instead of YAML");
       }
 
       if (!response.ok) {
@@ -69,10 +126,10 @@ export const fetchSubscriptionByUrl = async (
       return {
         status: "success",
         data: null,
-        headers: Object.fromEntries(response.headers.entries()),
+        headers,
         lastModified: new Date(),
         errMsg: undefined,
-        text: await response.text(),
+        text,
         httpStatus: response.status
       };
     } catch (error) {
@@ -84,6 +141,18 @@ export const fetchSubscriptionByUrl = async (
     } finally {
       cleanup();
     }
+  }
+
+  if (lastResponse && looksLikeClashDocument(lastResponse.text)) {
+    return {
+      status: "success",
+      data: null,
+      headers: lastResponse.headers,
+      lastModified: new Date(),
+      errMsg: undefined,
+      text: lastResponse.text,
+      httpStatus: lastResponse.httpStatus
+    };
   }
 
   return {
