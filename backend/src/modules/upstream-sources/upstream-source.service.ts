@@ -4,7 +4,10 @@ import type { ClashProxyDocument, UpstreamSourceDetail, UpstreamSourceSummary } 
 import { createId } from "../../lib/ids";
 import { fetchSubscriptionByUrl } from "../../lib/fetch-subscription";
 import { parseProxyWithString } from "../../lib/proxy-content";
-import { parseSubscriptionUserInfo } from "../../lib/subscription-userinfo";
+import {
+  findSubscriptionUserInfoHeader,
+  parseSubscriptionUserInfo
+} from "../../lib/subscription-userinfo";
 import {
   UpstreamSourceRepository,
   type UpstreamSourceRecord
@@ -187,7 +190,7 @@ export class UpstreamSourceService {
     const response = await fetchSubscriptionByUrl(source.sourceUrl, {
       etag: latestSnapshot?.etag ?? null,
       lastModified: latestSnapshot?.lastModifiedHeader ?? null,
-      timeoutMs: 12_000,
+      timeoutMs: 20_000,
       retries: 2
     });
     const headersJson = response.headers ? JSON.stringify(response.headers) : null;
@@ -234,7 +237,7 @@ export class UpstreamSourceService {
     }
 
     const parsed = parseProxyWithString(response.text);
-    const usage = parseSubscriptionUserInfo(response.headers?.["subscription-userinfo"]);
+    const usage = parseSubscriptionUserInfo(findSubscriptionUserInfoHeader(response.headers));
     const usageJson = usage ? JSON.stringify(usage) : null;
     const snapshotId = createId("snap");
 

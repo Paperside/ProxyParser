@@ -131,6 +131,7 @@ const main = async () => {
       database: getDatabaseHealth()
     }))
     .listen({
+      hostname: runtimeConfig.host,
       port: runtimeConfig.port,
       reusePort: false
     });
@@ -145,6 +146,7 @@ const main = async () => {
   logger.info({
     event: "backend.startup",
     port: app.server?.port ?? runtimeConfig.port,
+    host: runtimeConfig.host,
     databasePath: dbContext.config.databasePath,
     appliedMigrationCount: dbContext.appliedMigrations.length,
     builtinRulesetSeedCount: dbContext.builtinRulesetSeedCount,

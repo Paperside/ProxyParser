@@ -3,6 +3,7 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export interface RuntimeConfig {
+  host: string;
   port: number;
   databasePath: string;
   migrationsDir: string;
@@ -47,6 +48,7 @@ const resolveDatabasePath = () => {
 
 export const getRuntimeConfig = (): RuntimeConfig => {
   return {
+    host: process.env.HOST ?? "0.0.0.0",
     port: readNumberEnv("PORT", 3001),
     databasePath: resolveDatabasePath(),
     migrationsDir: resolve(backendRootDir, "migrations"),
