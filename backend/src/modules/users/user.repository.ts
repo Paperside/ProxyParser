@@ -39,8 +39,6 @@ export interface CreateUserInput {
   displayName: string;
   locale: string;
   passwordHash: string;
-  subscriptionSecretId: string;
-  subscriptionSecretHash: string;
 }
 
 export interface UpdateUserProfileInput {
@@ -160,18 +158,6 @@ export class UserRepository {
       )
       VALUES (?, ?, ?)
     `);
-    const insertSubscriptionSecret = this.db.query(`
-      INSERT INTO user_subscription_secrets (
-        id,
-        user_id,
-        secret_hash,
-        rotated_at,
-        created_at,
-        updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-
     this.db.exec("BEGIN");
 
     try {
@@ -185,14 +171,6 @@ export class UserRepository {
         now
       );
       insertPassword.run(input.id, input.passwordHash, now);
-      insertSubscriptionSecret.run(
-        input.subscriptionSecretId,
-        input.id,
-        input.subscriptionSecretHash,
-        now,
-        now,
-        now
-      );
       this.db.exec("COMMIT");
     } catch (error) {
       this.db.exec("ROLLBACK");

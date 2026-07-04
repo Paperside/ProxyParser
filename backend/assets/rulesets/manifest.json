@@ -1,0 +1,95 @@
+{
+  "comment": "内置规则源清单。file 为仓库内离线快照（离线内置原则，技术方案 §8）；scripts/fetch-rulesets.ts 负责更新。",
+  "entries": [
+    {
+      "slug": "geosite-cn",
+      "name": "国内域名（geosite:cn）",
+      "description": "中国大陆常用域名集合，建议指向 DIRECT。",
+      "behavior": "domain",
+      "recommendedTarget": "DIRECT",
+      "sourceUrl": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cn.yaml",
+      "file": "geosite-cn.yaml"
+    },
+    {
+      "slug": "cn-cidr",
+      "name": "国内 IP 段（CN CIDR）",
+      "description": "中国大陆 IP CIDR 列表，建议指向 DIRECT。",
+      "behavior": "ipcidr",
+      "recommendedTarget": "DIRECT",
+      "sourceUrl": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/cncidr.txt",
+      "file": "cn-cidr.yaml"
+    },
+    {
+      "slug": "private",
+      "name": "内网与保留地址",
+      "description": "局域网、回环等私有域名，建议指向 DIRECT。",
+      "behavior": "domain",
+      "recommendedTarget": "DIRECT",
+      "sourceUrl": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/private.txt",
+      "file": "private.yaml"
+    },
+    {
+      "slug": "reject-ads",
+      "name": "广告与追踪拦截",
+      "description": "广告、追踪、恶意域名集合，建议指向 REJECT。",
+      "behavior": "domain",
+      "recommendedTarget": "REJECT",
+      "sourceUrl": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/reject.txt",
+      "file": "reject-ads.yaml"
+    },
+    {
+      "slug": "gfw-proxy",
+      "name": "代理域名（GFW 列表）",
+      "description": "常见被墙域名集合，建议指向 Proxies。",
+      "behavior": "domain",
+      "recommendedTarget": "Proxies",
+      "sourceUrl": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/proxy.txt",
+      "file": "gfw-proxy.yaml"
+    },
+    {
+      "slug": "geosite-openai",
+      "name": "OpenAI",
+      "description": "OpenAI / ChatGPT 相关域名，建议指向 AI 组。",
+      "behavior": "domain",
+      "recommendedTarget": "AI",
+      "sourceUrl": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/openai.yaml",
+      "file": "geosite-openai.yaml"
+    },
+    {
+      "slug": "geosite-anthropic",
+      "name": "Anthropic",
+      "description": "Anthropic / Claude 相关域名，建议指向 AI 组。",
+      "behavior": "domain",
+      "recommendedTarget": "AI",
+      "sourceUrl": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/anthropic.yaml",
+      "file": "geosite-anthropic.yaml"
+    },
+    {
+      "slug": "geosite-netflix",
+      "name": "Netflix",
+      "description": "Netflix 相关域名，建议指向流媒体组。",
+      "behavior": "domain",
+      "recommendedTarget": "Streaming",
+      "sourceUrl": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/netflix.yaml",
+      "file": "geosite-netflix.yaml"
+    },
+    {
+      "slug": "geosite-youtube",
+      "name": "YouTube",
+      "description": "YouTube 相关域名，建议指向流媒体组。",
+      "behavior": "domain",
+      "recommendedTarget": "Streaming",
+      "sourceUrl": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/youtube.yaml",
+      "file": "geosite-youtube.yaml"
+    },
+    {
+      "slug": "geosite-telegram",
+      "name": "Telegram",
+      "description": "Telegram 相关域名，建议指向 Proxies。",
+      "behavior": "domain",
+      "recommendedTarget": "Proxies",
+      "sourceUrl": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/telegram.yaml",
+      "file": "geosite-telegram.yaml"
+    }
+  ]
+}

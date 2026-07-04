@@ -1,23 +1,7 @@
-export interface SubscriptionConfig {
-  name: string;
-  url: string;
-}
+// 跨模块共享的基础类型（Next 版本精简后）。
+// BuildConfig 相关类型在 lib/build-config/types.ts。
 
-export type Visibility = "private" | "unlisted" | "public";
-export type ShareMode = "disabled" | "view" | "fork";
 export type SyncStatus = "idle" | "syncing" | "success" | "failed" | "stale";
-export type RenderStatus = "pending" | "rendering" | "success" | "failed" | "degraded";
-export type UpstreamSourceKind = "url" | "uploaded_yaml";
-export type ManagedSubscriptionMode = "template" | "draft";
-export type TemplateSectionMode = "patch" | "full_override";
-export type CustomProxyPolicy = "append" | "replace_same_name" | "fail_on_conflict";
-export type TemplateShareabilityStatus =
-  | "unknown"
-  | "shareable"
-  | "source_locked"
-  | "sanitized";
-export type SubscriptionShareScope = "user" | "public" | "unlisted";
-export type SubscriptionShareGrantMode = "view" | "fork" | "subscribe";
 
 export interface ProxyNode {
   name: string;
@@ -29,21 +13,6 @@ export interface ProxyGroupEntry {
   type: string;
   proxies: string[];
   [key: string]: unknown;
-}
-
-export interface AutoGroupOptions {
-  enabled: boolean;
-  includeAutoGroup: boolean;
-  unclassifiedPolicy: "others" | "ignore";
-}
-
-export interface RuleProviderAttachment {
-  type: "attach-rule-provider";
-  providerSlug: string;
-  targetPolicy: string;
-  insert: {
-    position: "top" | "bottom" | "before-match";
-  };
 }
 
 export interface ClashProxyDocument {
@@ -61,149 +30,9 @@ export interface ProxyFetchResult {
   errMsg?: string;
 }
 
-export interface ProxyStatusSummary {
-  name: string;
-  status: "success" | "failed";
-  lastModified: string;
-  proxyCount: number;
-  groupCount: number;
-  ruleCount: number;
-  subscriptionUserInfo: string | null;
-  error: string | null;
-}
-
-export interface ProxyStatusMeta extends ProxyStatusSummary {
-  headers: Record<string, string>;
-  groups: string[];
-}
-
 export interface SubscriptionUsageInfo {
   upload: number | null;
   download: number | null;
   total: number | null;
   expire: number | null;
-}
-
-export interface UpstreamSourceSummary {
-  id: string;
-  ownerUserId: string;
-  displayName: string;
-  sourceUrl: string;
-  sourceKind: UpstreamSourceKind;
-  uploadedFileName: string | null;
-  visibility: Visibility;
-  shareMode: ShareMode;
-  isEnabled: boolean;
-  lastSyncStatus: SyncStatus;
-  lastSyncAt: string | null;
-  lastSuccessfulSyncAt: string | null;
-  lastFailedSyncAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  headers: Record<string, string>;
-  usage: SubscriptionUsageInfo | null;
-  proxyCount: number;
-  groupCount: number;
-  ruleCount: number;
-}
-
-export interface UpstreamSourceDetail extends UpstreamSourceSummary {
-  latestSnapshotId: string | null;
-  parsedConfig: ClashProxyDocument | null;
-}
-
-export interface TemplatePayload {
-  rulesMode: TemplateSectionMode;
-  groupsMode: TemplateSectionMode;
-  configMode: TemplateSectionMode;
-  customProxiesPolicy: CustomProxyPolicy;
-  ruleProviderRefs: string[];
-  ruleProviderAttachments?: RuleProviderAttachment[];
-  autoGroup?: AutoGroupOptions | null;
-  rules: string[];
-  proxyGroups: ProxyGroupEntry[];
-  configPatch: Record<string, unknown>;
-  customProxies: ProxyNode[];
-}
-
-export interface TemplateSummary {
-  id: string;
-  ownerUserId: string;
-  ownerDisplayName: string | null;
-  isOfficial: boolean;
-  displayName: string;
-  slug: string | null;
-  description: string | null;
-  sourceTemplateId: string | null;
-  sourceLabel: string | null;
-  sourceUrl: string | null;
-  shareabilityStatus: TemplateShareabilityStatus;
-  sanitizedFromTemplateId: string | null;
-  lockedReasons: string[];
-  visibility: Visibility;
-  shareMode: ShareMode;
-  publishStatus: "draft" | "published" | "archived";
-  latestVersionId: string | null;
-  latestVersion: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface TemplateDetail extends TemplateSummary {
-  payload: TemplatePayload;
-  exportedYaml: string | null;
-  versionNote: string | null;
-}
-
-export interface ManagedSubscriptionSummary {
-  id: string;
-  ownerUserId: string;
-  upstreamSourceId: string;
-  templateId: string;
-  draftId: string | null;
-  renderMode: ManagedSubscriptionMode;
-  displayName: string;
-  visibility: Visibility;
-  shareMode: ShareMode;
-  isEnabled: boolean;
-  currentSnapshotId: string | null;
-  lastSuccessfulSnapshotId: string | null;
-  lastSyncStatus: SyncStatus;
-  lastRenderStatus: RenderStatus;
-  lastSyncAt: string | null;
-  lastRenderAt: string | null;
-  lastErrorMessage: string | null;
-  latestHeaders: Record<string, string>;
-  latestUsage: SubscriptionUsageInfo | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ManagedSubscriptionDetail extends ManagedSubscriptionSummary {
-  renderedYaml: string | null;
-  templateName: string | null;
-  sourceName: string | null;
-}
-
-export interface SubscriptionTempTokenSummary {
-  id: string;
-  managedSubscriptionId: string | null;
-  label: string | null;
-  expiresAt: string;
-  revokedAt: string | null;
-  lastUsedAt: string | null;
-  createdAt: string;
-}
-
-export interface SubscriptionShareGrant {
-  id: string;
-  managedSubscriptionId: string;
-  ownerUserId: string;
-  targetUserId: string | null;
-  targetEmail: string | null;
-  scope: SubscriptionShareScope;
-  mode: SubscriptionShareGrantMode;
-  createdAt: string;
-  updatedAt: string;
-  revokedAt: string | null;
 }

@@ -111,16 +111,13 @@ export class AuthService {
     }
 
     const passwordHash = await hashPassword(input.password);
-    const subscriptionSecret = createOpaqueToken(48);
     const createdUser = this.users.create({
       id: createId("usr"),
       email,
       username,
       displayName: input.displayName?.trim() || username,
       locale: input.locale?.trim() || this.config.defaultLocale,
-      passwordHash,
-      subscriptionSecretId: createId("subs"),
-      subscriptionSecretHash: hashOpaqueToken(subscriptionSecret)
+      passwordHash
     });
 
     if (!createdUser) {
@@ -131,8 +128,7 @@ export class AuthService {
 
     return {
       user: createdUser,
-      tokens,
-      subscriptionSecret
+      tokens
     };
   }
 

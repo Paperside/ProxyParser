@@ -1,441 +1,393 @@
 import { createHash } from "node:crypto";
 
-import type { ClashProxyDocument, UpstreamSourceDetail, UpstreamSourceSummary } from "../../types";
 import { createId } from "../../lib/ids";
 import { fetchSubscriptionByUrl } from "../../lib/fetch-subscription";
+import { identifyNodes } from "../../lib/build-config/node-identity";
+import { logger } from "../../lib/logging/logger";
 import { parseProxyWithString } from "../../lib/proxy-content";
 import {
   findSubscriptionUserInfoHeader,
   parseSubscriptionUserInfo
 } from "../../lib/subscription-userinfo";
-import {
-  UpstreamSourceRepository,
-  type UpstreamSourceRecord
+import type { ClashProxyDocument } from "../../types";
+import type { EventRepository } from "../events/event.repository";
+import type {
+  SourceRecord,
+  SourceSnapshotRecord,
+  SyncReportRecord,
+  UpstreamSourceRepository
 } from "./upstream-source.repository";
-
-interface CreateSourceInput {
-  displayName: string;
-  sourceUrl: string;
-  visibility?: "private" | "unlisted" | "public";
-  shareMode?: "disabled" | "view" | "fork";
-}
-
-interface CreateUploadedSourceInput {
-  displayName: string;
-  yamlContent: string;
-  uploadedFileName?: string | null;
-  visibility?: "private" | "unlisted" | "public";
-  shareMode?: "disabled" | "view" | "fork";
-}
-
-interface UpdateSourceInput {
-  displayName?: string;
-  sourceUrl?: string;
-  yamlContent?: string;
-  uploadedFileName?: string | null;
-  visibility?: "private" | "unlisted" | "public";
-  shareMode?: "disabled" | "view" | "fork";
-  isEnabled?: boolean;
-}
-
-const STALE_AFTER_MS = 36 * 60 * 60 * 1000;
-const UPLOADED_SOURCE_URL_PREFIX = "uploaded://";
 
 export class UpstreamSourceError extends Error {
   constructor(
     message: string,
-    readonly status: number
+    readonly status = 400
   ) {
     super(message);
   }
 }
 
-const parseDocument = (parsedJson: string | null): ClashProxyDocument | null => {
-  if (!parsedJson) {
-    return null;
+export type SourceSyncedHook = (
+  source: SourceRecord,
+  report: SyncReportRecord | null
+) => Promise<void> | void;
+
+const sha256Hex = (input: string) => createHash("sha256").update(input).digest("hex");
+
+const isValidHttpUrl = (value: string) => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
   }
-
-  return JSON.parse(parsedJson) as ClashProxyDocument;
 };
 
-const assertValidSourceUrl = (sourceUrl: string) => {
-  if (!/^https?:\/\//i.test(sourceUrl.trim())) {
-    throw new UpstreamSourceError("订阅链接必须是 http 或 https 地址。", 400);
-  }
+// 下一次同步时间：interval ± 10% 抖动，避免整点齐发（技术方案 §9）
+const computeNextSyncAt = (intervalMinutes: number) => {
+  const jitter = 1 + (Math.random() * 0.2 - 0.1);
+  return new Date(Date.now() + intervalMinutes * 60_000 * jitter).toISOString();
 };
 
-const normalizeUploadedFileName = (uploadedFileName: string | null | undefined) => {
-  const normalized = uploadedFileName?.trim();
-  return normalized ? normalized.slice(0, 255) : null;
-};
-
-const parseUploadedYaml = (yamlContent: string) => {
-  const normalized = yamlContent.trim();
-
-  if (!normalized) {
-    throw new UpstreamSourceError("上传的 YAML 内容不能为空。", 400);
-  }
-
-  const parsed = parseProxyWithString(normalized);
-
-  if (!parsed) {
-    throw new UpstreamSourceError("上传的 YAML 不是有效的 Mihomo / Clash 订阅。", 400);
-  }
-
-  return {
-    yamlContent: normalized,
-    parsed
-  };
-};
-
-const toSummary = (
-  source: UpstreamSourceRecord,
-  parsedConfig: ClashProxyDocument | null
-): UpstreamSourceSummary => {
-  const lastSuccessfulAt = source.lastSuccessfulSyncAt
-    ? new Date(source.lastSuccessfulSyncAt).getTime()
-    : null;
-  const derivedStatus =
-    source.lastSyncStatus !== "syncing" &&
-    lastSuccessfulAt !== null &&
-    Date.now() - lastSuccessfulAt >= STALE_AFTER_MS
-      ? "stale"
-      : source.lastSyncStatus;
-
-  return {
-    id: source.id,
-    ownerUserId: source.ownerUserId,
-    displayName: source.displayName,
-    sourceUrl: source.sourceUrl,
-    sourceKind: source.sourceKind,
-    uploadedFileName: source.uploadedFileName,
-    visibility: source.visibility,
-    shareMode: source.shareMode,
-    isEnabled: source.isEnabled,
-    lastSyncStatus: derivedStatus,
-    lastSyncAt: source.lastSyncAt,
-    lastSuccessfulSyncAt: source.lastSuccessfulSyncAt,
-    lastFailedSyncAt: source.lastFailedSyncAt,
-    createdAt: source.createdAt,
-    updatedAt: source.updatedAt,
-    headers: source.latestHeaders,
-    usage: source.latestUsage,
-    proxyCount: parsedConfig?.proxies.length ?? 0,
-    groupCount: parsedConfig?.["proxy-groups"].length ?? 0,
-    ruleCount: parsedConfig?.rules?.length ?? 0
-  };
-};
+export interface SourceWithStats extends SourceRecord {
+  proxyCount: number;
+  groupCount: number;
+  ruleCount: number;
+}
 
 export class UpstreamSourceService {
-  constructor(private readonly repository: UpstreamSourceRepository) {}
+  private onSyncedHooks: SourceSyncedHook[] = [];
 
-  listByOwner(ownerUserId: string) {
-    return this.repository.listByOwner(ownerUserId).map((source) => {
-      const snapshot = source.lastSuccessfulSnapshotId
-        ? this.repository.findSnapshotById(source.lastSuccessfulSnapshotId)
-        : this.repository.findLatestSnapshot(source.id);
+  constructor(
+    private readonly repository: UpstreamSourceRepository,
+    private readonly events: EventRepository
+  ) {}
 
-      return toSummary(source, parseDocument(snapshot?.parsedJson ?? null));
-    });
+  registerOnSynced(hook: SourceSyncedHook) {
+    this.onSyncedHooks.push(hook);
   }
 
-  getById(ownerUserId: string, sourceId: string): UpstreamSourceDetail {
-    const source = this.repository.findByIdAndOwner(sourceId, ownerUserId);
+  listByOwner(ownerUserId: string): SourceWithStats[] {
+    return this.repository.listByOwner(ownerUserId).map((source) => this.withStats(source));
+  }
 
+  getById(ownerUserId: string, id: string): SourceWithStats {
+    const source = this.repository.findByIdAndOwner(id, ownerUserId);
     if (!source) {
-      throw new UpstreamSourceError("未找到该上游订阅源。", 404);
+      throw new UpstreamSourceError("订阅源不存在。", 404);
     }
-
-    const snapshot = source.lastSuccessfulSnapshotId
-      ? this.repository.findSnapshotById(source.lastSuccessfulSnapshotId)
-      : this.repository.findLatestSnapshot(source.id);
-    const parsedConfig = parseDocument(snapshot?.parsedJson ?? null);
-
-    return {
-      ...toSummary(source, parsedConfig),
-      latestSnapshotId: snapshot?.id ?? null,
-      parsedConfig
-    };
+    return this.withStats(source);
   }
 
-  create(ownerUserId: string, input: CreateSourceInput) {
-    if (!input.displayName.trim()) {
-      throw new UpstreamSourceError("订阅源名称不能为空。", 400);
+  getLatestSnapshot(sourceId: string): SourceSnapshotRecord | null {
+    return this.repository.findLatestSuccessfulSnapshot(sourceId);
+  }
+
+  listSyncReports(ownerUserId: string, id: string) {
+    this.getById(ownerUserId, id);
+    return this.repository.listSyncReports(id);
+  }
+
+  async create(
+    ownerUserId: string,
+    input: { displayName: string; sourceUrl: string; syncIntervalMinutes?: number }
+  ): Promise<SourceWithStats> {
+    if (!isValidHttpUrl(input.sourceUrl)) {
+      throw new UpstreamSourceError("订阅链接必须是合法的 http(s) URL。");
     }
-
-    assertValidSourceUrl(input.sourceUrl);
-
-    const created = this.repository.create({
+    const source = this.repository.create({
       id: createId("src"),
       ownerUserId,
-      displayName: input.displayName.trim(),
-      sourceUrl: input.sourceUrl.trim(),
-      visibility: input.visibility ?? "private",
-      shareMode: input.shareMode ?? "disabled"
+      displayName: input.displayName || "未命名订阅源",
+      sourceUrl: input.sourceUrl,
+      sourceKind: "url",
+      uploadedFileName: null,
+      syncIntervalMinutes: input.syncIntervalMinutes ?? 360
     });
-
-    if (!created) {
-      throw new UpstreamSourceError("创建上游订阅源失败。", 500);
-    }
-
-    return this.getById(ownerUserId, created.id);
+    await this.sync(source.id).catch(() => undefined);
+    return this.getById(ownerUserId, source.id);
   }
 
-  createFromUpload(ownerUserId: string, input: CreateUploadedSourceInput) {
-    if (!input.displayName.trim()) {
-      throw new UpstreamSourceError("订阅源名称不能为空。", 400);
-    }
-
-    const parsedUpload = parseUploadedYaml(input.yamlContent);
-    const sourceId = createId("src");
-    const created = this.repository.create({
-      id: sourceId,
-      ownerUserId,
-      displayName: input.displayName.trim(),
-      sourceUrl: `${UPLOADED_SOURCE_URL_PREFIX}${sourceId}`,
-      sourceKind: "uploaded_yaml",
-      uploadedFileName: normalizeUploadedFileName(input.uploadedFileName),
-      visibility: input.visibility ?? "private",
-      shareMode: input.shareMode ?? "disabled"
-    });
-
-    if (!created) {
-      throw new UpstreamSourceError("创建上游订阅源失败。", 500);
-    }
-
-    this.createUploadedSnapshot(sourceId, parsedUpload.yamlContent, parsedUpload.parsed);
-
-    return this.getById(ownerUserId, sourceId);
-  }
-
-  async createAndSync(ownerUserId: string, input: CreateSourceInput) {
-    const created = this.create(ownerUserId, input);
-    return this.sync(ownerUserId, created.id);
-  }
-
-  update(ownerUserId: string, sourceId: string, input: UpdateSourceInput) {
-    const current = this.repository.findByIdAndOwner(sourceId, ownerUserId);
-
-    if (!current) {
-      throw new UpstreamSourceError("未找到该上游订阅源。", 404);
-    }
-
-    if (input.sourceUrl !== undefined) {
-      if (current.sourceKind === "uploaded_yaml") {
-        throw new UpstreamSourceError("上传文件来源不能改为远端订阅链接。", 400);
-      }
-
-      assertValidSourceUrl(input.sourceUrl);
-    }
-
-    if (input.yamlContent !== undefined && current.sourceKind !== "uploaded_yaml") {
-      throw new UpstreamSourceError("远端链接来源不能直接替换为上传文件。", 400);
-    }
-
-    const updated = this.repository.update(sourceId, ownerUserId, {
-      displayName: input.displayName?.trim(),
-      sourceUrl: input.sourceUrl?.trim(),
-      uploadedFileName:
-        input.yamlContent === undefined
-          ? input.uploadedFileName
-          : normalizeUploadedFileName(input.uploadedFileName),
-      visibility: input.visibility,
-      shareMode: input.shareMode,
-      isEnabled: input.isEnabled
-    });
-
-    if (!updated) {
-      throw new UpstreamSourceError("未找到该上游订阅源。", 404);
-    }
-
-    if (input.yamlContent !== undefined) {
-      const parsedUpload = parseUploadedYaml(input.yamlContent);
-      this.createUploadedSnapshot(sourceId, parsedUpload.yamlContent, parsedUpload.parsed);
-    }
-
-    return this.getById(ownerUserId, updated.id);
-  }
-
-  async sync(ownerUserId: string, sourceId: string) {
-    const source = this.repository.findByIdAndOwner(sourceId, ownerUserId);
-
-    if (!source) {
-      throw new UpstreamSourceError("未找到该上游订阅源。", 404);
-    }
-
-    if (source.sourceKind === "uploaded_yaml") {
-      return this.getById(ownerUserId, sourceId);
-    }
-
-    const startedAt = new Date().toISOString();
-    const syncLogId = createId("sync");
-
-    this.repository.createSyncLog({
-      id: syncLogId,
-      sourceId,
-      status: "syncing",
-      startedAt
-    });
-
-    const latestSnapshot = this.repository.findLatestSnapshot(source.id);
-    const response = await fetchSubscriptionByUrl(source.sourceUrl, {
-      etag: latestSnapshot?.etag ?? null,
-      lastModified: latestSnapshot?.lastModifiedHeader ?? null,
-      timeoutMs: 20_000,
-      retries: 2
-    });
-    const headersJson = response.headers ? JSON.stringify(response.headers) : null;
-
-    if (response.status === "failed" || !response.text) {
-      if (response.notModified && source.lastSuccessfulSnapshotId) {
-        this.repository.updateSyncLog({
-          id: syncLogId,
-          sourceId,
-          status: "success",
-          httpStatus: response.httpStatus ?? 304,
-          responseHeadersJson: headersJson,
-          startedAt,
-          finishedAt: new Date().toISOString()
-        });
-        this.repository.updateSyncResult({
-          sourceId,
-          status: "success",
-          syncedAt: new Date().toISOString(),
-          latestHeadersJson: headersJson
-        });
-
-        return this.getById(ownerUserId, sourceId);
-      }
-
-      this.repository.updateSyncLog({
-        id: syncLogId,
-        sourceId,
-        status: "failed",
-        httpStatus: response.httpStatus ?? null,
-        errorMessage: response.errMsg ?? "拉取上游订阅失败。",
-        responseHeadersJson: headersJson,
-        startedAt,
-        finishedAt: new Date().toISOString()
-      });
-      this.repository.updateSyncResult({
-        sourceId,
-        status: "failed",
-        syncedAt: new Date().toISOString(),
-        latestHeadersJson: headersJson
-      });
-
-      return this.getById(ownerUserId, sourceId);
-    }
-
-    const parsed = parseProxyWithString(response.text);
-    const usage = parseSubscriptionUserInfo(findSubscriptionUserInfoHeader(response.headers));
-    const usageJson = usage ? JSON.stringify(usage) : null;
-    const snapshotId = createId("snap");
-
-    this.repository.createSnapshot({
-      id: snapshotId,
-      sourceId,
-      syncLogId,
-      rawContent: response.text,
-      parsedJson: parsed ? JSON.stringify(parsed) : null,
-      responseHeadersJson: headersJson,
-      usageJson,
-      contentHash: createHash("sha256").update(response.text).digest("hex"),
-      etag: response.headers?.etag ?? null,
-      lastModifiedHeader: response.headers?.["last-modified"] ?? null,
-      createdAt: new Date().toISOString()
-    });
-
+  createFromUpload(
+    ownerUserId: string,
+    input: { displayName: string; yamlContent: string; uploadedFileName?: string }
+  ): SourceWithStats {
+    const parsed = parseProxyWithString(input.yamlContent);
     if (!parsed) {
-      this.repository.updateSyncLog({
-        id: syncLogId,
-        sourceId,
-        status: "failed",
-        errorMessage: "订阅内容不是有效的 Mihomo / Clash YAML。",
-        responseHeadersJson: headersJson,
-        startedAt,
-        finishedAt: new Date().toISOString()
-      });
-      this.repository.updateSyncResult({
-        sourceId,
-        status: "failed",
-        syncedAt: new Date().toISOString(),
-        latestHeadersJson: headersJson,
-        latestUsageJson: usageJson
-      });
-
-      return this.getById(ownerUserId, sourceId);
+      throw new UpstreamSourceError("上传内容不是合法的 Clash/Mihomo YAML（缺少 proxies）。");
     }
-
-    this.repository.updateSyncLog({
-      id: syncLogId,
-      sourceId,
-      status: "success",
-      responseHeadersJson: headersJson,
-      startedAt,
-      finishedAt: new Date().toISOString()
+    const source = this.repository.create({
+      id: createId("src"),
+      ownerUserId,
+      displayName: input.displayName || input.uploadedFileName || "上传的订阅",
+      sourceUrl: `uploaded://${input.uploadedFileName ?? "config.yaml"}`,
+      sourceKind: "uploaded_yaml",
+      uploadedFileName: input.uploadedFileName ?? null,
+      syncIntervalMinutes: 0
     });
-    this.repository.updateSyncResult({
-      sourceId,
-      status: "success",
-      syncedAt: new Date().toISOString(),
-      latestHeadersJson: headersJson,
-      latestUsageJson: usageJson,
-      lastSuccessfulSnapshotId: snapshotId
-    });
-
-    return this.getById(ownerUserId, sourceId);
+    this.storeSnapshotAndReport(source, input.yamlContent, parsed, {}, null, null);
+    return this.getById(ownerUserId, source.id);
   }
 
-  delete(ownerUserId: string, sourceId: string) {
-    const exists = this.repository.findByIdAndOwner(sourceId, ownerUserId);
-
-    if (!exists) {
-      throw new UpstreamSourceError("未找到该上游订阅源。", 404);
+  replaceUpload(ownerUserId: string, id: string, yamlContent: string): SourceWithStats {
+    const source = this.repository.findByIdAndOwner(id, ownerUserId);
+    if (!source || source.sourceKind !== "uploaded_yaml") {
+      throw new UpstreamSourceError("订阅源不存在或不是上传类型。", 404);
     }
-
-    this.repository.delete(sourceId, ownerUserId);
-
-    return {
-      success: true
-    };
+    const parsed = parseProxyWithString(yamlContent);
+    if (!parsed) {
+      throw new UpstreamSourceError("上传内容不是合法的 Clash/Mihomo YAML（缺少 proxies）。");
+    }
+    this.storeSnapshotAndReport(source, yamlContent, parsed, {}, null, null);
+    return this.getById(ownerUserId, id);
   }
 
-  private createUploadedSnapshot(
-    sourceId: string,
-    yamlContent: string,
-    parsed: ClashProxyDocument
-  ) {
-    const now = new Date().toISOString();
-    const syncLogId = createId("sync");
+  update(
+    ownerUserId: string,
+    id: string,
+    patch: Partial<{
+      displayName: string;
+      sourceUrl: string;
+      isEnabled: boolean;
+      syncIntervalMinutes: number;
+    }>
+  ): SourceWithStats {
+    const source = this.repository.findByIdAndOwner(id, ownerUserId);
+    if (!source) {
+      throw new UpstreamSourceError("订阅源不存在。", 404);
+    }
+    if (patch.sourceUrl !== undefined && !isValidHttpUrl(patch.sourceUrl)) {
+      throw new UpstreamSourceError("订阅链接必须是合法的 http(s) URL。");
+    }
+    if (
+      patch.syncIntervalMinutes !== undefined &&
+      (patch.syncIntervalMinutes < 15 || patch.syncIntervalMinutes > 7 * 24 * 60)
+    ) {
+      throw new UpstreamSourceError("同步间隔必须在 15 分钟到 7 天之间。");
+    }
+    this.repository.update(id, patch);
+    return this.getById(ownerUserId, id);
+  }
+
+  delete(ownerUserId: string, id: string) {
+    const source = this.repository.findByIdAndOwner(id, ownerUserId);
+    if (!source) {
+      throw new UpstreamSourceError("订阅源不存在。", 404);
+    }
+    this.repository.delete(id);
+    return { ok: true };
+  }
+
+  async syncByOwner(ownerUserId: string, id: string): Promise<SourceWithStats> {
+    const source = this.repository.findByIdAndOwner(id, ownerUserId);
+    if (!source) {
+      throw new UpstreamSourceError("订阅源不存在。", 404);
+    }
+    if (source.sourceKind !== "url") {
+      throw new UpstreamSourceError("上传类型的订阅源请直接替换内容。");
+    }
+    await this.sync(id);
+    return this.getById(ownerUserId, id);
+  }
+
+  // 核心同步（调度器与手动共用）。成功后生成同步报告并触发 hooks。
+  async sync(sourceId: string): Promise<void> {
+    const source = this.repository.findById(sourceId);
+    if (!source || source.sourceKind !== "url") {
+      return;
+    }
+    if (!this.repository.tryBeginSync(sourceId)) {
+      return; // 已有同步在进行
+    }
+
+    const nextSyncAt = computeNextSyncAt(source.syncIntervalMinutes || 360);
+    const previousSnapshot = this.repository.findLatestSuccessfulSnapshot(sourceId);
+
+    try {
+      const result = await fetchSubscriptionByUrl(source.sourceUrl, {
+        etag: previousSnapshot?.etag ?? null,
+        lastModified: previousSnapshot?.lastModifiedHeader ?? null
+      });
+
+      if (result.status === "failed" || result.text === undefined) {
+        if (result.notModified) {
+          this.repository.finishSyncNotModified(sourceId, nextSyncAt);
+          return;
+        }
+        throw new Error(result.errMsg ?? "抓取失败");
+      }
+
+      const parsed = parseProxyWithString(result.text);
+      if (!parsed || !Array.isArray(parsed.proxies) || parsed.proxies.length === 0) {
+        throw new Error("返回内容不是合法的 Clash/Mihomo 配置（缺少 proxies）。");
+      }
+
+      const headers = result.headers ?? {};
+      const usage = parseSubscriptionUserInfo(findSubscriptionUserInfoHeader(headers));
+      const refreshed = this.repository.findById(sourceId)!;
+      const report = this.storeSnapshotAndReport(
+        refreshed,
+        result.text,
+        parsed,
+        headers,
+        headers.etag ?? null,
+        headers["last-modified"] ?? null,
+        nextSyncAt
+      );
+
+      const finalSource = this.repository.findById(sourceId)!;
+      for (const hook of this.onSyncedHooks) {
+        try {
+          await hook(finalSource, report);
+        } catch (error) {
+          logger.warn({
+            event: "source.hook.failed",
+            sourceId,
+            reason: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.repository.finishSyncFailure(sourceId, message, nextSyncAt);
+      this.events.insert({
+        ownerUserId: source.ownerUserId,
+        entityKind: "source",
+        entityId: sourceId,
+        kind: "source.sync_failed",
+        payload: { displayName: source.displayName, error: message }
+      });
+      logger.warn({ event: "source.sync.failed", sourceId, reason: message });
+      throw new UpstreamSourceError(`同步失败：${message}`, 502);
+    }
+  }
+
+  listDue(limit: number) {
+    return this.repository.listDue(limit);
+  }
+
+  private storeSnapshotAndReport(
+    source: SourceRecord,
+    rawContent: string,
+    parsed: ClashProxyDocument,
+    headers: Record<string, string>,
+    etag: string | null,
+    lastModifiedHeader: string | null,
+    nextSyncAt?: string
+  ): SyncReportRecord | null {
+    const previousSnapshot = this.repository.findLatestSuccessfulSnapshot(source.id);
     const snapshotId = createId("snap");
-    const headersJson = JSON.stringify({});
+    const usage = parseSubscriptionUserInfo(findSubscriptionUserInfoHeader(headers));
 
-    this.repository.createSyncLog({
-      id: syncLogId,
-      sourceId,
-      status: "success",
-      httpStatus: null,
-      responseHeadersJson: headersJson,
-      startedAt: now,
-      finishedAt: now
-    });
     this.repository.createSnapshot({
       id: snapshotId,
-      sourceId,
-      syncLogId,
-      rawContent: yamlContent,
+      sourceId: source.id,
+      rawContent,
       parsedJson: JSON.stringify(parsed),
-      responseHeadersJson: headersJson,
-      contentHash: createHash("sha256").update(yamlContent).digest("hex"),
-      createdAt: now
+      headers,
+      usage,
+      contentHash: sha256Hex(rawContent),
+      etag,
+      lastModifiedHeader
     });
-    this.repository.updateSyncResult({
-      sourceId,
-      status: "success",
-      syncedAt: now,
-      latestHeadersJson: headersJson,
-      lastSuccessfulSnapshotId: snapshotId
+    this.repository.finishSyncSuccess({
+      id: source.id,
+      snapshotId,
+      headers,
+      usage,
+      nextSyncAt: nextSyncAt ?? computeNextSyncAt(source.syncIntervalMinutes || 360)
     });
+
+    // 结构化同步报告（按稳定 ID 对比，技术方案 §4.2 同步流）
+    const report = this.buildSyncReport(source.id, previousSnapshot, snapshotId, parsed);
+    if (report) {
+      this.events.insert({
+        ownerUserId: source.ownerUserId,
+        entityKind: "source",
+        entityId: source.id,
+        kind: "source.synced",
+        payload: {
+          displayName: source.displayName,
+          added: report.nodesAdded.length,
+          removed: report.nodesRemoved.length,
+          renamed: report.nodesRenamed.length,
+          updated: report.nodesUpdated.length,
+          nodeCount: parsed.proxies.length
+        }
+      });
+    }
+    return report;
+  }
+
+  private buildSyncReport(
+    sourceId: string,
+    previousSnapshot: SourceSnapshotRecord | null,
+    toSnapshotId: string,
+    parsed: ClashProxyDocument
+  ): SyncReportRecord | null {
+    const previousNodes = previousSnapshot?.parsed
+      ? identifyNodes(previousSnapshot.parsed.proxies ?? [])
+      : [];
+    const nextNodes = identifyNodes(parsed.proxies ?? []);
+    const prevById = new Map(previousNodes.map((item) => [item.id, item.node] as const));
+    const nextById = new Map(nextNodes.map((item) => [item.id, item.node] as const));
+
+    const added: SyncReportRecord["nodesAdded"] = [];
+    const removed: SyncReportRecord["nodesRemoved"] = [];
+    const renamed: SyncReportRecord["nodesRenamed"] = [];
+    const updated: SyncReportRecord["nodesUpdated"] = [];
+
+    for (const { id, node } of nextNodes) {
+      const before = prevById.get(id);
+      if (!before) {
+        added.push({ id, name: String(node.name) });
+      } else if (String(before.name) !== String(node.name)) {
+        renamed.push({ id, from: String(before.name), to: String(node.name) });
+      } else if (JSON.stringify(before) !== JSON.stringify(node)) {
+        updated.push({ id, name: String(node.name) });
+      }
+    }
+    for (const { id, node } of previousNodes) {
+      if (!nextById.has(id)) {
+        removed.push({ id, name: String(node.name) });
+      }
+    }
+
+    if (
+      previousSnapshot &&
+      added.length === 0 &&
+      removed.length === 0 &&
+      renamed.length === 0 &&
+      updated.length === 0
+    ) {
+      return null; // 无变化不产报告
+    }
+
+    const report: SyncReportRecord = {
+      id: createId("rep"),
+      upstreamSourceId: sourceId,
+      fromSnapshotId: previousSnapshot?.id ?? null,
+      toSnapshotId,
+      nodesAdded: added,
+      nodesRemoved: removed,
+      nodesRenamed: renamed,
+      nodesUpdated: updated,
+      createdAt: new Date().toISOString()
+    };
+    this.repository.createSyncReport(report);
+    return report;
+  }
+
+  private withStats(source: SourceRecord): SourceWithStats {
+    const snapshot = source.lastSuccessfulSnapshotId
+      ? this.repository.findSnapshotById(source.lastSuccessfulSnapshotId)
+      : null;
+    const parsed = snapshot?.parsed ?? null;
+    return {
+      ...source,
+      proxyCount: parsed?.proxies?.length ?? 0,
+      groupCount: parsed?.["proxy-groups"]?.length ?? 0,
+      ruleCount: parsed?.rules?.length ?? 0
+    };
   }
 }

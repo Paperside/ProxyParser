@@ -1,239 +1,195 @@
 import type { Database } from "bun:sqlite";
 
-import { createDefaultTemplatePayload } from "../render/template-payload";
-import { renderManagedConfig } from "../render/render-managed-config";
+import type { RuleItem, TemplatePayloadV2 } from "../build-config/types";
+import {
+  catalogIdForSlug,
+  loadBuiltinRulesetContent,
+  loadBuiltinRulesetManifest,
+  sha256Hex
+} from "./seed-ruleset-catalog";
 
-export const OFFICIAL_SYSTEM_USER_ID = "user_official_proxyparser";
-export const OFFICIAL_SYSTEM_USER_DISPLAY_NAME = "ProxyParser 官方";
+// 官方「推荐方案」模板 seed（技术方案 §13）。
+// 约束：只引用内置规则源（离线快照随仓库分发），保证黄金路径全离线可用。
+// 原则：不默认清洗节点名——transforms 留空，由用户主动开启。
 
-interface BuiltinTemplateSeed {
-  id: string;
-  slug: string;
-  displayName: string;
-  description: string;
-  payload: ReturnType<typeof createDefaultTemplatePayload>;
-}
+export const OFFICIAL_USER_ID = "user_official";
+export const RECOMMENDED_TEMPLATE_ID = "tpl_recommended";
+export const RECOMMENDED_TEMPLATE_SLUG = "recommended";
 
-const exportYaml = (payload: ReturnType<typeof createDefaultTemplatePayload>) => {
-  try {
-    return renderManagedConfig(
-      {
-        proxies: payload.customProxies,
-        "proxy-groups": payload.proxyGroups,
-        rules: payload.rules,
-        ...payload.configPatch
-      },
-      createDefaultTemplatePayload()
-    ).yamlText;
-  } catch {
-    return null;
-  }
+const snapshotItem = (
+  hashBySlug: Map<string, string>,
+  slug: string,
+  emit: "provider" | "inline"
+): RuleItem | null => {
+  const hash = hashBySlug.get(slug);
+  if (!hash) return null;
+  return { kind: "snapshot", catalogId: catalogIdForSlug(slug), slug, hash, emit };
 };
 
-const BUILTIN_TEMPLATES: BuiltinTemplateSeed[] = [
-  {
-    id: "tpl_builtin_balanced",
-    slug: "official-balanced-routing",
-    displayName: "官方·基础分流",
-    description: "内置基础分流模板，提供默认代理、直连和拦截三类常见规则组。",
-    payload: {
-      ...createDefaultTemplatePayload(),
-      rulesMode: "full_override",
-      groupsMode: "full_override",
-      configMode: "patch",
-      ruleProviderRefs: [
-        "loyalsoldier-direct",
-        "loyalsoldier-proxy",
-        "loyalsoldier-reject",
-        "loyalsoldier-private"
-      ],
-      proxyGroups: [
-        {
-          name: "默认代理",
-          type: "select",
-          proxies: ["DIRECT", "REJECT"]
-        },
-        {
-          name: "拦截",
-          type: "select",
-          proxies: ["REJECT", "DIRECT"]
-        }
-      ],
-      rules: [
-        "RULE-SET,loyalsoldier-reject,拦截",
-        "RULE-SET,loyalsoldier-direct,DIRECT",
-        "RULE-SET,loyalsoldier-private,DIRECT",
-        "RULE-SET,loyalsoldier-proxy,默认代理",
-        "MATCH,默认代理"
-      ],
-      configPatch: {
-        mode: "rule",
-        "log-level": "info",
-        "allow-lan": true
-      }
-    }
-  },
-  {
-    id: "tpl_builtin_ai_media",
-    slug: "official-ai-media",
-    displayName: "官方·AI 与流媒体增强",
-    description: "为 AI 服务与常见流媒体预留独立策略组，适合在已有上游之上快速增强。",
-    payload: {
-      ...createDefaultTemplatePayload(),
-      rulesMode: "patch",
-      groupsMode: "patch",
-      configMode: "patch",
-      ruleProviderRefs: [
-        "metacubex-geosite-openai",
-        "metacubex-geosite-netflix",
-        "blackmatrix7-openai",
-        "blackmatrix7-netflix"
-      ],
-      proxyGroups: [
-        {
-          name: "AI 服务",
-          type: "select",
-          proxies: ["DIRECT", "REJECT"]
-        },
-        {
-          name: "流媒体",
-          type: "select",
-          proxies: ["DIRECT", "REJECT"]
-        }
-      ],
-      rules: [
-        "RULE-SET,blackmatrix7-openai,AI 服务",
-        "RULE-SET,metacubex-geosite-openai,AI 服务",
-        "RULE-SET,blackmatrix7-netflix,流媒体",
-        "RULE-SET,metacubex-geosite-netflix,流媒体"
-      ],
-      configPatch: {
-        "unified-delay": true
-      }
-    }
-  },
-  {
-    id: "tpl_builtin_global_minimal",
-    slug: "official-global-minimal",
-    displayName: "官方·极简全局代理",
-    description: "适合只有少量节点时使用的极简模板，直接收敛到单一代理组。",
-    payload: {
-      ...createDefaultTemplatePayload(),
-      rulesMode: "full_override",
-      groupsMode: "full_override",
-      configMode: "patch",
-      proxyGroups: [
-        {
-          name: "GLOBAL",
-          type: "select",
-          proxies: ["DIRECT", "REJECT"]
-        }
-      ],
-      rules: ["MATCH,GLOBAL"],
-      configPatch: {
-        mode: "rule"
-      }
+export const buildRecommendedTemplatePayload = (): TemplatePayloadV2 | null => {
+  const manifest = loadBuiltinRulesetManifest();
+  const hashBySlug = new Map<string, string>();
+  for (const entry of manifest) {
+    const content = loadBuiltinRulesetContent(entry);
+    if (content !== null) {
+      hashBySlug.set(entry.slug, sha256Hex(content));
     }
   }
-];
+  if (hashBySlug.size === 0) {
+    return null;
+  }
 
-export const seedBuiltinTemplates = (db: Database) => {
-  const ensureUser = db.query(`
-    INSERT INTO users (
-      id,
-      email,
-      username,
-      display_name,
-      locale,
-      status,
-      is_admin,
-      created_at,
-      updated_at
-    )
-    VALUES (?, ?, ?, ?, 'zh-CN', 'disabled', 1, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      display_name = excluded.display_name,
-      updated_at = excluded.updated_at
-  `);
-  const existingTemplateIds = new Set(
-    db
-      .query<{ id: string }>(`SELECT id FROM templates WHERE owner_user_id = ?`)
-      .all(OFFICIAL_SYSTEM_USER_ID)
-      .map((row) => row.id)
-  );
-  const insertTemplate = db.query(`
-    INSERT INTO templates (
-      id,
-      owner_user_id,
-      display_name,
-      slug,
-      description,
-      visibility,
-      share_mode,
-      publish_status,
-      is_internal,
-      source_template_id,
-      source_label,
-      source_url,
-      latest_version_id,
-      created_at,
-      updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, 'public', 'fork', 'published', 0, NULL, ?, ?, ?, ?, ?)
-  `);
-  const insertVersion = db.query(`
-    INSERT INTO template_versions (
-      id,
-      template_id,
-      version,
-      version_note,
-      payload_json,
-      exported_yaml,
-      created_at
-    )
-    VALUES (?, ?, 1, ?, ?, ?, ?)
-  `);
+  const items = (slugs: Array<[string, "provider" | "inline"]>): RuleItem[] =>
+    slugs
+      .map(([slug, emit]) => snapshotItem(hashBySlug, slug, emit))
+      .filter((item): item is RuleItem => item !== null);
+
+  return {
+    version: 1,
+    mode: "rebuild",
+    nodes: {
+      transforms: [],
+      custom: []
+    },
+    groups: {
+      generators: [
+        { kind: "proxies-root", name: "Proxies", includeAuto: true, extraMembers: [] },
+        { kind: "region-groups", groupType: "select", unclassified: "others" }
+      ],
+      custom: [
+        {
+          name: "AI",
+          type: "select",
+          members: [
+            { kind: "group", name: "Proxies" },
+            { kind: "group", name: "Auto" },
+            { kind: "builtin", policy: "DIRECT" }
+          ]
+        },
+        {
+          name: "Streaming",
+          type: "select",
+          members: [
+            { kind: "group", name: "Proxies" },
+            { kind: "group", name: "Auto" },
+            { kind: "builtin", policy: "DIRECT" }
+          ]
+        }
+      ],
+      order: ["Proxies", "AI", "Streaming"]
+    },
+    rules: {
+      targets: [
+        { target: "REJECT", items: items([["reject-ads", "provider"]]) },
+        {
+          target: "AI",
+          items: items([
+            ["geosite-openai", "provider"],
+            ["geosite-anthropic", "provider"]
+          ])
+        },
+        {
+          target: "Streaming",
+          items: items([
+            ["geosite-netflix", "provider"],
+            ["geosite-youtube", "provider"]
+          ])
+        },
+        {
+          target: "Proxies",
+          items: items([
+            ["geosite-telegram", "provider"],
+            ["gfw-proxy", "provider"]
+          ])
+        },
+        {
+          target: "DIRECT",
+          items: items([
+            ["private", "inline"],
+            ["geosite-cn", "provider"],
+            ["cn-cidr", "provider"]
+          ])
+        }
+      ],
+      order: ["REJECT", "AI", "Streaming", "Proxies", "DIRECT"],
+      prelude: [],
+      final: { target: "Proxies" }
+    },
+    config: {
+      structured: {
+        ports: { mixedPort: 7890 },
+        mode: "rule",
+        logLevel: "info",
+        dns: {
+          enable: true,
+          ipv6: false,
+          "enhanced-mode": "fake-ip",
+          "fake-ip-range": "198.18.0.1/16",
+          "fake-ip-filter": ["*.lan", "*.local"],
+          nameserver: ["https://223.5.5.5/dns-query", "https://doh.pub/dns-query"]
+        },
+        sniffer: {
+          enable: true,
+          sniff: {
+            HTTP: { ports: [80, 8080] },
+            TLS: { ports: [443, 8443] }
+          }
+        }
+      },
+      rawPatch: null
+    }
+  };
+};
+
+export const seedBuiltinTemplates = (db: Database): number => {
+  const payload = buildRecommendedTemplatePayload();
+  if (!payload) {
+    return 0;
+  }
+
   const now = new Date().toISOString();
 
-  ensureUser.run(
-    OFFICIAL_SYSTEM_USER_ID,
-    "official@proxyparser.local",
-    "proxyparser_official",
-    OFFICIAL_SYSTEM_USER_DISPLAY_NAME,
-    now,
-    now
-  );
+  db.query(`
+    INSERT OR IGNORE INTO users (id, email, username, display_name, locale, status, is_admin, created_at, updated_at)
+    VALUES (?, 'official@proxyparser.local', 'proxyparser', 'ProxyParser 官方', 'zh-CN', 'disabled', 0, ?, ?)
+  `).run(OFFICIAL_USER_ID, now, now);
 
-  let seededCount = 0;
+  db.query(`
+    INSERT OR IGNORE INTO templates (id, owner_user_id, display_name, slug, description, visibility, is_official, latest_version_id, created_at, updated_at)
+    VALUES (?, ?, '推荐方案', ?, '官方维护的起手配置：自动地区分组 + Auto 测速组，AI / 流媒体 / 广告拦截 / 国内直连分流，合理的 DNS 与嗅探设置。', 'public', 1, NULL, ?, ?)
+  `).run(RECOMMENDED_TEMPLATE_ID, OFFICIAL_USER_ID, RECOMMENDED_TEMPLATE_SLUG, now, now);
 
-  for (const template of BUILTIN_TEMPLATES) {
-    if (existingTemplateIds.has(template.id)) {
-      continue;
-    }
+  const payloadJson = JSON.stringify(payload);
+  const existing = db
+    .query<{ id: string; payload_json: string }>(
+      `SELECT tv.id, tv.payload_json FROM template_versions tv
+       JOIN templates t ON t.latest_version_id = tv.id
+       WHERE t.id = ?`
+    )
+    .get(RECOMMENDED_TEMPLATE_ID);
 
-    const versionId = `${template.id}_v1`;
-    insertTemplate.run(
-      template.id,
-      OFFICIAL_SYSTEM_USER_ID,
-      template.displayName,
-      template.slug,
-      template.description,
-      OFFICIAL_SYSTEM_USER_DISPLAY_NAME,
-      "https://github.com/lanjiasheng/ProxyParser",
-      versionId,
-      now,
-      now
-    );
-    insertVersion.run(
-      versionId,
-      template.id,
-      "官方内置模板",
-      JSON.stringify(template.payload),
-      exportYaml(template.payload),
-      now
-    );
-    seededCount += 1;
+  if (existing && existing.payload_json === payloadJson) {
+    return 0;
   }
 
-  return seededCount;
+  const nextVersion =
+    (db
+      .query<{ max_version: number | null }>(
+        "SELECT MAX(version) AS max_version FROM template_versions WHERE template_id = ?"
+      )
+      .get(RECOMMENDED_TEMPLATE_ID)?.max_version ?? 0) + 1;
+  const versionId = `tplv_recommended_${nextVersion}`;
+
+  db.query(`
+    INSERT INTO template_versions (id, template_id, version, version_note, payload_json, extraction_report, created_at)
+    VALUES (?, ?, ?, '官方推荐方案', ?, NULL, ?)
+  `).run(versionId, RECOMMENDED_TEMPLATE_ID, nextVersion, payloadJson, now);
+
+  db.query("UPDATE templates SET latest_version_id = ?, updated_at = ? WHERE id = ?").run(
+    versionId,
+    now,
+    RECOMMENDED_TEMPLATE_ID
+  );
+
+  return 1;
 };
