@@ -17,7 +17,8 @@ Useful commands:
 
 Important local context:
 
-- Approved product redesign spec: `docs/superpowers/specs/2026-05-14-proxyparser-product-redesign-design.md`
+- **Current authoritative plan (Next version, 2026-07-04)**: product design in `docs/2026-07-04-proxyparser-next-product-design.md`, executable technical plan in `docs/2026-07-04-proxyparser-next-technical-plan.md`. Execute milestones M1→M5 from the technical plan; it supersedes the documents below where they conflict.
+- Approved product redesign spec (V1, historical): `docs/superpowers/specs/2026-05-14-proxyparser-product-redesign-design.md`
 - Product/design draft: `docs/proxyparser-redesign-draft.md`
 - Existing technical plan: `docs/technical-plan.md`
 - Existing task tracker: `docs/TODO.md`

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProxyParser — 新建订阅</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .wizard { max-width: 720px; margin: 0 auto; }
+  .source-summary {
+    display: flex; gap: 20px; align-items: center;
+    padding: 12px 16px; background: var(--ok-bg);
+    border: 1px solid oklch(0.76 0.15 155 / 0.25);
+    border-radius: var(--radius-lg); margin-bottom: 24px; font-size: 12.5px;
+  }
+  .source-summary .stat { display: flex; flex-direction: column; }
+  .source-summary .stat b { font-family: var(--font-mono); font-size: 14px; font-weight: 600; }
+  .source-summary .stat span { color: var(--text-faint); font-size: 11px; }
+</style>
+</head>
+<body data-screen-label="04 创建向导 · 第 2 步 选择起点">
+
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">P</span>ProxyParser</div>
+  <nav class="nav">
+    <a href="01-工作台.html">工作台</a>
+    <a href="02-订阅列表.html" aria-current="page">订阅</a>
+    <a href="#">订阅源</a>
+    <a href="#">规则库</a>
+    <a href="#">模板</a>
+    <a href="#">设置</a>
+  </nav>
+  <div class="topbar-right"><div class="avatar">李</div></div>
+</header>
+
+<main class="page">
+  <div class="wizard">
+    <h1 class="page-title" style="text-align: center; margin-top: 12px;">新建订阅</h1>
+
+    <div class="stepper" style="justify-content: center;">
+      <div class="step done"><span class="n">✓</span>粘贴订阅源</div>
+      <div class="step-sep"></div>
+      <div class="step active"><span class="n">2</span>选择起点</div>
+      <div class="step-sep"></div>
+      <div class="step"><span class="n">3</span>命名并发布</div>
+    </div>
+
+    <div class="source-summary">
+      <span class="dot dot-ok"></span>
+      <strong>白云机场</strong>
+      <div class="stat"><b>45</b><span>节点</span></div>
+      <div class="stat"><b>28</b><span>源代理组</span></div>
+      <div class="stat"><b>16</b><span>源规则</span></div>
+      <div class="stat"><b>62%</b><span>流量已用</span></div>
+      <div class="stat"><b>32 天</b><span>后到期</span></div>
+      <span class="spacer"></span>
+      <button class="btn btn-sm btn-ghost">更换</button>
+    </div>
+
+    <div class="stack">
+      <div class="choice selected">
+        <span class="radio"></span>
+        <h3>推荐方案 <span class="badge badge-accent">默认</span></h3>
+        <p>官方维护的起手配置：自动地区分组 + Auto 测速组，AI / 流媒体 / 广告拦截 / 国内直连分流，合理的 DNS 与嗅探设置。全部内置离线可用，之后可随意精修。</p>
+      </div>
+      <div class="choice">
+        <span class="radio"></span>
+        <h3>套用模板</h3>
+        <p>使用你提炼过的模板或来自模板广场的方案。换机场时选这个，你的分组和规则一次套用。</p>
+      </div>
+      <div class="choice">
+        <span class="radio"></span>
+        <h3>保留机场原版配置，仅做小修</h3>
+        <p>机场配置本来不错？保留它的分组和规则，只加自建节点、小改配置。此模式与该机场绑定，不能提炼为通用模板。</p>
+      </div>
+      <div class="choice">
+        <span class="radio"></span>
+        <h3>空白自建</h3>
+        <p>只取节点，分组、规则、配置全部自己搭。适合清楚自己要什么的老手。</p>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top: 24px; justify-content: space-between;">
+      <button class="btn btn-ghost">上一步</button>
+      <button class="btn btn-primary">继续</button>
+    </div>
+
+    <p class="faint" style="text-align: center; margin-top: 20px; font-size: 12px;">
+      完成后你会得到一条稳定的订阅链接和二维码。目标：3 分钟内导入客户端。
+    </p>
+  </div>
+</main>
+
+</body>
+</html>

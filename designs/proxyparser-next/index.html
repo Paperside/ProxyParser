@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProxyParser Next — 设计原型总览</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .screen-card { display: flex; flex-direction: column; gap: 6px; }
+  .screen-card .num { font-family: var(--font-mono); color: var(--text-faint); font-size: 11px; }
+  .screen-card h3 { font-size: 14px; }
+  .screen-card p { color: var(--text-muted); font-size: 12.5px; }
+</style>
+</head>
+<body data-screen-label="00 原型总览">
+
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">P</span>ProxyParser <span class="badge badge-accent">Next 设计原型 v1</span></div>
+  <div class="topbar-right"><span class="faint" style="font-size: 12px;">2026-07-04 · 对应技术方案 §14.1（M4.0）</span></div>
+</header>
+
+<main class="page">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">六张关键屏</h1>
+      <p class="page-desc">hi-fi 静态原型，作为 M4 前端实现的视觉规格。点击卡片打开；屏与屏之间的导航链接可点。</p>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-bottom: 28px;">
+    <a class="card screen-card" href="01-工作台.html" style="text-decoration: none; color: inherit;">
+      <span class="num">01</span><h3>工作台</h3>
+      <p>健康灯卡片、待处理条、事件流。回答"我的订阅都还好吗、最近发生了什么"。</p>
+    </a>
+    <a class="card screen-card" href="02-订阅列表.html" style="text-decoration: none; color: inherit;">
+      <span class="num">02</span><h3>订阅列表</h3>
+      <p>产品主角的清单：健康、当前版本、发布策略、最近拉取，主按钮"新建订阅"。</p>
+    </a>
+    <a class="card screen-card" href="03-订阅工作台.html" style="text-decoration: none; color: inherit;">
+      <span class="num">03</span><h3>订阅工作台 · 节点</h3>
+      <p>左 Tab + 主区 + 右诊断栏三栏骨架。持续转换条、推断徽章（虚线）、diff 与问题面板。</p>
+    </a>
+    <a class="card screen-card" href="04-创建向导.html" style="text-decoration: none; color: inherit;">
+      <span class="num">04</span><h3>创建向导 · 3 步</h3>
+      <p>黄金路径第 2 步"选择起点"：推荐方案默认高亮，四种起点隐式决定构建模式。</p>
+    </a>
+    <a class="card screen-card" href="05-规则编辑器.html" style="text-decoration: none; color: inherit;">
+      <span class="num">05</span><h3>规则编辑器 + 追踪器</h3>
+      <p>面向目标的规则块（钉版本快照 chip、"源有更新"徽章、前置/兜底钉死）+ 右栏"测一测"。</p>
+    </a>
+    <a class="card screen-card" href="06-版本历史.html" style="text-decoration: none; color: inherit;">
+      <span class="num">06</span><h3>版本历史与回滚</h3>
+      <p>发布策略选择、release 时间线、结构化 diff 摘要、被阻断版本的展示与"未影响客户端"承诺。</p>
+    </a>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">设计假设与理由</div>
+      <ul style="padding-left: 18px; color: var(--text-muted); font-size: 12.5px; display: flex; flex-direction: column; gap: 6px;">
+        <li><strong style="color: var(--text);">深色高密度控制台</strong>：延续 05-14 规格"冷静、精确、可扫描"；无渐变、无装饰卡片堆叠。</li>
+        <li><strong style="color: var(--text);">健康灯是一等公民</strong>：绿/黄/红三态贯穿所有屏，黄色永远伴随"正在服务缓存版本"的解释。</li>
+        <li><strong style="color: var(--text);">推断与数据视觉区分</strong>：系统推断（地区徽章）用虚线边框，用户确认后转实线——对应"不悄悄改任何东西"。</li>
+        <li><strong style="color: var(--text);">等宽字体标记机器语义</strong>：版本号、节点名、规则文本、hash 一律 mono，与中文界面文案形成层次。</li>
+        <li><strong style="color: var(--text);">diff 是统一语言</strong>：diff-chip（结构摘要）+ diff-lines（行级）两种粒度复用于版本、规则源更新、发布确认。</li>
+        <li>字体：系统栈（PingFang SC / SF Pro），代码 SF Mono；色彩 oklch 定义，单一青色 accent + 三个状态色。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">覆盖范围与后续</div>
+      <ul style="padding-left: 18px; color: var(--text-muted); font-size: 12.5px; display: flex; flex-direction: column; gap: 6px;">
+        <li>未覆盖的屏（M4.0 迭代补齐）：代理组编辑、配置 Tab、访问管理、订阅源详情、规则库、模板、设置。骨架均可由本组 tokens/组件推导。</li>
+        <li>确认弹窗（"系统将做 N 件事"）与 Toast 未单独出屏，规格见技术方案 §14.4。</li>
+        <li>本组原型确认后：按 baoyu-design 流程沉淀正式 design system（tokens 即 <code class="inline">styles.css</code>），再进入组件实现。</li>
+        <li>浅色主题暂不设计：控制台产品深色优先，浅色作为 M5 后打磨项。</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>

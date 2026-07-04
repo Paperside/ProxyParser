@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProxyParser — 订阅工作台 · 规则</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .tracer-input {
+    width: 100%; padding: 7px 10px; border-radius: var(--radius);
+    border: 1px solid var(--border-strong); background: var(--bg);
+    color: var(--text); font-family: var(--font-mono); font-size: 12.5px;
+  }
+  .tracer-result { margin-top: 12px; font-size: 12.5px; }
+  .tracer-chain { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
+  .tracer-step { display: flex; gap: 10px; align-items: baseline; padding: 5px 0; }
+  .tracer-step .arrow { color: var(--text-faint); font-family: var(--font-mono); flex: none; width: 16px; }
+  .pin { font-size: 11px; color: var(--text-faint); border: 1px dashed var(--border-strong); border-radius: 4px; padding: 0 6px; }
+</style>
+</head>
+<body data-screen-label="05 规则编辑器 + 追踪器">
+
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">P</span>ProxyParser</div>
+  <nav class="nav">
+    <a href="01-工作台.html">工作台</a>
+    <a href="02-订阅列表.html" aria-current="page">订阅</a>
+    <a href="#">订阅源</a>
+    <a href="#">规则库</a>
+    <a href="#">模板</a>
+    <a href="#">设置</a>
+  </nav>
+  <div class="topbar-right"><div class="avatar">李</div></div>
+</header>
+
+<div class="sub-head">
+  <a class="btn btn-sm btn-ghost" href="02-订阅列表.html">←</a>
+  <h1><span class="dot dot-ok"></span>日常主力</h1>
+  <span class="badge mono">当前 v14</span>
+  <span class="badge badge-warn">有未发布修改</span>
+  <span class="spacer"></span>
+  <button class="btn">复制链接</button>
+  <button class="btn btn-primary">预览并发布</button>
+</div>
+
+<div class="workspace">
+  <nav class="ws-nav">
+    <a href="#">概览</a>
+    <a href="03-订阅工作台.html">节点</a>
+    <a href="#">代理组</a>
+    <a href="05-规则编辑器.html" aria-current="page">规则</a>
+    <a href="#">配置</a>
+    <a href="06-版本历史.html">版本</a>
+    <a href="#">访问</a>
+    <a href="#">问题 <span class="count">2</span></a>
+  </nav>
+
+  <main class="ws-main">
+    <div class="page-head" style="margin-bottom: 12px;">
+      <div>
+        <h2 class="page-title" style="font-size: 15px;">规则</h2>
+        <p class="page-desc">按目标组组织。拖动块调整匹配优先级；规则源以钉住版本的快照引用，更新永远需要你确认。</p>
+      </div>
+      <div class="actions">
+        <button class="btn">粘贴规则…</button>
+        <button class="btn">导入规则源</button>
+      </div>
+    </div>
+
+    <div class="rule-block" style="border-style: dashed; opacity: 0.85;">
+      <div class="rule-block-head">
+        <span class="target faint">前置规则</span>
+        <span class="pin">恒在最前</span>
+        <span class="spacer"></span><span class="faint" style="font-size:11.5px;">0 条</span>
+      </div>
+    </div>
+
+    <div class="rule-block">
+      <div class="rule-block-head">
+        <span class="grip">⠿</span><span class="target">AI</span>
+        <span class="badge mono" style="font-size:10.5px;">select</span>
+        <span class="spacer"></span><span class="faint" style="font-size:11.5px;">165 条 · 2 个规则源 + 1 条手动</span>
+        <button class="btn btn-sm btn-ghost">＋</button>
+      </div>
+      <div class="rule-block-body">
+        <div class="rule-item">
+          <span class="kind">快照</span>
+          <span class="mono">geosite-openai</span><span class="faint mono" style="font-size:11px;">@ab12f3 · 142 条 · provider</span>
+          <span class="spacer"></span><span class="badge badge-accent" style="font-size:10.5px;">源有更新</span>
+        </div>
+        <div class="rule-item">
+          <span class="kind">快照</span>
+          <span class="mono">geosite-anthropic</span><span class="faint mono" style="font-size:11px;">@7c09d1 · 22 条 · provider</span>
+        </div>
+        <div class="rule-item">
+          <span class="kind">手动</span>
+          <span class="mono">DOMAIN-SUFFIX,example.ai</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="rule-block">
+      <div class="rule-block-head">
+        <span class="grip">⠿</span><span class="target">Streaming</span>
+        <span class="badge mono" style="font-size:10.5px;">select</span>
+        <span class="spacer"></span><span class="faint" style="font-size:11.5px;">305 条 · 2 个规则源</span>
+        <button class="btn btn-sm btn-ghost">＋</button>
+      </div>
+      <div class="rule-block-body">
+        <div class="rule-item"><span class="kind">快照</span><span class="mono">geosite-netflix</span><span class="faint mono" style="font-size:11px;">@e830aa · 181 条 · provider</span></div>
+        <div class="rule-item"><span class="kind">快照</span><span class="mono">geosite-disney</span><span class="faint mono" style="font-size:11px;">@19f2bc · 124 条 · provider</span></div>
+      </div>
+    </div>
+
+    <div class="rule-block">
+      <div class="rule-block-head">
+        <span class="grip">⠿</span><span class="target">广告拦截 → REJECT</span>
+        <span class="spacer"></span><span class="faint" style="font-size:11.5px;">842 条 · 1 个规则源</span>
+        <button class="btn btn-sm btn-ghost">＋</button>
+      </div>
+      <div class="rule-block-body">
+        <div class="rule-item"><span class="kind">快照</span><span class="mono">reject-ads</span><span class="faint mono" style="font-size:11px;">@c4d511 · 842 条 · provider</span></div>
+      </div>
+    </div>
+
+    <div class="rule-block">
+      <div class="rule-block-head">
+        <span class="grip">⠿</span><span class="target">国内直连 → DIRECT</span>
+        <span class="spacer"></span><span class="faint" style="font-size:11.5px;">从略 · geosite-cn + cn-cidr + private</span>
+        <button class="btn btn-sm btn-ghost">＋</button>
+      </div>
+    </div>
+
+    <div class="rule-block" style="border-style: dashed; opacity: 0.85;">
+      <div class="rule-block-head">
+        <span class="target faint">兜底</span>
+        <span class="pin">恒在最后</span>
+        <span class="mono" style="font-size: 12px;">MATCH → Proxies</span>
+        <span class="spacer"></span><button class="btn btn-sm btn-ghost">修改落点</button>
+      </div>
+    </div>
+  </main>
+
+  <aside class="ws-rail">
+    <div class="rail-tabs" role="tablist">
+      <button role="tab" aria-selected="false">预览</button>
+      <button role="tab" aria-selected="false">差异</button>
+      <button role="tab" aria-selected="true">测一测</button>
+    </div>
+
+    <div class="card-title">规则追踪器 <span class="hint">这个域名会走哪？</span></div>
+    <input class="tracer-input" value="chat.openai.com" aria-label="输入域名或 IP">
+
+    <div class="tracer-result">
+      <div class="row" style="margin-top: 12px;">
+        <span class="badge badge-ok">命中</span>
+        <span class="mono" style="font-size: 12px;">RULE-SET,geosite-openai,AI</span>
+      </div>
+      <div class="faint" style="font-size: 11.5px; margin-top: 4px;">AI 块 · 第 1 项快照 · 快照内第 3 条 <span class="mono">DOMAIN-SUFFIX,openai.com</span></div>
+
+      <div class="tracer-chain">
+        <div class="tracer-step"><span class="arrow">→</span><span>目标组 <code class="inline">AI</code>（select）</span></div>
+        <div class="tracer-step"><span class="arrow">→</span><span>当前选择 <code class="inline">Home VPS</code></span></div>
+        <div class="tracer-step"><span class="arrow">✓</span><span class="muted">经由自建节点出站</span></div>
+      </div>
+
+      <hr class="divider">
+      <div class="faint" style="font-size: 11.5px; line-height: 1.7;">
+        基于<strong>当前草稿</strong>求值。含 GEOSITE/GEOIP 的命中以客户端 geodata 为准，此处会标注"视 geodata 而定"。
+      </div>
+    </div>
+  </aside>
+</div>
+
+</body>
+</html>

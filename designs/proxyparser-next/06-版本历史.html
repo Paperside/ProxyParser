@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProxyParser — 订阅工作台 · 版本</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .release { display: flex; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .release:last-child { border-bottom: none; }
+  .release .rail-line { display: flex; flex-direction: column; align-items: center; flex: none; width: 20px; }
+  .release .rail-line .node { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--border-strong); background: var(--bg); margin-top: 4px; }
+  .release.current .rail-line .node { border-color: var(--ok); background: var(--ok); }
+  .release .rail-line .line { width: 1px; flex: 1; background: var(--border); margin-top: 4px; }
+  .release-body { flex: 1; min-width: 0; }
+  .release-head { display: flex; align-items: center; gap: 10px; }
+  .policy-box { display: flex; gap: 12px; }
+  .policy-box .choice { flex: 1; }
+</style>
+</head>
+<body data-screen-label="06 版本历史与回滚">
+
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">P</span>ProxyParser</div>
+  <nav class="nav">
+    <a href="01-工作台.html">工作台</a>
+    <a href="02-订阅列表.html" aria-current="page">订阅</a>
+    <a href="#">订阅源</a>
+    <a href="#">规则库</a>
+    <a href="#">模板</a>
+    <a href="#">设置</a>
+  </nav>
+  <div class="topbar-right"><div class="avatar">李</div></div>
+</header>
+
+<div class="sub-head">
+  <a class="btn btn-sm btn-ghost" href="02-订阅列表.html">←</a>
+  <h1><span class="dot dot-ok"></span>日常主力</h1>
+  <span class="badge mono">当前 v14</span>
+  <span class="badge badge-warn">有未发布修改</span>
+  <span class="spacer"></span>
+  <button class="btn">复制链接</button>
+  <button class="btn btn-primary">预览并发布</button>
+</div>
+
+<div class="workspace" style="grid-template-columns: 168px 1fr;">
+  <nav class="ws-nav">
+    <a href="#">概览</a>
+    <a href="03-订阅工作台.html">节点</a>
+    <a href="#">代理组</a>
+    <a href="05-规则编辑器.html">规则</a>
+    <a href="#">配置</a>
+    <a href="06-版本历史.html" aria-current="page">版本</a>
+    <a href="#">访问</a>
+    <a href="#">问题 <span class="count">2</span></a>
+  </nav>
+
+  <main class="ws-main" style="max-width: 860px;">
+    <div class="page-head" style="margin-bottom: 12px;">
+      <div>
+        <h2 class="page-title" style="font-size: 15px;">版本</h2>
+        <p class="page-desc">每次发布生成一个不可变版本，客户端只会拉到这里的内容。回滚即把历史版本重新发布。</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 16px;">
+      <div class="card-title">发布策略</div>
+      <div class="policy-box">
+        <div class="choice selected">
+          <span class="radio"></span>
+          <h3>自动发布</h3>
+          <p>上游节点变化时自动生成并发布新版本；校验不通过则保留当前版本并提醒你。推荐——机场轮换凭据时不掉线。</p>
+        </div>
+        <div class="choice">
+          <span class="radio"></span>
+          <h3>确认后发布</h3>
+          <p>任何变化都先生成待发布草稿，看过差异后由你手动发布。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="release current">
+        <div class="rail-line"><span class="node"></span><span class="line"></span></div>
+        <div class="release-body">
+          <div class="release-head">
+            <strong class="mono">v14</strong>
+            <span class="badge badge-ok">当前服务中</span>
+            <span class="badge">自动 · 上游同步触发</span>
+            <span class="faint" style="font-size: 11.5px;">今天 09:12 · system</span>
+            <span class="spacer"></span>
+            <button class="btn btn-sm btn-ghost">查看 YAML</button>
+          </div>
+          <div class="diff-summary" style="margin-top: 8px;">
+            <span class="diff-chip">节点 <span class="plus">+3</span> <span class="minus">-1</span></span>
+            <span class="diff-chip">凭据轮换 12</span>
+            <span class="diff-chip">地区组自动吸收</span>
+            <span class="diff-chip">规则 ±0</span>
+          </div>
+          <div class="faint" style="font-size: 11.5px; margin-top: 6px;">
+            校验：结构 ✓ · mihomo 内核 ✓（139ms）
+          </div>
+        </div>
+      </div>
+
+      <div class="release">
+        <div class="rail-line"><span class="node"></span><span class="line"></span></div>
+        <div class="release-body">
+          <div class="release-head">
+            <strong class="mono">v13</strong>
+            <span class="badge">手动</span>
+            <span class="faint" style="font-size: 11.5px;">昨天 21:40 · 李</span>
+            <span class="spacer"></span>
+            <button class="btn btn-sm btn-ghost">对比</button>
+            <button class="btn btn-sm">回滚到此版本</button>
+          </div>
+          <div class="diff-summary" style="margin-top: 8px;">
+            <span class="diff-chip">AI 组成员 <span class="plus">+1</span>（Home VPS 置顶）</span>
+            <span class="diff-chip">规则 AI 块 <span class="plus">+1</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="release">
+        <div class="rail-line"><span class="node"></span><span class="line"></span></div>
+        <div class="release-body">
+          <div class="release-head">
+            <strong class="mono">v12</strong>
+            <span class="badge">规则源更新</span>
+            <span class="faint" style="font-size: 11.5px;">3 天前 · 李</span>
+            <span class="spacer"></span>
+            <button class="btn btn-sm btn-ghost">对比</button>
+            <button class="btn btn-sm">回滚到此版本</button>
+          </div>
+          <div class="diff-summary" style="margin-top: 8px;">
+            <span class="diff-chip">geosite-cn <span class="mono">@88d2e0 → @f01a37</span></span>
+            <span class="diff-chip">国内直连块 <span class="plus">+120</span> <span class="minus">-3</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="release" style="opacity: 0.7;">
+        <div class="rail-line"><span class="node"></span></div>
+        <div class="release-body">
+          <div class="release-head">
+            <strong class="mono">v11</strong>
+            <span class="badge badge-err">发布被阻断</span>
+            <span class="faint" style="font-size: 11.5px;">4 天前 · 自动</span>
+            <span class="spacer"></span>
+            <button class="btn btn-sm btn-ghost">查看原因</button>
+          </div>
+          <div class="faint" style="font-size: 11.5px; margin-top: 6px;">
+            mihomo 校验失败：<span class="mono">rules[3] error: proxy [OldProxy] not found</span> · 已保留 v10 继续服务，未影响客户端
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+</body>
+</html>
