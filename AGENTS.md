@@ -1,49 +1,39 @@
 # ProxyParser Agent Notes
 
-This repository is being redesigned into a multi-user Mihomo extended subscription workspace.
+ProxyParser Next（2026-07 重构完成）：面向 Clash/Mihomo 的订阅托管与编辑控制台。
+核心模型：声明式 BuildConfig + 不可变版本发布 + 内容寻址规则快照 + mihomo 内核发布门禁。
 
-Current preferred direction: keep the existing Bun/Elysia/SQLite/React foundation and refactor the product model around:
+Authoritative docs:
 
-```text
-external subscription + operation template/draft operation flow + publication settings = extended subscription
-```
+- 产品设计: `docs/2026-07-04-proxyparser-next-product-design.md`
+- 技术方案（施工图）: `docs/2026-07-04-proxyparser-next-technical-plan.md`
+- 设计原型: `designs/proxyparser-next/`（视觉规格，tokens 在 styles.css）
+- 历史文档（已被取代，仅供考古）: `docs/technical-plan.md`, `docs/superpowers/`
 
-Useful commands:
+Commands:
 
 - Root typecheck: `bun run typecheck`
-- Backend tests: `cd backend && bun test`
-- Frontend dev server: `bun run dev:frontend`
-- Backend dev server: choose a non-conflicting `PORT`; avoid ports `3001` and `7001` when possible because the user may need them.
+- Backend tests: `cd backend && bun test`（含 golden 渲染测试；行为变化需显式更新 `backend/tests/golden/`，设 `UPDATE_GOLDEN=1` 重生成）
+- Frontend build: `cd frontend && bun run build`
+- Dev: `bun run dev`；后端开发端口避开 3001 与 7001（用户可能占用）
+- 类型同步: `bun run sync-types`（BuildConfig 类型 backend → frontend）
 
-Important local context:
+Architecture map (backend/src):
 
-- **Current authoritative plan (Next version, 2026-07-04)**: product design in `docs/2026-07-04-proxyparser-next-product-design.md`, executable technical plan in `docs/2026-07-04-proxyparser-next-technical-plan.md`. Execute milestones M1→M5 from the technical plan; it supersedes the documents below where they conflict.
-- Approved product redesign spec (V1, historical): `docs/superpowers/specs/2026-05-14-proxyparser-product-redesign-design.md`
-- Product/design draft: `docs/proxyparser-redesign-draft.md`
-- Existing technical plan: `docs/technical-plan.md`
-- Existing task tracker: `docs/TODO.md`
-- User-provided subscription sample is cached under `backend/data/mock-subscriptions/`, which is ignored by git and may contain real nodes. Do not commit or print its contents.
+- `lib/build-config/` BuildConfig 类型/校验/稳定节点 ID/模板提炼与应用
+- `lib/render-v2/` 确定性渲染管线（evaluate 七阶段）+ 规范化 YAML emitter（全仓唯一 yaml.dump 出口）+ release diff
+- `lib/validate/mihomo-gate.ts` 内核校验门禁（离线 geodata 在 `backend/assets/geodata/`）
+- `lib/scheduler/` 后台调度（测试模式用 runTickOnce() 驱动）
+- `modules/subscriptions/` 订阅/版本/token/交付（`/s/:id/:token`、`/rs/:hash.yaml`）
+- `modules/rulesets/` 规则库（内容寻址快照；离线内置在 `backend/assets/rulesets/`）
+- `modules/upstream-sources/` 订阅源同步 + 同步报告 + onSynced hook
 
-Implemented in the current redesign branch:
+Invariants (do not break):
 
-- Draft preview/publish/render replays the latest successful upstream snapshot.
-- Auto grouping is wired into draft and template render paths.
-- Rule provider attachments generate matching `rule-providers` and `RULE-SET` rules.
-- Render failures are persisted as degraded subscription status.
-- Temp subscription tokens support TTL bounds, listing, and immediate revoke.
-- Drafts can import pasted subscription URLs directly.
-- Drafts can extract sanitized templates that omit real nodes.
-- Extended subscriptions expose short key, long key, and share-grant controls in the UI.
-
-Known follow-up gaps:
-
-- Template-center UI can show shareability, but it does not yet provide a one-click sanitize action for an existing source-locked template.
-- Share grants are manageable by owner; recipient-side discovery/notification can be made richer later.
-- Frontend bundle size still triggers Vite's default 500 kB warning; code splitting is a future polish task.
-
-Mihomo notes:
-
-- Rule order is behavior; preserve and expose insertion position.
-- `RULE-SET,name,policy` requires a matching `rule-providers.name`.
-- Rule provider `behavior` should be tracked as `domain`, `ipcidr`, or `classical`.
-- Auto grouping should support node-name regex classification and manual correction for unclassified nodes.
+- 拉取端点只读已发布 Release，绝不触发上游请求或渲染。
+- 相同输入 evaluate 必须字节级确定（golden 测试锁定）。
+- 任何可下载数据必须有仓库内离线副本（assets/），网络只用于更新。
+- 规则快照按内容 hash 不可变；更新 = 新快照 + 用户确认。
+- UI 文案中文；代码与 API 字段英文。
+- `backend/data/` gitignored（含 mihomo 二进制、SQLite、.secret-key），不得提交。
+- `backend/data/mock-subscriptions/` 可能含真实节点，禁止提交或打印内容。
