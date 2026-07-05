@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 
-import type { RuleItem, TemplatePayloadV2 } from "../build-config/types";
+import type { CustomGroup, GroupMember, RuleItem, RuleTargetBlock, TemplatePayloadV2 } from "../build-config/types";
+import { REGION_CODES } from "../render-v2/region";
 import {
   catalogIdForSlug,
   loadBuiltinRulesetContent,
@@ -11,20 +12,45 @@ import {
 // 官方「推荐方案」模板 seed（技术方案 §13）。
 // 约束：只引用内置规则源（离线快照随仓库分发），保证黄金路径全离线可用。
 // 原则：不默认清洗节点名——transforms 留空，由用户主动开启。
+//
+// 规则组 = 同名策略组：manifest 里每条 groupKind 为 proxy-first/direct-first 的规则组各生成一个
+// 同名 select 策略组；境外服务（proxy-first）默认选中 Proxies，国内相关服务（direct-first）默认选中
+// DIRECT（策略组仍保留切换到 Proxies/Auto 的能力，只是默认成员顺序不同）。
+// Advertising（reject）与 Lan（direct-builtin）没有对应策略组，规则直接落到 REJECT/DIRECT 内置策略。
 
 export const OFFICIAL_USER_ID = "user_official";
 export const RECOMMENDED_TEMPLATE_ID = "tpl_recommended";
 export const RECOMMENDED_TEMPLATE_SLUG = "recommended";
 
-const snapshotItem = (
-  hashBySlug: Map<string, string>,
-  slug: string,
-  emit: "provider" | "inline"
-): RuleItem | null => {
+const snapshotItem = (hashBySlug: Map<string, string>, slug: string): RuleItem | null => {
   const hash = hashBySlug.get(slug);
   if (!hash) return null;
-  return { kind: "snapshot", catalogId: catalogIdForSlug(slug), slug, hash, emit };
+  return { kind: "snapshot", catalogId: catalogIdForSlug(slug), slug, hash, emit: "provider" };
 };
+
+// 地区分组是按实际节点动态生成的：某个地区码当前没有节点时，渲染阶段会静默跳过
+// 对应的「group」成员引用（见 evaluate.ts expandMembers），所以这里可以放心把全部
+// 已支持的地区码都列进默认候选——用户实际能选到的，永远只是他们真正拥有节点的那些地区。
+const regionMembers = (): GroupMember[] => [
+  ...REGION_CODES.map((code): GroupMember => ({ kind: "group", name: code })),
+  { kind: "group", name: "Others" }
+];
+
+const proxyFirstMembers = (): GroupMember[] => [
+  { kind: "group", name: "Proxies" },
+  { kind: "group", name: "Auto" },
+  ...regionMembers(),
+  { kind: "builtin", policy: "DIRECT" },
+  { kind: "builtin", policy: "REJECT" }
+];
+
+const directFirstMembers = (): GroupMember[] => [
+  { kind: "builtin", policy: "DIRECT" },
+  { kind: "group", name: "Proxies" },
+  { kind: "group", name: "Auto" },
+  ...regionMembers(),
+  { kind: "builtin", policy: "REJECT" }
+];
 
 export const buildRecommendedTemplatePayload = (): TemplatePayloadV2 | null => {
   const manifest = loadBuiltinRulesetManifest();
@@ -39,10 +65,35 @@ export const buildRecommendedTemplatePayload = (): TemplatePayloadV2 | null => {
     return null;
   }
 
-  const items = (slugs: Array<[string, "provider" | "inline"]>): RuleItem[] =>
-    slugs
-      .map(([slug, emit]) => snapshotItem(hashBySlug, slug, emit))
-      .filter((item): item is RuleItem => item !== null);
+  const customGroups: CustomGroup[] = [];
+  const groupOrder: string[] = ["Proxies"];
+  const ruleTargets: RuleTargetBlock[] = [];
+  const ruleOrder: string[] = [];
+
+  // Lan → DIRECT、Advertising → REJECT 恒排最前，不受制于同名策略组
+  for (const groupKind of ["direct-builtin", "reject"] as const) {
+    const entry = manifest.find((candidate) => candidate.groupKind === groupKind);
+    if (!entry) continue;
+    const item = snapshotItem(hashBySlug, entry.slug);
+    if (!item) continue;
+    ruleTargets.push({ target: entry.recommendedTarget, items: [item] });
+    ruleOrder.push(entry.recommendedTarget);
+  }
+
+  for (const entry of manifest) {
+    if (entry.groupKind !== "proxy-first" && entry.groupKind !== "direct-first") continue;
+    const item = snapshotItem(hashBySlug, entry.slug);
+    if (!item) continue;
+    const groupName = entry.recommendedTarget;
+    customGroups.push({
+      name: groupName,
+      type: "select",
+      members: entry.groupKind === "proxy-first" ? proxyFirstMembers() : directFirstMembers()
+    });
+    groupOrder.push(groupName);
+    ruleTargets.push({ target: groupName, items: [item] });
+    ruleOrder.push(groupName);
+  }
 
   return {
     version: 1,
@@ -56,62 +107,12 @@ export const buildRecommendedTemplatePayload = (): TemplatePayloadV2 | null => {
         { kind: "proxies-root", name: "Proxies", includeAuto: true, extraMembers: [] },
         { kind: "region-groups", groupType: "select", unclassified: "others" }
       ],
-      custom: [
-        {
-          name: "AI",
-          type: "select",
-          members: [
-            { kind: "group", name: "Proxies" },
-            { kind: "group", name: "Auto" },
-            { kind: "builtin", policy: "DIRECT" }
-          ]
-        },
-        {
-          name: "Streaming",
-          type: "select",
-          members: [
-            { kind: "group", name: "Proxies" },
-            { kind: "group", name: "Auto" },
-            { kind: "builtin", policy: "DIRECT" }
-          ]
-        }
-      ],
-      order: ["Proxies", "AI", "Streaming"]
+      custom: customGroups,
+      order: groupOrder
     },
     rules: {
-      targets: [
-        { target: "REJECT", items: items([["reject-ads", "provider"]]) },
-        {
-          target: "AI",
-          items: items([
-            ["geosite-openai", "provider"],
-            ["geosite-anthropic", "provider"]
-          ])
-        },
-        {
-          target: "Streaming",
-          items: items([
-            ["geosite-netflix", "provider"],
-            ["geosite-youtube", "provider"]
-          ])
-        },
-        {
-          target: "Proxies",
-          items: items([
-            ["geosite-telegram", "provider"],
-            ["gfw-proxy", "provider"]
-          ])
-        },
-        {
-          target: "DIRECT",
-          items: items([
-            ["private", "inline"],
-            ["geosite-cn", "provider"],
-            ["cn-cidr", "provider"]
-          ])
-        }
-      ],
-      order: ["REJECT", "AI", "Streaming", "Proxies", "DIRECT"],
+      targets: ruleTargets,
+      order: ruleOrder,
       prelude: [],
       final: { target: "Proxies" }
     },
@@ -156,7 +157,7 @@ export const seedBuiltinTemplates = (db: Database): number => {
 
   db.query(`
     INSERT OR IGNORE INTO templates (id, owner_user_id, display_name, slug, description, visibility, is_official, latest_version_id, created_at, updated_at)
-    VALUES (?, ?, '推荐方案', ?, '官方维护的起手配置：自动地区分组 + Auto 测速组，AI / 流媒体 / 广告拦截 / 国内直连分流，合理的 DNS 与嗅探设置。', 'public', 1, NULL, ?, ?)
+    VALUES (?, ?, '推荐方案', ?, '官方维护的起手配置：自动地区分组 + Auto 测速组，Apple / Netflix / Disney+ / TikTok / OpenAI / Anthropic / Steam / Google / PayPal / Telegram / Microsoft / GlobalMedia 等常用服务按同名策略组分流，BiliBili / SteamCN / ChinaMax 默认直连，去广告与内网直连兜底，合理的 DNS 与嗅探设置。', 'public', 1, NULL, ?, ?)
   `).run(RECOMMENDED_TEMPLATE_ID, OFFICIAL_USER_ID, RECOMMENDED_TEMPLATE_SLUG, now, now);
 
   const payloadJson = JSON.stringify(payload);

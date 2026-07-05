@@ -2,6 +2,7 @@ import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
+import { RulesetDirectoryBrowser } from "../components/ruleset-directory-browser";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -15,7 +16,7 @@ import {
   useRulesetMutations,
   useRulesets
 } from "../lib/hooks";
-import type { RulesetCatalogEntry } from "../lib/types";
+import type { RulesetCatalogEntry, RulesetDirectoryEntry } from "../lib/types";
 
 const behaviorLabel: Record<string, string> = {
   domain: "域名",
@@ -164,6 +165,16 @@ export const RulesetsPage = () => {
   const mutations = useRulesetMutations();
   const [updating, setUpdating] = useState<RulesetCatalogEntry | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [busySlug, setBusySlug] = useState<string | null>(null);
+
+  const importFromDirectory = (entry: RulesetDirectoryEntry) => {
+    setBusySlug(entry.slug);
+    mutations.importFromUrl
+      .mutateAsync({ name: entry.name, sourceUrl: entry.sourceUrl, behavior: entry.behavior })
+      .then(() => toast.success(`已导入「${entry.name}」到规则库`))
+      .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "导入失败"))
+      .finally(() => setBusySlug(null));
+  };
 
   return (
     <div className="mx-auto max-w-[1180px] px-5 pb-16 pt-6">
@@ -244,6 +255,14 @@ export const RulesetsPage = () => {
             ))}
           </tbody>
         </table>
+      </Card>
+
+      <Card className="mt-5 p-4">
+        <h2 className="mb-0.5 text-[13px] font-semibold">发现更多规则</h2>
+        <p className="mb-3 text-xs text-muted">
+          来自 blackmatrix7/ios_rule_script 的完整规则组索引，常用的已经内置在上面的列表里；这里可以按需搜索并一键导入其余规则组。
+        </p>
+        <RulesetDirectoryBrowser onImport={importFromDirectory} busySlug={busySlug} />
       </Card>
 
       {updating ? <UpdateDialog entry={updating} onClose={() => setUpdating(null)} /> : null}

@@ -1,12 +1,52 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
+import QRCode from "qrcode";
 import { toast } from "sonner";
 
 import { cn } from "../lib/cn";
+import { useSubscriptionMutations } from "../lib/hooks";
 import type { DiffSummary, EvaluateIssueDto, Health } from "../lib/types";
 import { healthLabel } from "../lib/format";
 import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
+import { Button, type ButtonProps } from "./ui/button";
+
+// 二维码：toDataURL + <img>，不依赖 canvas ref 的挂载时机，失败时会显式提示而不是静默留白。
+export const QrCode = ({ url, size = 168 }: { url: string; size?: number }) => {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setSrc(null);
+    QRCode.toDataURL(url, {
+      width: size,
+      margin: 1,
+      color: { dark: "#e8eaf2", light: "#00000000" }
+    })
+      .then((dataUrl) => {
+        if (!cancelled) setSrc(dataUrl);
+      })
+      .catch(() => {
+        if (!cancelled) toast.error("二维码生成失败，可直接复制链接");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [url, size]);
+  return src ? (
+    <img
+      src={src}
+      alt="订阅二维码"
+      style={{ width: size, height: size }}
+      className="rounded-md border border-line bg-surface2 p-1.5"
+    />
+  ) : (
+    <div
+      style={{ width: size, height: size }}
+      className="flex items-center justify-center rounded-md border border-line bg-surface2 text-[11px] text-faint"
+    >
+      生成中…
+    </div>
+  );
+};
 
 export const HealthDot = ({ health, withLabel }: { health: Health; withLabel?: boolean }) => (
   <span className="inline-flex items-center gap-1.5">
@@ -34,6 +74,67 @@ export const CopyButton = ({ text, label = "复制链接" }: { text: string; lab
       {copied ? <Check className="size-3.5 text-ok" /> : <Copy className="size-3.5" />}
       {label}
     </Button>
+  );
+};
+
+// 明文按需获取（如订阅长期链接）：点击时才请求一次，取到后立即复制，不在前端常驻明文。
+export const AsyncCopyButton = ({
+  onReveal,
+  label = "复制链接",
+  size = "sm",
+  variant
+}: {
+  onReveal: () => Promise<string>;
+  label?: string;
+  size?: ButtonProps["size"];
+  variant?: ButtonProps["variant"];
+}) => {
+  const [state, setState] = useState<"idle" | "loading" | "copied">("idle");
+  return (
+    <Button
+      size={size}
+      variant={variant}
+      disabled={state === "loading"}
+      onClick={async () => {
+        setState("loading");
+        try {
+          const url = await onReveal();
+          await navigator.clipboard.writeText(url);
+          setState("copied");
+          toast.success("已复制到剪贴板");
+          setTimeout(() => setState("idle"), 1500);
+        } catch (error) {
+          setState("idle");
+          toast.error(error instanceof Error ? error.message : "复制失败，请重试");
+        }
+      }}
+    >
+      {state === "copied" ? <Check className="size-3.5 text-ok" /> : <Copy className="size-3.5" />}
+      {label}
+    </Button>
+  );
+};
+
+// 工作台卡片 / 订阅列表通用的「复制链接」快捷按钮：不需要先进访问页，一步拿到可复制的长期链接。
+export const CopyLinkButton = ({
+  subscriptionId,
+  size,
+  variant,
+  label
+}: {
+  subscriptionId: string;
+  size?: ButtonProps["size"];
+  variant?: ButtonProps["variant"];
+  label?: string;
+}) => {
+  const mutations = useSubscriptionMutations(subscriptionId);
+  return (
+    <AsyncCopyButton
+      size={size}
+      variant={variant}
+      label={label}
+      onReveal={async () => (await mutations.copyPrimaryLink.mutateAsync()).url}
+    />
   );
 };
 

@@ -1,5 +1,7 @@
 // ⚠️ 生成自 backend/src/lib/build-config/types.ts —— 勿手改，改动后运行 bun run sync-types。
-
+// BuildConfig：订阅的声明式构建配置（权威定义）
+// 渲染 = evaluate(BuildConfig, 源快照, 规则快照)。参见技术方案 §4。
+// 前端持有同构副本 frontend/src/lib/build-config-types.ts（由 sync-types 脚本复制）。
 
 export type BuildMode = "rebuild" | "patch";
 

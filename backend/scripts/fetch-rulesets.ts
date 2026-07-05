@@ -1,35 +1,19 @@
 // 更新仓库内置规则源离线快照：bun scripts/fetch-rulesets.ts
-// 读取 assets/rulesets/manifest.json，逐条抓取并规范化为 payload YAML 写回。
-import yaml from "js-yaml";
+// 读取 assets/rulesets/manifest.json，为每条目按 sources 抓取一个或多个远端文件，
+// 合并、去重、转换为统一的 classical payload 后写回本地离线快照 yaml。
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { mergeMultiSourceClassical, type RulesetSource } from "../src/lib/rulesets/merge";
 
 const assetsDir = resolve(import.meta.dir, "../assets/rulesets");
 
 interface ManifestEntry {
   slug: string;
-  behavior: "domain" | "ipcidr" | "classical";
-  sourceUrl: string;
+  sources: RulesetSource[];
+  extraRules?: string[];
   file: string;
 }
-
-export const normalizePayload = (text: string): { content: string; entryCount: number } => {
-  const parsed = yaml.load(text);
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    !Array.isArray((parsed as Record<string, unknown>).payload)
-  ) {
-    throw new Error("内容不是合法的 payload YAML");
-  }
-  const payload = ((parsed as Record<string, unknown>).payload as unknown[])
-    .map((entry) => String(entry).trim())
-    .filter((entry) => entry.length > 0);
-  return {
-    content: yaml.dump({ payload }, { noRefs: true, lineWidth: -1, sortKeys: false }),
-    entryCount: payload.length
-  };
-};
 
 const main = async () => {
   const manifest = JSON.parse(readFileSync(resolve(assetsDir, "manifest.json"), "utf8")) as {
@@ -37,15 +21,17 @@ const main = async () => {
   };
 
   for (const entry of manifest.entries) {
-    process.stdout.write(`fetch ${entry.slug} ... `);
-    const response = await fetch(entry.sourceUrl);
-    if (!response.ok) {
-      console.log(`FAILED ${response.status}`);
-      continue;
+    process.stdout.write(`fetch ${entry.slug} (${entry.sources.length} 源) ... `);
+    try {
+      const { content, entryCount } = await mergeMultiSourceClassical({
+        sources: entry.sources,
+        extraRules: entry.extraRules ?? []
+      });
+      writeFileSync(resolve(assetsDir, entry.file), content);
+      console.log(`ok (${entryCount} 条)`);
+    } catch (error) {
+      console.log(`FAILED ${error instanceof Error ? error.message : String(error)}`);
     }
-    const { content, entryCount } = normalizePayload(await response.text());
-    writeFileSync(resolve(assetsDir, entry.file), content);
-    console.log(`ok (${entryCount} 条)`);
   }
 };
 

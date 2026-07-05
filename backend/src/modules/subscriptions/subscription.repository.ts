@@ -356,6 +356,7 @@ export class SubscriptionRepository {
   createToken(input: {
     subscriptionId: string;
     tokenHash: string;
+    tokenCiphertext: Buffer;
     label: string | null;
     rotatedFromId: string | null;
   }): TokenRecord {
@@ -363,10 +364,10 @@ export class SubscriptionRepository {
     const now = new Date().toISOString();
     this.db
       .query(
-        `INSERT INTO subscription_tokens (id, subscription_id, token_hash, label, rotated_from_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO subscription_tokens (id, subscription_id, token_hash, token_ciphertext, label, rotated_from_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(id, input.subscriptionId, input.tokenHash, input.label, input.rotatedFromId, now);
+      .run(id, input.subscriptionId, input.tokenHash, input.tokenCiphertext, input.label, input.rotatedFromId, now);
     return {
       id,
       subscriptionId: input.subscriptionId,
@@ -376,6 +377,55 @@ export class SubscriptionRepository {
       lastUsedAt: null,
       createdAt: now
     };
+  }
+
+  findTokenById(subscriptionId: string, tokenId: string): TokenRecord | null {
+    const row = this.db
+      .query<{
+        id: string;
+        subscription_id: string;
+        label: string | null;
+        rotated_from_id: string | null;
+        revoked_at: string | null;
+        last_used_at: string | null;
+        created_at: string;
+      }>(
+        `SELECT id, subscription_id, label, rotated_from_id, revoked_at, last_used_at, created_at
+         FROM subscription_tokens WHERE id = ? AND subscription_id = ?`
+      )
+      .get(tokenId, subscriptionId);
+    if (!row) return null;
+    return {
+      id: row.id,
+      subscriptionId: row.subscription_id,
+      label: row.label,
+      rotatedFromId: row.rotated_from_id,
+      revokedAt: row.revoked_at,
+      lastUsedAt: row.last_used_at,
+      createdAt: row.created_at
+    };
+  }
+
+  getTokenCiphertext(subscriptionId: string, tokenId: string): Uint8Array | null {
+    const row = this.db
+      .query<{ token_ciphertext: Uint8Array | null }>(
+        "SELECT token_ciphertext FROM subscription_tokens WHERE id = ? AND subscription_id = ?"
+      )
+      .get(tokenId, subscriptionId);
+    return row?.token_ciphertext ?? null;
+  }
+
+  renameToken(subscriptionId: string, tokenId: string, label: string | null) {
+    this.db
+      .query("UPDATE subscription_tokens SET label = ? WHERE id = ? AND subscription_id = ?")
+      .run(label, tokenId, subscriptionId);
+  }
+
+  // 长期链接「删除」是真删除：撤销即从列表消失，不保留历史行（技术方案调整，短期分享链接不受影响）。
+  deleteToken(subscriptionId: string, tokenId: string) {
+    this.db
+      .query("DELETE FROM subscription_tokens WHERE id = ? AND subscription_id = ?")
+      .run(tokenId, subscriptionId);
   }
 
   listTokens(subscriptionId: string): TokenRecord[] {
@@ -402,12 +452,6 @@ export class SubscriptionRepository {
         lastUsedAt: row.last_used_at,
         createdAt: row.created_at
       }));
-  }
-
-  revokeToken(tokenId: string) {
-    this.db
-      .query("UPDATE subscription_tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL")
-      .run(new Date().toISOString(), tokenId);
   }
 
   findActiveTokenByHash(subscriptionId: string, tokenHash: string): TokenRecord | null {

@@ -1,0 +1,3998 @@
+[
+  {
+    "slug": "115",
+    "name": "115",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/115/115_No_Resolve.yaml"
+  },
+  {
+    "slug": "12306",
+    "name": "12306",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/12306/12306_No_Resolve.yaml"
+  },
+  {
+    "slug": "1337x",
+    "name": "1337x",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/1337x/1337x_No_Resolve.yaml"
+  },
+  {
+    "slug": "17173",
+    "name": "17173",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/17173/17173_No_Resolve.yaml"
+  },
+  {
+    "slug": "178",
+    "name": "178",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/178/178_No_Resolve.yaml"
+  },
+  {
+    "slug": "17zuoye",
+    "name": "17zuoye",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/17zuoye/17zuoye_No_Resolve.yaml"
+  },
+  {
+    "slug": "2kgames",
+    "name": "2KGames",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/2KGames/2KGames_No_Resolve.yaml"
+  },
+  {
+    "slug": "360",
+    "name": "360",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/360/360_No_Resolve.yaml"
+  },
+  {
+    "slug": "36kr",
+    "name": "36kr",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/36kr/36kr_No_Resolve.yaml"
+  },
+  {
+    "slug": "3dm",
+    "name": "3dm",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/3dm/3dm_No_Resolve.yaml"
+  },
+  {
+    "slug": "3type",
+    "name": "3Type",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/3Type/3Type_No_Resolve.yaml"
+  },
+  {
+    "slug": "4399",
+    "name": "4399",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/4399/4399_No_Resolve.yaml"
+  },
+  {
+    "slug": "4chan",
+    "name": "4chan",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/4chan/4chan_No_Resolve.yaml"
+  },
+  {
+    "slug": "4paradigm",
+    "name": "4Paradigm",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/4Paradigm/4Paradigm_No_Resolve.yaml"
+  },
+  {
+    "slug": "51job",
+    "name": "51Job",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/51Job/51Job_No_Resolve.yaml"
+  },
+  {
+    "slug": "51nod",
+    "name": "51nod",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/51nod/51nod_No_Resolve.yaml"
+  },
+  {
+    "slug": "56",
+    "name": "56",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/56/56_No_Resolve.yaml"
+  },
+  {
+    "slug": "58tongcheng",
+    "name": "58TongCheng",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/58TongCheng/58TongCheng_No_Resolve.yaml"
+  },
+  {
+    "slug": "6jianfang",
+    "name": "6JianFang",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/6JianFang/6JianFang_No_Resolve.yaml"
+  },
+  {
+    "slug": "6park",
+    "name": "6park",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/6park/6park_No_Resolve.yaml"
+  },
+  {
+    "slug": "8btc",
+    "name": "8btc",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/8btc/8btc_No_Resolve.yaml"
+  },
+  {
+    "slug": "9news",
+    "name": "9News",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/9News/9News_No_Resolve.yaml"
+  },
+  {
+    "slug": "9to5",
+    "name": "9to5",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/9to5/9to5_No_Resolve.yaml"
+  },
+  {
+    "slug": "abc",
+    "name": "ABC",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ABC/ABC_No_Resolve.yaml"
+  },
+  {
+    "slug": "abema",
+    "name": "Abema",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Abema/Abema_No_Resolve.yaml"
+  },
+  {
+    "slug": "abematv",
+    "name": "AbemaTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AbemaTV/AbemaTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "accuweather",
+    "name": "Accuweather",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Accuweather/Accuweather_No_Resolve.yaml"
+  },
+  {
+    "slug": "acer",
+    "name": "Acer",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Acer/Acer_No_Resolve.yaml"
+  },
+  {
+    "slug": "acfun",
+    "name": "AcFun",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AcFun/AcFun_No_Resolve.yaml"
+  },
+  {
+    "slug": "acplay",
+    "name": "Acplay",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Acplay/Acplay_No_Resolve.yaml"
+  },
+  {
+    "slug": "actalis",
+    "name": "Actalis",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Actalis/Actalis_No_Resolve.yaml"
+  },
+  {
+    "slug": "adcolony",
+    "name": "AdColony",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AdColony/AdColony_No_Resolve.yaml"
+  },
+  {
+    "slug": "addthis",
+    "name": "Addthis",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Addthis/Addthis_No_Resolve.yaml"
+  },
+  {
+    "slug": "addtoany",
+    "name": "AddToAny",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AddToAny/AddToAny_No_Resolve.yaml"
+  },
+  {
+    "slug": "adguardsdnsfilter",
+    "name": "AdGuardSDNSFilter",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AdGuardSDNSFilter/AdGuardSDNSFilter_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "adidas",
+    "name": "Adidas",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Adidas/Adidas_No_Resolve.yaml"
+  },
+  {
+    "slug": "adobe",
+    "name": "Adobe",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Adobe/Adobe_No_Resolve.yaml"
+  },
+  {
+    "slug": "adobeactivation",
+    "name": "AdobeActivation",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AdobeActivation/AdobeActivation_No_Resolve.yaml"
+  },
+  {
+    "slug": "advertising",
+    "name": "Advertising",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Advertising/Advertising_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "advertisinglite",
+    "name": "AdvertisingLite",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AdvertisingLite/AdvertisingLite_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "advertisingmitv",
+    "name": "AdvertisingMiTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AdvertisingMiTV/AdvertisingMiTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "advertisingtest",
+    "name": "AdvertisingTest",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AdvertisingTest/AdvertisingTest_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "aerogard",
+    "name": "Aerogard",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Aerogard/Aerogard_No_Resolve.yaml"
+  },
+  {
+    "slug": "afdian",
+    "name": "Afdian",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Afdian/Afdian_No_Resolve.yaml"
+  },
+  {
+    "slug": "afp",
+    "name": "AFP",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AFP/AFP_No_Resolve.yaml"
+  },
+  {
+    "slug": "agora",
+    "name": "Agora",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Agora/Agora_No_Resolve.yaml"
+  },
+  {
+    "slug": "aiqicha",
+    "name": "AiQiCha",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AiQiCha/AiQiCha_No_Resolve.yaml"
+  },
+  {
+    "slug": "airchina",
+    "name": "AirChina",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AirChina/AirChina_No_Resolve.yaml"
+  },
+  {
+    "slug": "airwick",
+    "name": "AirWick",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AirWick/AirWick_No_Resolve.yaml"
+  },
+  {
+    "slug": "aixcoder",
+    "name": "aiXcoder",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/aiXcoder/aiXcoder_No_Resolve.yaml"
+  },
+  {
+    "slug": "akamai",
+    "name": "Akamai",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Akamai/Akamai_No_Resolve.yaml"
+  },
+  {
+    "slug": "ali213",
+    "name": "Ali213",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Ali213/Ali213_No_Resolve.yaml"
+  },
+  {
+    "slug": "alibaba",
+    "name": "Alibaba",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Alibaba/Alibaba_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "alipay",
+    "name": "AliPay",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AliPay/AliPay_No_Resolve.yaml"
+  },
+  {
+    "slug": "aljazeera",
+    "name": "ALJazeera",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ALJazeera/ALJazeera_No_Resolve.yaml"
+  },
+  {
+    "slug": "all4",
+    "name": "All4",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/All4/All4_No_Resolve.yaml"
+  },
+  {
+    "slug": "amazon",
+    "name": "Amazon",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Amazon/Amazon_No_Resolve.yaml"
+  },
+  {
+    "slug": "amazoncn",
+    "name": "AmazonCN",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AmazonCN/AmazonCN_No_Resolve.yaml"
+  },
+  {
+    "slug": "amazonip",
+    "name": "AmazonIP",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AmazonIP/AmazonIP_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "amazonprimevideo",
+    "name": "AmazonPrimeVideo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AmazonPrimeVideo/AmazonPrimeVideo_No_Resolve.yaml"
+  },
+  {
+    "slug": "amazontrust",
+    "name": "AmazonTrust",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AmazonTrust/AmazonTrust_No_Resolve.yaml"
+  },
+  {
+    "slug": "amd",
+    "name": "AMD",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AMD/AMD_No_Resolve.yaml"
+  },
+  {
+    "slug": "americasvoice",
+    "name": "Americasvoice",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Americasvoice/Americasvoice_No_Resolve.yaml"
+  },
+  {
+    "slug": "amp",
+    "name": "AMP",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AMP/AMP_No_Resolve.yaml"
+  },
+  {
+    "slug": "anaconda",
+    "name": "Anaconda",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Anaconda/Anaconda_No_Resolve.yaml"
+  },
+  {
+    "slug": "anandtech",
+    "name": "AnandTech",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AnandTech/AnandTech_No_Resolve.yaml"
+  },
+  {
+    "slug": "android",
+    "name": "Android",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Android/Android_No_Resolve.yaml"
+  },
+  {
+    "slug": "anime",
+    "name": "Anime",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Anime/Anime_No_Resolve.yaml"
+  },
+  {
+    "slug": "anjuke",
+    "name": "Anjuke",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Anjuke/Anjuke_No_Resolve.yaml"
+  },
+  {
+    "slug": "anonv",
+    "name": "Anonv",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Anonv/Anonv_No_Resolve.yaml"
+  },
+  {
+    "slug": "anthropic",
+    "name": "Anthropic",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Anthropic/Anthropic_No_Resolve.yaml"
+  },
+  {
+    "slug": "antiankeji",
+    "name": "AnTianKeJi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AnTianKeJi/AnTianKeJi_No_Resolve.yaml"
+  },
+  {
+    "slug": "antutu",
+    "name": "Antutu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Antutu/Antutu_No_Resolve.yaml"
+  },
+  {
+    "slug": "aol",
+    "name": "AOL",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AOL/AOL_No_Resolve.yaml"
+  },
+  {
+    "slug": "apifox",
+    "name": "Apifox",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Apifox/Apifox_No_Resolve.yaml"
+  },
+  {
+    "slug": "apkcombo",
+    "name": "APKCombo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/APKCombo/APKCombo_No_Resolve.yaml"
+  },
+  {
+    "slug": "apkpure",
+    "name": "Apkpure",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Apkpure/Apkpure_No_Resolve.yaml"
+  },
+  {
+    "slug": "apple",
+    "name": "Apple",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Apple/Apple_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "appledaily",
+    "name": "AppleDaily",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppleDaily/AppleDaily_No_Resolve.yaml"
+  },
+  {
+    "slug": "appledev",
+    "name": "AppleDev",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppleDev/AppleDev_No_Resolve.yaml"
+  },
+  {
+    "slug": "applefirmware",
+    "name": "AppleFirmware",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppleFirmware/AppleFirmware_No_Resolve.yaml"
+  },
+  {
+    "slug": "applehardware",
+    "name": "AppleHardware",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppleHardware/AppleHardware_No_Resolve.yaml"
+  },
+  {
+    "slug": "appleid",
+    "name": "AppleID",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppleID/AppleID_No_Resolve.yaml"
+  },
+  {
+    "slug": "applemail",
+    "name": "AppleMail",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppleMail/AppleMail_No_Resolve.yaml"
+  },
+  {
+    "slug": "applemedia",
+    "name": "AppleMedia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppleMedia/AppleMedia_No_Resolve.yaml"
+  },
+  {
+    "slug": "applemusic",
+    "name": "AppleMusic",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppleMusic/AppleMusic_No_Resolve.yaml"
+  },
+  {
+    "slug": "applenews",
+    "name": "AppleNews",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppleNews/AppleNews_No_Resolve.yaml"
+  },
+  {
+    "slug": "appleproxy",
+    "name": "AppleProxy",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppleProxy/AppleProxy_No_Resolve.yaml"
+  },
+  {
+    "slug": "appletv",
+    "name": "AppleTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppleTV/AppleTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "applovin",
+    "name": "AppLovin",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppLovin/AppLovin_No_Resolve.yaml"
+  },
+  {
+    "slug": "appstore",
+    "name": "AppStore",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AppStore/AppStore_No_Resolve.yaml"
+  },
+  {
+    "slug": "arphic",
+    "name": "Arphic",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Arphic/Arphic_No_Resolve.yaml"
+  },
+  {
+    "slug": "asahi",
+    "name": "Asahi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Asahi/Asahi_No_Resolve.yaml"
+  },
+  {
+    "slug": "asianmedia",
+    "name": "AsianMedia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AsianMedia/AsianMedia_No_Resolve.yaml"
+  },
+  {
+    "slug": "atlassian",
+    "name": "Atlassian",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Atlassian/Atlassian_No_Resolve.yaml"
+  },
+  {
+    "slug": "atomdata",
+    "name": "Atomdata",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Atomdata/Atomdata_No_Resolve.yaml"
+  },
+  {
+    "slug": "attwatchtv",
+    "name": "ATTWatchTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ATTWatchTV/ATTWatchTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "bahamut",
+    "name": "Bahamut",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Bahamut/Bahamut_No_Resolve.yaml"
+  },
+  {
+    "slug": "baidu",
+    "name": "Baidu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Baidu/Baidu_No_Resolve.yaml"
+  },
+  {
+    "slug": "baidutieba",
+    "name": "BaiDuTieBa",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BaiDuTieBa/BaiDuTieBa_No_Resolve.yaml"
+  },
+  {
+    "slug": "baifendian",
+    "name": "BaiFenDian",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BaiFenDian/BaiFenDian_No_Resolve.yaml"
+  },
+  {
+    "slug": "baishanyunkeji",
+    "name": "BaiShanYunKeJi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BaiShanYunKeJi/BaiShanYunKeJi_No_Resolve.yaml"
+  },
+  {
+    "slug": "baofengyingyin",
+    "name": "BaoFengYingYin",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BaoFengYingYin/BaoFengYingYin_No_Resolve.yaml"
+  },
+  {
+    "slug": "bardai",
+    "name": "BardAI",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BardAI/BardAI_No_Resolve.yaml"
+  },
+  {
+    "slug": "battle",
+    "name": "Battle",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Battle/Battle_No_Resolve.yaml"
+  },
+  {
+    "slug": "bbc",
+    "name": "BBC",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BBC/BBC_No_Resolve.yaml"
+  },
+  {
+    "slug": "beats",
+    "name": "Beats",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Beats/Beats_No_Resolve.yaml"
+  },
+  {
+    "slug": "bestbuy",
+    "name": "Bestbuy",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Bestbuy/Bestbuy_No_Resolve.yaml"
+  },
+  {
+    "slug": "bestore",
+    "name": "BeStore",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BeStore/BeStore_No_Resolve.yaml"
+  },
+  {
+    "slug": "bestv",
+    "name": "BesTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BesTV/BesTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "bianfeng",
+    "name": "BianFeng",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BianFeng/BianFeng_No_Resolve.yaml"
+  },
+  {
+    "slug": "bilibili",
+    "name": "BiliBili",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BiliBili/BiliBili_No_Resolve.yaml"
+  },
+  {
+    "slug": "bilibiliintl",
+    "name": "BiliBiliIntl",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BiliBiliIntl/BiliBiliIntl_No_Resolve.yaml"
+  },
+  {
+    "slug": "binance",
+    "name": "Binance",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Binance/Binance_No_Resolve.yaml"
+  },
+  {
+    "slug": "bing",
+    "name": "Bing",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Bing/Bing_No_Resolve.yaml"
+  },
+  {
+    "slug": "blizzard",
+    "name": "Blizzard",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Blizzard/Blizzard_No_Resolve.yaml"
+  },
+  {
+    "slug": "blockhttpdns",
+    "name": "BlockHttpDNS",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BlockHttpDNS/BlockHttpDNS_No_Resolve.yaml"
+  },
+  {
+    "slug": "bloomberg",
+    "name": "Bloomberg",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Bloomberg/Bloomberg_No_Resolve.yaml"
+  },
+  {
+    "slug": "blued",
+    "name": "Blued",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Blued/Blued_No_Resolve.yaml"
+  },
+  {
+    "slug": "bmw",
+    "name": "BMW",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BMW/BMW_No_Resolve.yaml"
+  },
+  {
+    "slug": "boc",
+    "name": "BOC",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BOC/BOC_No_Resolve.yaml"
+  },
+  {
+    "slug": "bocom",
+    "name": "BOCOM",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BOCOM/BOCOM_No_Resolve.yaml"
+  },
+  {
+    "slug": "bootcss",
+    "name": "Bootcss",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Bootcss/Bootcss_No_Resolve.yaml"
+  },
+  {
+    "slug": "boxun",
+    "name": "BoXun",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BoXun/BoXun_No_Resolve.yaml"
+  },
+  {
+    "slug": "brightcove",
+    "name": "BrightCove",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BrightCove/BrightCove_No_Resolve.yaml"
+  },
+  {
+    "slug": "britboxuk",
+    "name": "BritboxUK",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BritboxUK/BritboxUK_No_Resolve.yaml"
+  },
+  {
+    "slug": "buypass",
+    "name": "Buypass",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Buypass/Buypass_No_Resolve.yaml"
+  },
+  {
+    "slug": "bytedance",
+    "name": "ByteDance",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ByteDance/ByteDance_No_Resolve.yaml"
+  },
+  {
+    "slug": "cabletv",
+    "name": "CableTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CableTV/CableTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "cainiao",
+    "name": "CaiNiao",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CaiNiao/CaiNiao_No_Resolve.yaml"
+  },
+  {
+    "slug": "caixinchuanmei",
+    "name": "CaiXinChuanMei",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CaiXinChuanMei/CaiXinChuanMei_No_Resolve.yaml"
+  },
+  {
+    "slug": "cake",
+    "name": "Cake",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Cake/Cake_No_Resolve.yaml"
+  },
+  {
+    "slug": "camera360",
+    "name": "Camera360",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Camera360/Camera360_No_Resolve.yaml"
+  },
+  {
+    "slug": "canon",
+    "name": "Canon",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Canon/Canon_No_Resolve.yaml"
+  },
+  {
+    "slug": "cas",
+    "name": "CAS",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CAS/CAS_No_Resolve.yaml"
+  },
+  {
+    "slug": "cbs",
+    "name": "CBS",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CBS/CBS_No_Resolve.yaml"
+  },
+  {
+    "slug": "ccb",
+    "name": "CCB",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CCB/CCB_No_Resolve.yaml"
+  },
+  {
+    "slug": "cctv",
+    "name": "CCTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CCTV/CCTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "ceb",
+    "name": "CEB",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CEB/CEB_No_Resolve.yaml"
+  },
+  {
+    "slug": "cetv",
+    "name": "CETV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CETV/CETV_No_Resolve.yaml"
+  },
+  {
+    "slug": "cgb",
+    "name": "CGB",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CGB/CGB_No_Resolve.yaml"
+  },
+  {
+    "slug": "chengtongwangpan",
+    "name": "ChengTongWangPan",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChengTongWangPan/ChengTongWangPan_No_Resolve.yaml"
+  },
+  {
+    "slug": "china",
+    "name": "China",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/China/China_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "chinadns",
+    "name": "ChinaDNS",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaDNS/ChinaDNS_No_Resolve.yaml"
+  },
+  {
+    "slug": "chinaips",
+    "name": "ChinaIPs",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaIPs/ChinaIPs_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "chinaipsbgp",
+    "name": "ChinaIPsBGP",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaIPsBGP/ChinaIPsBGP_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "chinamax",
+    "name": "ChinaMax",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMax/ChinaMax_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "chinamaxnoip",
+    "name": "ChinaMaxNoIP",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMaxNoIP/ChinaMaxNoIP_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "chinamaxnomedia",
+    "name": "ChinaMaxNoMedia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMaxNoMedia/ChinaMaxNoMedia_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "chinamedia",
+    "name": "ChinaMedia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMedia/ChinaMedia_No_Resolve.yaml"
+  },
+  {
+    "slug": "chinamobile",
+    "name": "ChinaMobile",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMobile/ChinaMobile_No_Resolve.yaml"
+  },
+  {
+    "slug": "chinanews",
+    "name": "ChinaNews",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaNews/ChinaNews_No_Resolve.yaml"
+  },
+  {
+    "slug": "chinanomedia",
+    "name": "ChinaNoMedia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaNoMedia/ChinaNoMedia_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "chinatelecom",
+    "name": "ChinaTelecom",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaTelecom/ChinaTelecom_No_Resolve.yaml"
+  },
+  {
+    "slug": "chinatest",
+    "name": "ChinaTest",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaTest/ChinaTest_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "chinaunicom",
+    "name": "ChinaUnicom",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaUnicom/ChinaUnicom_No_Resolve.yaml"
+  },
+  {
+    "slug": "chromecast",
+    "name": "Chromecast",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Chromecast/Chromecast_No_Resolve.yaml"
+  },
+  {
+    "slug": "cht",
+    "name": "CHT",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CHT/CHT_No_Resolve.yaml"
+  },
+  {
+    "slug": "chuangketie",
+    "name": "ChuangKeTie",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChuangKeTie/ChuangKeTie_No_Resolve.yaml"
+  },
+  {
+    "slug": "chunyou",
+    "name": "ChunYou",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChunYou/ChunYou_No_Resolve.yaml"
+  },
+  {
+    "slug": "cibn",
+    "name": "CIBN",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CIBN/CIBN_No_Resolve.yaml"
+  },
+  {
+    "slug": "cisco",
+    "name": "Cisco",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Cisco/Cisco_No_Resolve.yaml"
+  },
+  {
+    "slug": "civitai",
+    "name": "Civitai",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Civitai/Civitai_No_Resolve.yaml"
+  },
+  {
+    "slug": "ckjr",
+    "name": "CKJR",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CKJR/CKJR_No_Resolve.yaml"
+  },
+  {
+    "slug": "classic",
+    "name": "Classic",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Classic/Classic_No_Resolve.yaml"
+  },
+  {
+    "slug": "claude",
+    "name": "Claude",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Claude/Claude_No_Resolve.yaml"
+  },
+  {
+    "slug": "cloudflare",
+    "name": "Cloudflare",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Cloudflare/Cloudflare_No_Resolve.yaml"
+  },
+  {
+    "slug": "cloudflarecn",
+    "name": "Cloudflarecn",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Cloudflarecn/Cloudflarecn_No_Resolve.yaml"
+  },
+  {
+    "slug": "clubhouse",
+    "name": "Clubhouse",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Clubhouse/Clubhouse_No_Resolve.yaml"
+  },
+  {
+    "slug": "clubhouseip",
+    "name": "ClubhouseIP",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ClubhouseIP/ClubhouseIP_No_Resolve.yaml"
+  },
+  {
+    "slug": "cmb",
+    "name": "CMB",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CMB/CMB_No_Resolve.yaml"
+  },
+  {
+    "slug": "cnet",
+    "name": "Cnet",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Cnet/Cnet_No_Resolve.yaml"
+  },
+  {
+    "slug": "cnki",
+    "name": "CNKI",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CNKI/CNKI_No_Resolve.yaml"
+  },
+  {
+    "slug": "cnn",
+    "name": "CNN",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CNN/CNN_No_Resolve.yaml"
+  },
+  {
+    "slug": "cnnic",
+    "name": "CNNIC",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CNNIC/CNNIC_No_Resolve.yaml"
+  },
+  {
+    "slug": "collabora",
+    "name": "Collabora",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Collabora/Collabora_No_Resolve.yaml"
+  },
+  {
+    "slug": "comodo",
+    "name": "Comodo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Comodo/Comodo_No_Resolve.yaml"
+  },
+  {
+    "slug": "contentful",
+    "name": "Contentful",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Contentful/Contentful_No_Resolve.yaml"
+  },
+  {
+    "slug": "coolapk",
+    "name": "Coolapk",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Coolapk/Coolapk_No_Resolve.yaml"
+  },
+  {
+    "slug": "copilot",
+    "name": "Copilot",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Copilot/Copilot_No_Resolve.yaml"
+  },
+  {
+    "slug": "crypto",
+    "name": "Crypto",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Crypto/Crypto_No_Resolve.yaml"
+  },
+  {
+    "slug": "cryptocurrency",
+    "name": "Cryptocurrency",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Cryptocurrency/Cryptocurrency_No_Resolve.yaml"
+  },
+  {
+    "slug": "csdn",
+    "name": "CSDN",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CSDN/CSDN_No_Resolve.yaml"
+  },
+  {
+    "slug": "cwseed",
+    "name": "CWSeed",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CWSeed/CWSeed_No_Resolve.yaml"
+  },
+  {
+    "slug": "cybertrust",
+    "name": "CyberTrust",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/CyberTrust/CyberTrust_No_Resolve.yaml"
+  },
+  {
+    "slug": "dailymail",
+    "name": "Dailymail",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Dailymail/Dailymail_No_Resolve.yaml"
+  },
+  {
+    "slug": "dailymotion",
+    "name": "Dailymotion",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Dailymotion/Dailymotion_No_Resolve.yaml"
+  },
+  {
+    "slug": "damai",
+    "name": "DaMai",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DaMai/DaMai_No_Resolve.yaml"
+  },
+  {
+    "slug": "dandanplay",
+    "name": "Dandanplay",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Dandanplay/Dandanplay_No_Resolve.yaml"
+  },
+  {
+    "slug": "dandanzan",
+    "name": "DanDanZan",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DanDanZan/DanDanZan_No_Resolve.yaml"
+  },
+  {
+    "slug": "dangdang",
+    "name": "DangDang",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DangDang/DangDang_No_Resolve.yaml"
+  },
+  {
+    "slug": "dazn",
+    "name": "DAZN",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DAZN/DAZN_No_Resolve.yaml"
+  },
+  {
+    "slug": "dedao",
+    "name": "Dedao",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Dedao/Dedao_No_Resolve.yaml"
+  },
+  {
+    "slug": "deepin",
+    "name": "Deepin",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Deepin/Deepin_No_Resolve.yaml"
+  },
+  {
+    "slug": "deezer",
+    "name": "Deezer",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Deezer/Deezer_No_Resolve.yaml"
+  },
+  {
+    "slug": "dell",
+    "name": "Dell",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Dell/Dell_No_Resolve.yaml"
+  },
+  {
+    "slug": "developer",
+    "name": "Developer",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Developer/Developer_No_Resolve.yaml"
+  },
+  {
+    "slug": "diabloiii",
+    "name": "DiabloIII",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DiabloIII/DiabloIII_No_Resolve.yaml"
+  },
+  {
+    "slug": "diancewangke",
+    "name": "DianCeWangKe",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DianCeWangKe/DianCeWangKe_No_Resolve.yaml"
+  },
+  {
+    "slug": "didi",
+    "name": "DiDi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DiDi/DiDi_No_Resolve.yaml"
+  },
+  {
+    "slug": "digicert",
+    "name": "DigiCert",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DigiCert/DigiCert_No_Resolve.yaml"
+  },
+  {
+    "slug": "digitalocean",
+    "name": "DigitalOcean",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DigitalOcean/DigitalOcean_No_Resolve.yaml"
+  },
+  {
+    "slug": "dilianwangluo",
+    "name": "DiLianWangLuo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DiLianWangLuo/DiLianWangLuo_No_Resolve.yaml"
+  },
+  {
+    "slug": "dingtalk",
+    "name": "DingTalk",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DingTalk/DingTalk_No_Resolve.yaml"
+  },
+  {
+    "slug": "dingxiangyuan",
+    "name": "DingXiangYuan",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DingXiangYuan/DingXiangYuan_No_Resolve.yaml"
+  },
+  {
+    "slug": "direct",
+    "name": "Direct",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Direct/Direct_No_Resolve.yaml"
+  },
+  {
+    "slug": "discord",
+    "name": "Discord",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Discord/Discord_No_Resolve.yaml"
+  },
+  {
+    "slug": "discoveryplus",
+    "name": "DiscoveryPlus",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DiscoveryPlus/DiscoveryPlus_No_Resolve.yaml"
+  },
+  {
+    "slug": "disifanshi",
+    "name": "DiSiFanShi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DiSiFanShi/DiSiFanShi_No_Resolve.yaml"
+  },
+  {
+    "slug": "disney",
+    "name": "Disney",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Disney/Disney_No_Resolve.yaml"
+  },
+  {
+    "slug": "disqus",
+    "name": "Disqus",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Disqus/Disqus_No_Resolve.yaml"
+  },
+  {
+    "slug": "dmm",
+    "name": "DMM",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DMM/DMM_No_Resolve.yaml"
+  },
+  {
+    "slug": "dns",
+    "name": "DNS",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DNS/DNS_No_Resolve.yaml"
+  },
+  {
+    "slug": "docker",
+    "name": "Docker",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Docker/Docker_No_Resolve.yaml"
+  },
+  {
+    "slug": "domob",
+    "name": "Domob",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Domob/Domob_No_Resolve.yaml"
+  },
+  {
+    "slug": "dood",
+    "name": "Dood",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Dood/Dood_No_Resolve.yaml"
+  },
+  {
+    "slug": "douban",
+    "name": "DouBan",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DouBan/DouBan_No_Resolve.yaml"
+  },
+  {
+    "slug": "douyin",
+    "name": "DouYin",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DouYin/DouYin_No_Resolve.yaml"
+  },
+  {
+    "slug": "douyu",
+    "name": "Douyu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Douyu/Douyu_No_Resolve.yaml"
+  },
+  {
+    "slug": "download",
+    "name": "Download",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Download/Download_No_Resolve.yaml"
+  },
+  {
+    "slug": "dropbox",
+    "name": "Dropbox",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Dropbox/Dropbox_No_Resolve.yaml"
+  },
+  {
+    "slug": "dtdns",
+    "name": "DtDNS",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DtDNS/DtDNS_No_Resolve.yaml"
+  },
+  {
+    "slug": "dubox",
+    "name": "Dubox",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Dubox/Dubox_No_Resolve.yaml"
+  },
+  {
+    "slug": "duckduckgo",
+    "name": "Duckduckgo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Duckduckgo/Duckduckgo_No_Resolve.yaml"
+  },
+  {
+    "slug": "duolingo",
+    "name": "Duolingo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Duolingo/Duolingo_No_Resolve.yaml"
+  },
+  {
+    "slug": "duowan",
+    "name": "DuoWan",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DuoWan/DuoWan_No_Resolve.yaml"
+  },
+  {
+    "slug": "dyndns",
+    "name": "DynDNS",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/DynDNS/DynDNS_No_Resolve.yaml"
+  },
+  {
+    "slug": "dynu",
+    "name": "Dynu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Dynu/Dynu_No_Resolve.yaml"
+  },
+  {
+    "slug": "ea",
+    "name": "EA",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/EA/EA_No_Resolve.yaml"
+  },
+  {
+    "slug": "eastmoney",
+    "name": "EastMoney",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/EastMoney/EastMoney_No_Resolve.yaml"
+  },
+  {
+    "slug": "easyprivacy",
+    "name": "EasyPrivacy",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/EasyPrivacy/EasyPrivacy_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "ebay",
+    "name": "eBay",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/eBay/eBay_No_Resolve.yaml"
+  },
+  {
+    "slug": "ehgallery",
+    "name": "EHGallery",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/EHGallery/EHGallery_No_Resolve.yaml"
+  },
+  {
+    "slug": "electron",
+    "name": "Electron",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Electron/Electron_No_Resolve.yaml"
+  },
+  {
+    "slug": "eleme",
+    "name": "Eleme",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Eleme/Eleme_No_Resolve.yaml"
+  },
+  {
+    "slug": "embl",
+    "name": "Embl",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Embl/Embl_No_Resolve.yaml"
+  },
+  {
+    "slug": "emby",
+    "name": "Emby",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Emby/Emby_No_Resolve.yaml"
+  },
+  {
+    "slug": "emojipedia",
+    "name": "Emojipedia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Emojipedia/Emojipedia_No_Resolve.yaml"
+  },
+  {
+    "slug": "encoretvb",
+    "name": "EncoreTVB",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/EncoreTVB/EncoreTVB_No_Resolve.yaml"
+  },
+  {
+    "slug": "entrust",
+    "name": "Entrust",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Entrust/Entrust_No_Resolve.yaml"
+  },
+  {
+    "slug": "epic",
+    "name": "Epic",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Epic/Epic_No_Resolve.yaml"
+  },
+  {
+    "slug": "espn",
+    "name": "Espn",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Espn/Espn_No_Resolve.yaml"
+  },
+  {
+    "slug": "facebook",
+    "name": "Facebook",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Facebook/Facebook_No_Resolve.yaml"
+  },
+  {
+    "slug": "fanfou",
+    "name": "FanFou",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/FanFou/FanFou_No_Resolve.yaml"
+  },
+  {
+    "slug": "fangzhengdianzi",
+    "name": "FangZhengDianZi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/FangZhengDianZi/FangZhengDianZi_No_Resolve.yaml"
+  },
+  {
+    "slug": "faronics",
+    "name": "Faronics",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Faronics/Faronics_No_Resolve.yaml"
+  },
+  {
+    "slug": "feizhu",
+    "name": "FeiZhu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/FeiZhu/FeiZhu_No_Resolve.yaml"
+  },
+  {
+    "slug": "fenghuangwang",
+    "name": "FengHuangWang",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/FengHuangWang/FengHuangWang_No_Resolve.yaml"
+  },
+  {
+    "slug": "fengxiawangluo",
+    "name": "FengXiaWangLuo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/FengXiaWangLuo/FengXiaWangLuo_No_Resolve.yaml"
+  },
+  {
+    "slug": "figma",
+    "name": "Figma",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Figma/Figma_No_Resolve.yaml"
+  },
+  {
+    "slug": "fiio",
+    "name": "Fiio",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Fiio/Fiio_No_Resolve.yaml"
+  },
+  {
+    "slug": "findmy",
+    "name": "FindMy",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/FindMy/FindMy_No_Resolve.yaml"
+  },
+  {
+    "slug": "fitnessplus",
+    "name": "FitnessPlus",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/FitnessPlus/FitnessPlus_No_Resolve.yaml"
+  },
+  {
+    "slug": "flipboard",
+    "name": "FlipBoard",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/FlipBoard/FlipBoard_No_Resolve.yaml"
+  },
+  {
+    "slug": "flurry",
+    "name": "Flurry",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Flurry/Flurry_No_Resolve.yaml"
+  },
+  {
+    "slug": "fox",
+    "name": "Fox",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Fox/Fox_No_Resolve.yaml"
+  },
+  {
+    "slug": "foxnow",
+    "name": "FOXNOW",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/FOXNOW/FOXNOW_No_Resolve.yaml"
+  },
+  {
+    "slug": "foxplus",
+    "name": "FOXPlus",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/FOXPlus/FOXPlus_No_Resolve.yaml"
+  },
+  {
+    "slug": "freecodecamp",
+    "name": "FreeCodeCamp",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/FreeCodeCamp/FreeCodeCamp_No_Resolve.yaml"
+  },
+  {
+    "slug": "friday",
+    "name": "friDay",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/friDay/friDay_No_Resolve.yaml"
+  },
+  {
+    "slug": "fubotv",
+    "name": "FuboTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/FuboTV/FuboTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "funshion",
+    "name": "Funshion",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Funshion/Funshion_No_Resolve.yaml"
+  },
+  {
+    "slug": "game",
+    "name": "Game",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Game/Game_No_Resolve.yaml"
+  },
+  {
+    "slug": "gaode",
+    "name": "GaoDe",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GaoDe/GaoDe_No_Resolve.yaml"
+  },
+  {
+    "slug": "garena",
+    "name": "Garena",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Garena/Garena_No_Resolve.yaml"
+  },
+  {
+    "slug": "geely",
+    "name": "Geely",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Geely/Geely_No_Resolve.yaml"
+  },
+  {
+    "slug": "gemini",
+    "name": "Gemini",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Gemini/Gemini_No_Resolve.yaml"
+  },
+  {
+    "slug": "gettyimages",
+    "name": "Gettyimages",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Gettyimages/Gettyimages_No_Resolve.yaml"
+  },
+  {
+    "slug": "gigabyte",
+    "name": "Gigabyte",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Gigabyte/Gigabyte_No_Resolve.yaml"
+  },
+  {
+    "slug": "gitbook",
+    "name": "GitBook",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GitBook/GitBook_No_Resolve.yaml"
+  },
+  {
+    "slug": "gitee",
+    "name": "Gitee",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Gitee/Gitee_No_Resolve.yaml"
+  },
+  {
+    "slug": "github",
+    "name": "GitHub",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GitHub/GitHub_No_Resolve.yaml"
+  },
+  {
+    "slug": "gitlab",
+    "name": "GitLab",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GitLab/GitLab_No_Resolve.yaml"
+  },
+  {
+    "slug": "global",
+    "name": "Global",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Global/Global_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "globalmedia",
+    "name": "GlobalMedia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GlobalMedia/GlobalMedia_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "globalscholar",
+    "name": "GlobalScholar",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GlobalScholar/GlobalScholar_No_Resolve.yaml"
+  },
+  {
+    "slug": "globalsign",
+    "name": "GlobalSign",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GlobalSign/GlobalSign_No_Resolve.yaml"
+  },
+  {
+    "slug": "gog",
+    "name": "Gog",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Gog/Gog_No_Resolve.yaml"
+  },
+  {
+    "slug": "google",
+    "name": "Google",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Google/Google_No_Resolve.yaml"
+  },
+  {
+    "slug": "googledrive",
+    "name": "GoogleDrive",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GoogleDrive/GoogleDrive_No_Resolve.yaml"
+  },
+  {
+    "slug": "googleearth",
+    "name": "GoogleEarth",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GoogleEarth/GoogleEarth_No_Resolve.yaml"
+  },
+  {
+    "slug": "googlefcm",
+    "name": "GoogleFCM",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GoogleFCM/GoogleFCM_No_Resolve.yaml"
+  },
+  {
+    "slug": "googlesearch",
+    "name": "GoogleSearch",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GoogleSearch/GoogleSearch_No_Resolve.yaml"
+  },
+  {
+    "slug": "googlevoice",
+    "name": "GoogleVoice",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GoogleVoice/GoogleVoice_No_Resolve.yaml"
+  },
+  {
+    "slug": "govcn",
+    "name": "GovCN",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GovCN/GovCN_No_Resolve.yaml"
+  },
+  {
+    "slug": "gucci",
+    "name": "Gucci",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Gucci/Gucci_No_Resolve.yaml"
+  },
+  {
+    "slug": "guigudongli",
+    "name": "GuiGuDongLi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GuiGuDongLi/GuiGuDongLi_No_Resolve.yaml"
+  },
+  {
+    "slug": "hainanhangkong",
+    "name": "HaiNanHangKong",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HaiNanHangKong/HaiNanHangKong_No_Resolve.yaml"
+  },
+  {
+    "slug": "hamivideo",
+    "name": "HamiVideo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HamiVideo/HamiVideo_No_Resolve.yaml"
+  },
+  {
+    "slug": "hanyi",
+    "name": "HanYi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HanYi/HanYi_No_Resolve.yaml"
+  },
+  {
+    "slug": "hashicorp",
+    "name": "HashiCorp",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HashiCorp/HashiCorp_No_Resolve.yaml"
+  },
+  {
+    "slug": "haveibeenpwned",
+    "name": "Haveibeenpwned",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Haveibeenpwned/Haveibeenpwned_No_Resolve.yaml"
+  },
+  {
+    "slug": "hbo",
+    "name": "HBO",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HBO/HBO_No_Resolve.yaml"
+  },
+  {
+    "slug": "hboasia",
+    "name": "HBOAsia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HBOAsia/HBOAsia_No_Resolve.yaml"
+  },
+  {
+    "slug": "hbohk",
+    "name": "HBOHK",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HBOHK/HBOHK_No_Resolve.yaml"
+  },
+  {
+    "slug": "hbousa",
+    "name": "HBOUSA",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HBOUSA/HBOUSA_No_Resolve.yaml"
+  },
+  {
+    "slug": "hearthstone",
+    "name": "Hearthstone",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Hearthstone/Hearthstone_No_Resolve.yaml"
+  },
+  {
+    "slug": "hema",
+    "name": "HeMa",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HeMa/HeMa_No_Resolve.yaml"
+  },
+  {
+    "slug": "heroesofthestorm",
+    "name": "HeroesoftheStorm",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HeroesoftheStorm/HeroesoftheStorm_No_Resolve.yaml"
+  },
+  {
+    "slug": "heroku",
+    "name": "Heroku",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Heroku/Heroku_No_Resolve.yaml"
+  },
+  {
+    "slug": "hibymusic",
+    "name": "HibyMusic",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HibyMusic/HibyMusic_No_Resolve.yaml"
+  },
+  {
+    "slug": "hijacking",
+    "name": "Hijacking",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Hijacking/Hijacking_No_Resolve.yaml"
+  },
+  {
+    "slug": "himalaya",
+    "name": "Himalaya",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Himalaya/Himalaya_No_Resolve.yaml"
+  },
+  {
+    "slug": "hkbn",
+    "name": "HKBN",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HKBN/HKBN_No_Resolve.yaml"
+  },
+  {
+    "slug": "hkedcity",
+    "name": "HKedcity",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HKedcity/HKedcity_No_Resolve.yaml"
+  },
+  {
+    "slug": "hkgolden",
+    "name": "Hkgolden",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Hkgolden/Hkgolden_No_Resolve.yaml"
+  },
+  {
+    "slug": "hkopentv",
+    "name": "HKOpenTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HKOpenTV/HKOpenTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "hoyoverse",
+    "name": "HoYoverse",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HoYoverse/HoYoverse_No_Resolve.yaml"
+  },
+  {
+    "slug": "hp",
+    "name": "HP",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HP/HP_No_Resolve.yaml"
+  },
+  {
+    "slug": "hpplay",
+    "name": "Hpplay",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Hpplay/Hpplay_No_Resolve.yaml"
+  },
+  {
+    "slug": "huanju",
+    "name": "HuanJu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HuanJu/HuanJu_No_Resolve.yaml"
+  },
+  {
+    "slug": "huashutv",
+    "name": "HuaShuTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HuaShuTV/HuaShuTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "huawei",
+    "name": "Huawei",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Huawei/Huawei_No_Resolve.yaml"
+  },
+  {
+    "slug": "huffpost",
+    "name": "Huffpost",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Huffpost/Huffpost_No_Resolve.yaml"
+  },
+  {
+    "slug": "hulu",
+    "name": "Hulu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Hulu/Hulu_No_Resolve.yaml"
+  },
+  {
+    "slug": "hulujp",
+    "name": "HuluJP",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HuluJP/HuluJP_No_Resolve.yaml"
+  },
+  {
+    "slug": "huluusa",
+    "name": "HuluUSA",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HuluUSA/HuluUSA_No_Resolve.yaml"
+  },
+  {
+    "slug": "hunantv",
+    "name": "HunanTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HunanTV/HunanTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "hupu",
+    "name": "Hupu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Hupu/Hupu_No_Resolve.yaml"
+  },
+  {
+    "slug": "huya",
+    "name": "HuYa",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HuYa/HuYa_No_Resolve.yaml"
+  },
+  {
+    "slug": "hwtv",
+    "name": "HWTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/HWTV/HWTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "ibm",
+    "name": "IBM",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/IBM/IBM_No_Resolve.yaml"
+  },
+  {
+    "slug": "icbc",
+    "name": "ICBC",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ICBC/ICBC_No_Resolve.yaml"
+  },
+  {
+    "slug": "icloud",
+    "name": "iCloud",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/iCloud/iCloud_No_Resolve.yaml"
+  },
+  {
+    "slug": "icloudprivaterelay",
+    "name": "iCloudPrivateRelay",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/iCloudPrivateRelay/iCloudPrivateRelay_No_Resolve.yaml"
+  },
+  {
+    "slug": "identrust",
+    "name": "Identrust",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Identrust/Identrust_No_Resolve.yaml"
+  },
+  {
+    "slug": "ifanr",
+    "name": "ifanr",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ifanr/ifanr_No_Resolve.yaml"
+  },
+  {
+    "slug": "iflytek",
+    "name": "iFlytek",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/iFlytek/iFlytek_No_Resolve.yaml"
+  },
+  {
+    "slug": "ikea",
+    "name": "IKEA",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/IKEA/IKEA_No_Resolve.yaml"
+  },
+  {
+    "slug": "imdb",
+    "name": "IMDB",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/IMDB/IMDB_No_Resolve.yaml"
+  },
+  {
+    "slug": "imgur",
+    "name": "Imgur",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Imgur/Imgur_No_Resolve.yaml"
+  },
+  {
+    "slug": "instagram",
+    "name": "Instagram",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Instagram/Instagram_No_Resolve.yaml"
+  },
+  {
+    "slug": "intel",
+    "name": "Intel",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Intel/Intel_No_Resolve.yaml"
+  },
+  {
+    "slug": "intercom",
+    "name": "Intercom",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Intercom/Intercom_No_Resolve.yaml"
+  },
+  {
+    "slug": "iptvmainland",
+    "name": "IPTVMainland",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/IPTVMainland/IPTVMainland_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "iptvother",
+    "name": "IPTVOther",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/IPTVOther/IPTVOther_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "iqiyi",
+    "name": "iQIYI",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/iQIYI/iQIYI_No_Resolve.yaml"
+  },
+  {
+    "slug": "iqiyiintl",
+    "name": "iQIYIIntl",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/iQIYIIntl/iQIYIIntl_No_Resolve.yaml"
+  },
+  {
+    "slug": "italkbb",
+    "name": "iTalkBB",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/iTalkBB/iTalkBB_No_Resolve.yaml"
+  },
+  {
+    "slug": "itv",
+    "name": "ITV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ITV/ITV_No_Resolve.yaml"
+  },
+  {
+    "slug": "japonx",
+    "name": "Japonx",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Japonx/Japonx_No_Resolve.yaml"
+  },
+  {
+    "slug": "jetbrains",
+    "name": "Jetbrains",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Jetbrains/Jetbrains_No_Resolve.yaml"
+  },
+  {
+    "slug": "jfrog",
+    "name": "Jfrog",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Jfrog/Jfrog_No_Resolve.yaml"
+  },
+  {
+    "slug": "jianguoyun",
+    "name": "JianGuoYun",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/JianGuoYun/JianGuoYun_No_Resolve.yaml"
+  },
+  {
+    "slug": "jianshu",
+    "name": "JianShu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/JianShu/JianShu_No_Resolve.yaml"
+  },
+  {
+    "slug": "jiguangtuisong",
+    "name": "JiGuangTuiSong",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/JiGuangTuiSong/JiGuangTuiSong_No_Resolve.yaml"
+  },
+  {
+    "slug": "jingdong",
+    "name": "JingDong",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/JingDong/JingDong_No_Resolve.yaml"
+  },
+  {
+    "slug": "jinjiangwenxue",
+    "name": "JinJiangWenXue",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/JinJiangWenXue/JinJiangWenXue_No_Resolve.yaml"
+  },
+  {
+    "slug": "joox",
+    "name": "JOOX",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/JOOX/JOOX_No_Resolve.yaml"
+  },
+  {
+    "slug": "jquery",
+    "name": "Jquery",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Jquery/Jquery_No_Resolve.yaml"
+  },
+  {
+    "slug": "jsdelivr",
+    "name": "Jsdelivr",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Jsdelivr/Jsdelivr_No_Resolve.yaml"
+  },
+  {
+    "slug": "juejin",
+    "name": "JueJin",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/JueJin/JueJin_No_Resolve.yaml"
+  },
+  {
+    "slug": "jwplayer",
+    "name": "Jwplayer",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Jwplayer/Jwplayer_No_Resolve.yaml"
+  },
+  {
+    "slug": "kakaotalk",
+    "name": "KakaoTalk",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/KakaoTalk/KakaoTalk_No_Resolve.yaml"
+  },
+  {
+    "slug": "kantv",
+    "name": "Kantv",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Kantv/Kantv_No_Resolve.yaml"
+  },
+  {
+    "slug": "keep",
+    "name": "Keep",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Keep/Keep_No_Resolve.yaml"
+  },
+  {
+    "slug": "kingsmith",
+    "name": "KingSmith",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/KingSmith/KingSmith_No_Resolve.yaml"
+  },
+  {
+    "slug": "kingsoft",
+    "name": "Kingsoft",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Kingsoft/Kingsoft_No_Resolve.yaml"
+  },
+  {
+    "slug": "kkbox",
+    "name": "KKBOX",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/KKBOX/KKBOX_No_Resolve.yaml"
+  },
+  {
+    "slug": "kktv",
+    "name": "KKTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/KKTV/KKTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "koudaishishang",
+    "name": "KouDaiShiShang",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/KouDaiShiShang/KouDaiShiShang_No_Resolve.yaml"
+  },
+  {
+    "slug": "ku6",
+    "name": "Ku6",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Ku6/Ku6_No_Resolve.yaml"
+  },
+  {
+    "slug": "kuaidi100",
+    "name": "KuaiDi100",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/KuaiDi100/KuaiDi100_No_Resolve.yaml"
+  },
+  {
+    "slug": "kuaishou",
+    "name": "KuaiShou",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/KuaiShou/KuaiShou_No_Resolve.yaml"
+  },
+  {
+    "slug": "kuangshi",
+    "name": "KuangShi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/KuangShi/KuangShi_No_Resolve.yaml"
+  },
+  {
+    "slug": "kugoukuwo",
+    "name": "KugouKuwo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/KugouKuwo/KugouKuwo_No_Resolve.yaml"
+  },
+  {
+    "slug": "kukemusic",
+    "name": "KuKeMusic",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/KuKeMusic/KuKeMusic_No_Resolve.yaml"
+  },
+  {
+    "slug": "lan",
+    "name": "Lan",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Lan/Lan_No_Resolve.yaml"
+  },
+  {
+    "slug": "lanzouyun",
+    "name": "LanZouYun",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LanZouYun/LanZouYun_No_Resolve.yaml"
+  },
+  {
+    "slug": "lastfm",
+    "name": "LastFM",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LastFM/LastFM_No_Resolve.yaml"
+  },
+  {
+    "slug": "lastpass",
+    "name": "LastPass",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LastPass/LastPass_No_Resolve.yaml"
+  },
+  {
+    "slug": "leju",
+    "name": "LeJu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LeJu/LeJu_No_Resolve.yaml"
+  },
+  {
+    "slug": "lenovo",
+    "name": "Lenovo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Lenovo/Lenovo_No_Resolve.yaml"
+  },
+  {
+    "slug": "letv",
+    "name": "LeTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LeTV/LeTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "lg",
+    "name": "LG",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LG/LG_No_Resolve.yaml"
+  },
+  {
+    "slug": "lianmeng",
+    "name": "LianMeng",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LianMeng/LianMeng_No_Resolve.yaml"
+  },
+  {
+    "slug": "limelight",
+    "name": "Limelight",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Limelight/Limelight_No_Resolve.yaml"
+  },
+  {
+    "slug": "line",
+    "name": "Line",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Line/Line_No_Resolve.yaml"
+  },
+  {
+    "slug": "linetv",
+    "name": "LineTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LineTV/LineTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "linguee",
+    "name": "Linguee",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Linguee/Linguee_No_Resolve.yaml"
+  },
+  {
+    "slug": "linkedin",
+    "name": "LinkedIn",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LinkedIn/LinkedIn_No_Resolve.yaml"
+  },
+  {
+    "slug": "linux",
+    "name": "Linux",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Linux/Linux_No_Resolve.yaml"
+  },
+  {
+    "slug": "litv",
+    "name": "LiTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LiTV/LiTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "liveperson",
+    "name": "LivePerson",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LivePerson/LivePerson_No_Resolve.yaml"
+  },
+  {
+    "slug": "logitech",
+    "name": "Logitech",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Logitech/Logitech_No_Resolve.yaml"
+  },
+  {
+    "slug": "londonreal",
+    "name": "LondonReal",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LondonReal/LondonReal_No_Resolve.yaml"
+  },
+  {
+    "slug": "ludashi",
+    "name": "LuDaShi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LuDaShi/LuDaShi_No_Resolve.yaml"
+  },
+  {
+    "slug": "lvmilianchuang",
+    "name": "LvMiLianChuang",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/LvMiLianChuang/LvMiLianChuang_No_Resolve.yaml"
+  },
+  {
+    "slug": "mail",
+    "name": "Mail",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Mail/Mail_No_Resolve.yaml"
+  },
+  {
+    "slug": "mailru",
+    "name": "Mailru",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Mailru/Mailru_No_Resolve.yaml"
+  },
+  {
+    "slug": "majsoul",
+    "name": "Majsoul",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Majsoul/Majsoul_No_Resolve.yaml"
+  },
+  {
+    "slug": "manorama",
+    "name": "Manorama",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Manorama/Manorama_No_Resolve.yaml"
+  },
+  {
+    "slug": "maocloud",
+    "name": "Maocloud",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Maocloud/Maocloud_No_Resolve.yaml"
+  },
+  {
+    "slug": "marketing",
+    "name": "Marketing",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Marketing/Marketing_No_Resolve.yaml"
+  },
+  {
+    "slug": "mcdonalds",
+    "name": "McDonalds",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/McDonalds/McDonalds_No_Resolve.yaml"
+  },
+  {
+    "slug": "mega",
+    "name": "MEGA",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/MEGA/MEGA_No_Resolve.yaml"
+  },
+  {
+    "slug": "meitu",
+    "name": "MeiTu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/MeiTu/MeiTu_No_Resolve.yaml"
+  },
+  {
+    "slug": "meituan",
+    "name": "MeiTuan",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/MeiTuan/MeiTuan_No_Resolve.yaml"
+  },
+  {
+    "slug": "meizu",
+    "name": "MeiZu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/MeiZu/MeiZu_No_Resolve.yaml"
+  },
+  {
+    "slug": "mewatch",
+    "name": "MeWatch",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/MeWatch/MeWatch_No_Resolve.yaml"
+  },
+  {
+    "slug": "microsoft",
+    "name": "Microsoft",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Microsoft/Microsoft_No_Resolve.yaml"
+  },
+  {
+    "slug": "microsoftedge",
+    "name": "MicrosoftEdge",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/MicrosoftEdge/MicrosoftEdge_No_Resolve.yaml"
+  },
+  {
+    "slug": "migu",
+    "name": "Migu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Migu/Migu_No_Resolve.yaml"
+  },
+  {
+    "slug": "mingluezhaohui",
+    "name": "MingLueZhaoHui",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/MingLueZhaoHui/MingLueZhaoHui_No_Resolve.yaml"
+  },
+  {
+    "slug": "miuiprivacy",
+    "name": "MIUIPrivacy",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/MIUIPrivacy/MIUIPrivacy_No_Resolve.yaml"
+  },
+  {
+    "slug": "miwu",
+    "name": "MiWu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/MiWu/MiWu_No_Resolve.yaml"
+  },
+  {
+    "slug": "mogujie",
+    "name": "Mogujie",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Mogujie/Mogujie_No_Resolve.yaml"
+  },
+  {
+    "slug": "mojitianqi",
+    "name": "Mojitianqi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Mojitianqi/Mojitianqi_No_Resolve.yaml"
+  },
+  {
+    "slug": "momoshop",
+    "name": "MOMOShop",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/MOMOShop/MOMOShop_No_Resolve.yaml"
+  },
+  {
+    "slug": "moov",
+    "name": "MOOV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/MOOV/MOOV_No_Resolve.yaml"
+  },
+  {
+    "slug": "movefree",
+    "name": "Movefree",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Movefree/Movefree_No_Resolve.yaml"
+  },
+  {
+    "slug": "mozilla",
+    "name": "Mozilla",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Mozilla/Mozilla_No_Resolve.yaml"
+  },
+  {
+    "slug": "my5",
+    "name": "My5",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/My5/My5_No_Resolve.yaml"
+  },
+  {
+    "slug": "mytvsuper",
+    "name": "myTVSUPER",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/myTVSUPER/myTVSUPER_No_Resolve.yaml"
+  },
+  {
+    "slug": "nasddns",
+    "name": "NaSDDNS",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/NaSDDNS/NaSDDNS_No_Resolve.yaml"
+  },
+  {
+    "slug": "naver",
+    "name": "Naver",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Naver/Naver_No_Resolve.yaml"
+  },
+  {
+    "slug": "navertv",
+    "name": "NaverTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/NaverTV/NaverTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "nbc",
+    "name": "NBC",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/NBC/NBC_No_Resolve.yaml"
+  },
+  {
+    "slug": "netease",
+    "name": "NetEase",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/NetEase/NetEase_No_Resolve.yaml"
+  },
+  {
+    "slug": "neteasemusic",
+    "name": "NetEaseMusic",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/NetEaseMusic/NetEaseMusic_No_Resolve.yaml"
+  },
+  {
+    "slug": "netflix",
+    "name": "Netflix",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Netflix/Netflix_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "nga",
+    "name": "NGA",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/NGA/NGA_No_Resolve.yaml"
+  },
+  {
+    "slug": "ngaa",
+    "name": "NGAA",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/NGAA/NGAA_No_Resolve.yaml"
+  },
+  {
+    "slug": "niconico",
+    "name": "Niconico",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Niconico/Niconico_No_Resolve.yaml"
+  },
+  {
+    "slug": "nike",
+    "name": "Nike",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Nike/Nike_No_Resolve.yaml"
+  },
+  {
+    "slug": "nikkei",
+    "name": "Nikkei",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Nikkei/Nikkei_No_Resolve.yaml"
+  },
+  {
+    "slug": "nintendo",
+    "name": "Nintendo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Nintendo/Nintendo_No_Resolve.yaml"
+  },
+  {
+    "slug": "nivodtv",
+    "name": "NivodTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/NivodTV/NivodTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "notion",
+    "name": "Notion",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Notion/Notion_No_Resolve.yaml"
+  },
+  {
+    "slug": "nowe",
+    "name": "NowE",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/NowE/NowE_No_Resolve.yaml"
+  },
+  {
+    "slug": "npmjs",
+    "name": "Npmjs",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Npmjs/Npmjs_No_Resolve.yaml"
+  },
+  {
+    "slug": "ntpservice",
+    "name": "NTPService",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/NTPService/NTPService_No_Resolve.yaml"
+  },
+  {
+    "slug": "nvidia",
+    "name": "Nvidia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Nvidia/Nvidia_No_Resolve.yaml"
+  },
+  {
+    "slug": "nypost",
+    "name": "NYPost",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/NYPost/NYPost_No_Resolve.yaml"
+  },
+  {
+    "slug": "nytimes",
+    "name": "NYTimes",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/NYTimes/NYTimes_No_Resolve.yaml"
+  },
+  {
+    "slug": "okx",
+    "name": "OKX",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OKX/OKX_No_Resolve.yaml"
+  },
+  {
+    "slug": "olevod",
+    "name": "Olevod",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Olevod/Olevod_No_Resolve.yaml"
+  },
+  {
+    "slug": "onedrive",
+    "name": "OneDrive",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OneDrive/OneDrive_No_Resolve.yaml"
+  },
+  {
+    "slug": "oneplus",
+    "name": "OnePlus",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OnePlus/OnePlus_No_Resolve.yaml"
+  },
+  {
+    "slug": "op",
+    "name": "OP",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OP/OP_No_Resolve.yaml"
+  },
+  {
+    "slug": "openai",
+    "name": "OpenAI",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OpenAI/OpenAI_No_Resolve.yaml"
+  },
+  {
+    "slug": "opera",
+    "name": "Opera",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Opera/Opera_No_Resolve.yaml"
+  },
+  {
+    "slug": "oppo",
+    "name": "OPPO",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OPPO/OPPO_No_Resolve.yaml"
+  },
+  {
+    "slug": "oracle",
+    "name": "Oracle",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Oracle/Oracle_No_Resolve.yaml"
+  },
+  {
+    "slug": "oreilly",
+    "name": "Oreilly",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Oreilly/Oreilly_No_Resolve.yaml"
+  },
+  {
+    "slug": "origin",
+    "name": "Origin",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Origin/Origin_No_Resolve.yaml"
+  },
+  {
+    "slug": "oupeng",
+    "name": "OuPeng",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OuPeng/OuPeng_No_Resolve.yaml"
+  },
+  {
+    "slug": "overcast",
+    "name": "Overcast",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Overcast/Overcast_No_Resolve.yaml"
+  },
+  {
+    "slug": "overwatch",
+    "name": "Overwatch",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Overwatch/Overwatch_No_Resolve.yaml"
+  },
+  {
+    "slug": "pandora",
+    "name": "Pandora",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Pandora/Pandora_No_Resolve.yaml"
+  },
+  {
+    "slug": "pandoratv",
+    "name": "PandoraTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PandoraTV/PandoraTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "paramountplus",
+    "name": "ParamountPlus",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ParamountPlus/ParamountPlus_No_Resolve.yaml"
+  },
+  {
+    "slug": "patreon",
+    "name": "Patreon",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Patreon/Patreon_No_Resolve.yaml"
+  },
+  {
+    "slug": "paypal",
+    "name": "PayPal",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PayPal/PayPal_No_Resolve.yaml"
+  },
+  {
+    "slug": "pbs",
+    "name": "PBS",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PBS/PBS_No_Resolve.yaml"
+  },
+  {
+    "slug": "pccw",
+    "name": "PCCW",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PCCW/PCCW_No_Resolve.yaml"
+  },
+  {
+    "slug": "pchome",
+    "name": "PChome",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PChome/PChome_No_Resolve.yaml"
+  },
+  {
+    "slug": "pchometw",
+    "name": "PChomeTW",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PChomeTW/PChomeTW_No_Resolve.yaml"
+  },
+  {
+    "slug": "peacock",
+    "name": "Peacock",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Peacock/Peacock_No_Resolve.yaml"
+  },
+  {
+    "slug": "picacg",
+    "name": "Picacg",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Picacg/Picacg_No_Resolve.yaml"
+  },
+  {
+    "slug": "picsee",
+    "name": "Picsee",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Picsee/Picsee_No_Resolve.yaml"
+  },
+  {
+    "slug": "pikpak",
+    "name": "PikPak",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PikPak/PikPak_No_Resolve.yaml"
+  },
+  {
+    "slug": "pinduoduo",
+    "name": "Pinduoduo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Pinduoduo/Pinduoduo_No_Resolve.yaml"
+  },
+  {
+    "slug": "pingan",
+    "name": "PingAn",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PingAn/PingAn_No_Resolve.yaml"
+  },
+  {
+    "slug": "pinterest",
+    "name": "Pinterest",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Pinterest/Pinterest_No_Resolve.yaml"
+  },
+  {
+    "slug": "pixiv",
+    "name": "Pixiv",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Pixiv/Pixiv_No_Resolve.yaml"
+  },
+  {
+    "slug": "pixnet",
+    "name": "Pixnet",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Pixnet/Pixnet_No_Resolve.yaml"
+  },
+  {
+    "slug": "playstation",
+    "name": "PlayStation",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PlayStation/PlayStation_No_Resolve.yaml"
+  },
+  {
+    "slug": "potatochat",
+    "name": "PotatoChat",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PotatoChat/PotatoChat.yaml"
+  },
+  {
+    "slug": "pptv",
+    "name": "PPTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PPTV/PPTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "primevideo",
+    "name": "PrimeVideo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PrimeVideo/PrimeVideo_No_Resolve.yaml"
+  },
+  {
+    "slug": "privacy",
+    "name": "Privacy",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Privacy/Privacy_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "privatetracker",
+    "name": "PrivateTracker",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PrivateTracker/PrivateTracker_No_Resolve.yaml"
+  },
+  {
+    "slug": "protonmail",
+    "name": "Protonmail",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Protonmail/Protonmail_No_Resolve.yaml"
+  },
+  {
+    "slug": "proxy",
+    "name": "Proxy",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Proxy/Proxy_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "proxylite",
+    "name": "ProxyLite",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ProxyLite/ProxyLite_No_Resolve.yaml"
+  },
+  {
+    "slug": "psbc",
+    "name": "PSBC",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PSBC/PSBC_No_Resolve.yaml"
+  },
+  {
+    "slug": "pubmatic",
+    "name": "Pubmatic",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Pubmatic/Pubmatic_No_Resolve.yaml"
+  },
+  {
+    "slug": "purikonejp",
+    "name": "Purikonejp",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Purikonejp/Purikonejp_No_Resolve.yaml"
+  },
+  {
+    "slug": "python",
+    "name": "Python",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Python/Python_No_Resolve.yaml"
+  },
+  {
+    "slug": "qingcloud",
+    "name": "QingCloud",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/QingCloud/QingCloud_No_Resolve.yaml"
+  },
+  {
+    "slug": "qiniuyun",
+    "name": "QiNiuYun",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/QiNiuYun/QiNiuYun_No_Resolve.yaml"
+  },
+  {
+    "slug": "qobuz",
+    "name": "Qobuz",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Qobuz/Qobuz_No_Resolve.yaml"
+  },
+  {
+    "slug": "qualcomm",
+    "name": "Qualcomm",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Qualcomm/Qualcomm_No_Resolve.yaml"
+  },
+  {
+    "slug": "quickconnect",
+    "name": "QuickConnect",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/QuickConnect/QuickConnect_No_Resolve.yaml"
+  },
+  {
+    "slug": "qyyjt",
+    "name": "Qyyjt",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Qyyjt/Qyyjt_No_Resolve.yaml"
+  },
+  {
+    "slug": "rakuten",
+    "name": "Rakuten",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Rakuten/Rakuten_No_Resolve.yaml"
+  },
+  {
+    "slug": "rarbg",
+    "name": "Rarbg",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Rarbg/Rarbg_No_Resolve.yaml"
+  },
+  {
+    "slug": "razer",
+    "name": "Razer",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Razer/Razer_No_Resolve.yaml"
+  },
+  {
+    "slug": "reabble",
+    "name": "Reabble",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Reabble/Reabble_No_Resolve.yaml"
+  },
+  {
+    "slug": "reddit",
+    "name": "Reddit",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Reddit/Reddit_No_Resolve.yaml"
+  },
+  {
+    "slug": "remotedesktop",
+    "name": "RemoteDesktop",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/RemoteDesktop/RemoteDesktop_No_Resolve.yaml"
+  },
+  {
+    "slug": "riot",
+    "name": "Riot",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Riot/Riot_No_Resolve.yaml"
+  },
+  {
+    "slug": "rockstar",
+    "name": "Rockstar",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Rockstar/Rockstar_No_Resolve.yaml"
+  },
+  {
+    "slug": "rthk",
+    "name": "RTHK",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/RTHK/RTHK_No_Resolve.yaml"
+  },
+  {
+    "slug": "ruanmei",
+    "name": "RuanMei",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/RuanMei/RuanMei_No_Resolve.yaml"
+  },
+  {
+    "slug": "salesforce",
+    "name": "Salesforce",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Salesforce/Salesforce_No_Resolve.yaml"
+  },
+  {
+    "slug": "samsung",
+    "name": "Samsung",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Samsung/Samsung_No_Resolve.yaml"
+  },
+  {
+    "slug": "scaleflex",
+    "name": "Scaleflex",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Scaleflex/Scaleflex_No_Resolve.yaml"
+  },
+  {
+    "slug": "scholar",
+    "name": "Scholar",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Scholar/Scholar_No_Resolve.yaml"
+  },
+  {
+    "slug": "sectigo",
+    "name": "Sectigo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Sectigo/Sectigo_No_Resolve.yaml"
+  },
+  {
+    "slug": "sfexpress",
+    "name": "SFExpress",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SFExpress/SFExpress_No_Resolve.yaml"
+  },
+  {
+    "slug": "shanghaijuxiao",
+    "name": "ShangHaiJuXiao",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ShangHaiJuXiao/ShangHaiJuXiao_No_Resolve.yaml"
+  },
+  {
+    "slug": "shanling",
+    "name": "Shanling",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Shanling/Shanling_No_Resolve.yaml"
+  },
+  {
+    "slug": "sharethis",
+    "name": "Sharethis",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Sharethis/Sharethis_No_Resolve.yaml"
+  },
+  {
+    "slug": "shenma",
+    "name": "ShenMa",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ShenMa/ShenMa_No_Resolve.yaml"
+  },
+  {
+    "slug": "shijichaoxing",
+    "name": "ShiJiChaoXing",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ShiJiChaoXing/ShiJiChaoXing_No_Resolve.yaml"
+  },
+  {
+    "slug": "shinongzhike",
+    "name": "ShiNongZhiKe",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ShiNongZhiKe/ShiNongZhiKe_No_Resolve.yaml"
+  },
+  {
+    "slug": "shopee",
+    "name": "Shopee",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Shopee/Shopee_No_Resolve.yaml"
+  },
+  {
+    "slug": "shopify",
+    "name": "Shopify",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Shopify/Shopify_No_Resolve.yaml"
+  },
+  {
+    "slug": "sina",
+    "name": "Sina",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Sina/Sina_No_Resolve.yaml"
+  },
+  {
+    "slug": "siri",
+    "name": "Siri",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Siri/Siri_No_Resolve.yaml"
+  },
+  {
+    "slug": "skygo",
+    "name": "SkyGO",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SkyGO/SkyGO_No_Resolve.yaml"
+  },
+  {
+    "slug": "slack",
+    "name": "Slack",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Slack/Slack_No_Resolve.yaml"
+  },
+  {
+    "slug": "slideshare",
+    "name": "SlideShare",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SlideShare/SlideShare_No_Resolve.yaml"
+  },
+  {
+    "slug": "sling",
+    "name": "Sling",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Sling/Sling_No_Resolve.yaml"
+  },
+  {
+    "slug": "smartone",
+    "name": "SmarTone",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SmarTone/SmarTone_No_Resolve.yaml"
+  },
+  {
+    "slug": "smg",
+    "name": "SMG",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SMG/SMG_No_Resolve.yaml"
+  },
+  {
+    "slug": "smzdm",
+    "name": "SMZDM",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SMZDM/SMZDM_No_Resolve.yaml"
+  },
+  {
+    "slug": "snap",
+    "name": "Snap",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Snap/Snap_No_Resolve.yaml"
+  },
+  {
+    "slug": "sohu",
+    "name": "Sohu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Sohu/Sohu_No_Resolve.yaml"
+  },
+  {
+    "slug": "sony",
+    "name": "Sony",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Sony/Sony_No_Resolve.yaml"
+  },
+  {
+    "slug": "soufang",
+    "name": "SouFang",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SouFang/SouFang_No_Resolve.yaml"
+  },
+  {
+    "slug": "soundcloud",
+    "name": "SoundCloud",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SoundCloud/SoundCloud_No_Resolve.yaml"
+  },
+  {
+    "slug": "sourceforge",
+    "name": "SourceForge",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SourceForge/SourceForge_No_Resolve.yaml"
+  },
+  {
+    "slug": "spark",
+    "name": "Spark",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Spark/Spark_No_Resolve.yaml"
+  },
+  {
+    "slug": "speedtest",
+    "name": "Speedtest",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Speedtest/Speedtest_No_Resolve.yaml"
+  },
+  {
+    "slug": "spotify",
+    "name": "Spotify",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Spotify/Spotify_No_Resolve.yaml"
+  },
+  {
+    "slug": "stackexchange",
+    "name": "Stackexchange",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Stackexchange/Stackexchange_No_Resolve.yaml"
+  },
+  {
+    "slug": "starbucks",
+    "name": "Starbucks",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Starbucks/Starbucks_No_Resolve.yaml"
+  },
+  {
+    "slug": "starcraftii",
+    "name": "StarCraftII",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/StarCraftII/StarCraftII_No_Resolve.yaml"
+  },
+  {
+    "slug": "steam",
+    "name": "Steam",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Steam/Steam_No_Resolve.yaml"
+  },
+  {
+    "slug": "steamcn",
+    "name": "SteamCN",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SteamCN/SteamCN_No_Resolve.yaml"
+  },
+  {
+    "slug": "stripe",
+    "name": "Stripe",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Stripe/Stripe_No_Resolve.yaml"
+  },
+  {
+    "slug": "stun",
+    "name": "STUN",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/STUN/STUN_No_Resolve.yaml"
+  },
+  {
+    "slug": "sublimetext",
+    "name": "SublimeText",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SublimeText/SublimeText_No_Resolve.yaml"
+  },
+  {
+    "slug": "suishichuanmei",
+    "name": "SuiShiChuanMei",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SuiShiChuanMei/SuiShiChuanMei_No_Resolve.yaml"
+  },
+  {
+    "slug": "suning",
+    "name": "SuNing",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SuNing/SuNing_No_Resolve.yaml"
+  },
+  {
+    "slug": "supercell",
+    "name": "Supercell",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Supercell/Supercell_No_Resolve.yaml"
+  },
+  {
+    "slug": "synology",
+    "name": "Synology",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Synology/Synology_No_Resolve.yaml"
+  },
+  {
+    "slug": "systemota",
+    "name": "SystemOTA",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SystemOTA/SystemOTA_No_Resolve.yaml"
+  },
+  {
+    "slug": "taihemusic",
+    "name": "TaiheMusic",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TaiheMusic/TaiheMusic_No_Resolve.yaml"
+  },
+  {
+    "slug": "taikang",
+    "name": "TaiKang",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TaiKang/TaiKang_No_Resolve.yaml"
+  },
+  {
+    "slug": "taiwangood",
+    "name": "TaiWanGood",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TaiWanGood/TaiWanGood_No_Resolve.yaml"
+  },
+  {
+    "slug": "taptap",
+    "name": "TapTap",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TapTap/TapTap_No_Resolve.yaml"
+  },
+  {
+    "slug": "tcl",
+    "name": "TCL",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TCL/TCL_No_Resolve.yaml"
+  },
+  {
+    "slug": "teambition",
+    "name": "Teambition",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Teambition/Teambition_No_Resolve.yaml"
+  },
+  {
+    "slug": "teams",
+    "name": "Teams",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Teams/Teams_No_Resolve.yaml"
+  },
+  {
+    "slug": "teamviewer",
+    "name": "TeamViewer",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TeamViewer/TeamViewer_No_Resolve.yaml"
+  },
+  {
+    "slug": "telegram",
+    "name": "Telegram",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Telegram/Telegram_No_Resolve.yaml"
+  },
+  {
+    "slug": "telegramnl",
+    "name": "TelegramNL",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TelegramNL/TelegramNL_No_Resolve.yaml"
+  },
+  {
+    "slug": "telegramsg",
+    "name": "TelegramSG",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TelegramSG/TelegramSG_No_Resolve.yaml"
+  },
+  {
+    "slug": "telegramus",
+    "name": "TelegramUS",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TelegramUS/TelegramUS_No_Resolve.yaml"
+  },
+  {
+    "slug": "tencent",
+    "name": "Tencent",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Tencent/Tencent_Classical_No_Resolve.yaml"
+  },
+  {
+    "slug": "tencentvideo",
+    "name": "TencentVideo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TencentVideo/TencentVideo_No_Resolve.yaml"
+  },
+  {
+    "slug": "terabox",
+    "name": "TeraBox",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TeraBox/TeraBox_No_Resolve.yaml"
+  },
+  {
+    "slug": "tesla",
+    "name": "Tesla",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Tesla/Tesla_No_Resolve.yaml"
+  },
+  {
+    "slug": "testflight",
+    "name": "TestFlight",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TestFlight/TestFlight_No_Resolve.yaml"
+  },
+  {
+    "slug": "thomsonreuters",
+    "name": "ThomsonReuters",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ThomsonReuters/ThomsonReuters_No_Resolve.yaml"
+  },
+  {
+    "slug": "threads",
+    "name": "Threads",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Threads/Threads_No_Resolve.yaml"
+  },
+  {
+    "slug": "tiantiankankan",
+    "name": "TianTianKanKan",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TianTianKanKan/TianTianKanKan_No_Resolve.yaml"
+  },
+  {
+    "slug": "tianweichengxin",
+    "name": "TianWeiChengXin",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TianWeiChengXin/TianWeiChengXin_No_Resolve.yaml"
+  },
+  {
+    "slug": "tianyaforum",
+    "name": "TianYaForum",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TianYaForum/TianYaForum_No_Resolve.yaml"
+  },
+  {
+    "slug": "tidal",
+    "name": "TIDAL",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TIDAL/TIDAL_No_Resolve.yaml"
+  },
+  {
+    "slug": "tigerfintech",
+    "name": "TigerFintech",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TigerFintech/TigerFintech_No_Resolve.yaml"
+  },
+  {
+    "slug": "tiktok",
+    "name": "TikTok",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TikTok/TikTok_No_Resolve.yaml"
+  },
+  {
+    "slug": "tmdb",
+    "name": "Tmdb",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Tmdb/Tmdb_No_Resolve.yaml"
+  },
+  {
+    "slug": "tongcheng",
+    "name": "TongCheng",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TongCheng/TongCheng_No_Resolve.yaml"
+  },
+  {
+    "slug": "trustwave",
+    "name": "TrustWave",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TrustWave/TrustWave_No_Resolve.yaml"
+  },
+  {
+    "slug": "truthsocial",
+    "name": "TruthSocial",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TruthSocial/TruthSocial_No_Resolve.yaml"
+  },
+  {
+    "slug": "tumblr",
+    "name": "Tumblr",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Tumblr/Tumblr_No_Resolve.yaml"
+  },
+  {
+    "slug": "tvb",
+    "name": "TVB",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TVB/TVB_No_Resolve.yaml"
+  },
+  {
+    "slug": "tver",
+    "name": "TVer",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TVer/TVer_No_Resolve.yaml"
+  },
+  {
+    "slug": "twitch",
+    "name": "Twitch",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Twitch/Twitch_No_Resolve.yaml"
+  },
+  {
+    "slug": "twitter",
+    "name": "Twitter",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Twitter/Twitter_No_Resolve.yaml"
+  },
+  {
+    "slug": "u17",
+    "name": "U17",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/U17/U17_No_Resolve.yaml"
+  },
+  {
+    "slug": "ubi",
+    "name": "UBI",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/UBI/UBI_No_Resolve.yaml"
+  },
+  {
+    "slug": "ubisoft",
+    "name": "Ubisoft",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Ubisoft/Ubisoft_No_Resolve.yaml"
+  },
+  {
+    "slug": "ubuntu",
+    "name": "Ubuntu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Ubuntu/Ubuntu_No_Resolve.yaml"
+  },
+  {
+    "slug": "uc",
+    "name": "UC",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/UC/UC_No_Resolve.yaml"
+  },
+  {
+    "slug": "ucloud",
+    "name": "UCloud",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/UCloud/UCloud_No_Resolve.yaml"
+  },
+  {
+    "slug": "udacity",
+    "name": "Udacity",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Udacity/Udacity_No_Resolve.yaml"
+  },
+  {
+    "slug": "ukmedia",
+    "name": "UKMedia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/UKMedia/UKMedia_No_Resolve.yaml"
+  },
+  {
+    "slug": "unionpay",
+    "name": "UnionPay",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/UnionPay/UnionPay_No_Resolve.yaml"
+  },
+  {
+    "slug": "unity",
+    "name": "Unity",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Unity/Unity_No_Resolve.yaml"
+  },
+  {
+    "slug": "upyun",
+    "name": "UPYun",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/UPYun/UPYun_No_Resolve.yaml"
+  },
+  {
+    "slug": "usmedia",
+    "name": "USMedia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/USMedia/USMedia_No_Resolve.yaml"
+  },
+  {
+    "slug": "vancl",
+    "name": "Vancl",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Vancl/Vancl_No_Resolve.yaml"
+  },
+  {
+    "slug": "vercel",
+    "name": "Vercel",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Vercel/Vercel_No_Resolve.yaml"
+  },
+  {
+    "slug": "verisign",
+    "name": "Verisign",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Verisign/Verisign_No_Resolve.yaml"
+  },
+  {
+    "slug": "verizon",
+    "name": "Verizon",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Verizon/Verizon_No_Resolve.yaml"
+  },
+  {
+    "slug": "vidoltv",
+    "name": "VidolTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/VidolTV/VidolTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "vikacg",
+    "name": "VikACG",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/VikACG/VikACG_No_Resolve.yaml"
+  },
+  {
+    "slug": "viki",
+    "name": "Viki",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Viki/Viki_No_Resolve.yaml"
+  },
+  {
+    "slug": "vimeo",
+    "name": "Vimeo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Vimeo/Vimeo_No_Resolve.yaml"
+  },
+  {
+    "slug": "vipshop",
+    "name": "VipShop",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/VipShop/VipShop_No_Resolve.yaml"
+  },
+  {
+    "slug": "visa",
+    "name": "VISA",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/VISA/VISA_No_Resolve.yaml"
+  },
+  {
+    "slug": "viutv",
+    "name": "ViuTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ViuTV/ViuTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "vivo",
+    "name": "Vivo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Vivo/Vivo_No_Resolve.yaml"
+  },
+  {
+    "slug": "vk",
+    "name": "VK",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/VK/VK_No_Resolve.yaml"
+  },
+  {
+    "slug": "voa",
+    "name": "VOA",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/VOA/VOA_No_Resolve.yaml"
+  },
+  {
+    "slug": "voxmedia",
+    "name": "Voxmedia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Voxmedia/Voxmedia_No_Resolve.yaml"
+  },
+  {
+    "slug": "w3schools",
+    "name": "W3schools",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/W3schools/W3schools_No_Resolve.yaml"
+  },
+  {
+    "slug": "wanfang",
+    "name": "Wanfang",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Wanfang/Wanfang_No_Resolve.yaml"
+  },
+  {
+    "slug": "wangsukeji",
+    "name": "WangSuKeJi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WangSuKeJi/WangSuKeJi_No_Resolve.yaml"
+  },
+  {
+    "slug": "wangxinkeji",
+    "name": "WangXinKeJi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WangXinKeJi/WangXinKeJi_No_Resolve.yaml"
+  },
+  {
+    "slug": "wankahuanju",
+    "name": "WanKaHuanJu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WanKaHuanJu/WanKaHuanJu_No_Resolve.yaml"
+  },
+  {
+    "slug": "wanmeishijie",
+    "name": "WanMeiShiJie",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WanMeiShiJie/WanMeiShiJie_No_Resolve.yaml"
+  },
+  {
+    "slug": "wechat",
+    "name": "WeChat",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WeChat/WeChat_No_Resolve.yaml"
+  },
+  {
+    "slug": "weibo",
+    "name": "Weibo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Weibo/Weibo_No_Resolve.yaml"
+  },
+  {
+    "slug": "weizhiyundong",
+    "name": "WeiZhiYunDong",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WeiZhiYunDong/WeiZhiYunDong_No_Resolve.yaml"
+  },
+  {
+    "slug": "wenjuanxing",
+    "name": "WenJuanXing",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WenJuanXing/WenJuanXing_No_Resolve.yaml"
+  },
+  {
+    "slug": "westerndigital",
+    "name": "Westerndigital",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Westerndigital/Westerndigital_No_Resolve.yaml"
+  },
+  {
+    "slug": "wetv",
+    "name": "WeTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WeTV/WeTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "wetype",
+    "name": "WeType",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WeType/WeType_No_Resolve.yaml"
+  },
+  {
+    "slug": "whatsapp",
+    "name": "Whatsapp",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Whatsapp/Whatsapp_No_Resolve.yaml"
+  },
+  {
+    "slug": "wifimaster",
+    "name": "WiFiMaster",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WiFiMaster/WiFiMaster_No_Resolve.yaml"
+  },
+  {
+    "slug": "wikimedia",
+    "name": "Wikimedia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Wikimedia/Wikimedia_No_Resolve.yaml"
+  },
+  {
+    "slug": "wikipedia",
+    "name": "Wikipedia",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Wikipedia/Wikipedia_No_Resolve.yaml"
+  },
+  {
+    "slug": "wildrift",
+    "name": "WildRift",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WildRift/WildRift_No_Resolve.yaml"
+  },
+  {
+    "slug": "wix",
+    "name": "WIX",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WIX/WIX_No_Resolve.yaml"
+  },
+  {
+    "slug": "wolai",
+    "name": "WoLai",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WoLai/WoLai_No_Resolve.yaml"
+  },
+  {
+    "slug": "wordpress",
+    "name": "Wordpress",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Wordpress/Wordpress_No_Resolve.yaml"
+  },
+  {
+    "slug": "worldofwarcraft",
+    "name": "WorldofWarcraft",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/WorldofWarcraft/WorldofWarcraft_No_Resolve.yaml"
+  },
+  {
+    "slug": "wteam",
+    "name": "Wteam",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Wteam/Wteam_No_Resolve.yaml"
+  },
+  {
+    "slug": "xbox",
+    "name": "Xbox",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Xbox/Xbox_No_Resolve.yaml"
+  },
+  {
+    "slug": "xiamimusic",
+    "name": "XiamiMusic",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/XiamiMusic/XiamiMusic_No_Resolve.yaml"
+  },
+  {
+    "slug": "xianyu",
+    "name": "XianYu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/XianYu/XianYu_No_Resolve.yaml"
+  },
+  {
+    "slug": "xiaogoukeji",
+    "name": "XiaoGouKeJi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/XiaoGouKeJi/XiaoGouKeJi_No_Resolve.yaml"
+  },
+  {
+    "slug": "xiaohongshu",
+    "name": "XiaoHongShu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/XiaoHongShu/XiaoHongShu_No_Resolve.yaml"
+  },
+  {
+    "slug": "xiaomi",
+    "name": "XiaoMi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/XiaoMi/XiaoMi_No_Resolve.yaml"
+  },
+  {
+    "slug": "xiaoyuankeji",
+    "name": "XiaoYuanKeJi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/XiaoYuanKeJi/XiaoYuanKeJi_No_Resolve.yaml"
+  },
+  {
+    "slug": "xiecheng",
+    "name": "XieCheng",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/XieCheng/XieCheng_No_Resolve.yaml"
+  },
+  {
+    "slug": "xingkongwuxian",
+    "name": "XingKongWuXian",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/XingKongWuXian/XingKongWuXian_No_Resolve.yaml"
+  },
+  {
+    "slug": "xueersi",
+    "name": "XueErSi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/XueErSi/XueErSi_No_Resolve.yaml"
+  },
+  {
+    "slug": "xueqiu",
+    "name": "XueQiu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/XueQiu/XueQiu_No_Resolve.yaml"
+  },
+  {
+    "slug": "xunlei",
+    "name": "Xunlei",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Xunlei/Xunlei_No_Resolve.yaml"
+  },
+  {
+    "slug": "yandex",
+    "name": "Yandex",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Yandex/Yandex_No_Resolve.yaml"
+  },
+  {
+    "slug": "yiche",
+    "name": "YiChe",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YiChe/YiChe_No_Resolve.yaml"
+  },
+  {
+    "slug": "yixiakeji",
+    "name": "YiXiaKeJi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YiXiaKeJi/YiXiaKeJi_No_Resolve.yaml"
+  },
+  {
+    "slug": "yizhibo",
+    "name": "YiZhiBo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YiZhiBo/YiZhiBo_No_Resolve.yaml"
+  },
+  {
+    "slug": "youku",
+    "name": "Youku",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Youku/Youku_No_Resolve.yaml"
+  },
+  {
+    "slug": "youmengchuangxiang",
+    "name": "YouMengChuangXiang",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YouMengChuangXiang/YouMengChuangXiang_No_Resolve.yaml"
+  },
+  {
+    "slug": "youtube",
+    "name": "YouTube",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YouTube/YouTube_No_Resolve.yaml"
+  },
+  {
+    "slug": "youtubemusic",
+    "name": "YouTubeMusic",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YouTubeMusic/YouTubeMusic_No_Resolve.yaml"
+  },
+  {
+    "slug": "youzan",
+    "name": "YouZan",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YouZan/YouZan_No_Resolve.yaml"
+  },
+  {
+    "slug": "yuanfudao",
+    "name": "YuanFuDao",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YuanFuDao/YuanFuDao_No_Resolve.yaml"
+  },
+  {
+    "slug": "yunfanjiasu",
+    "name": "YunFanJiaSu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YunFanJiaSu/YunFanJiaSu_No_Resolve.yaml"
+  },
+  {
+    "slug": "yyets",
+    "name": "YYeTs",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/YYeTs/YYeTs_No_Resolve.yaml"
+  },
+  {
+    "slug": "zalo",
+    "name": "Zalo",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Zalo/Zalo_No_Resolve.yaml"
+  },
+  {
+    "slug": "zdns",
+    "name": "ZDNS",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ZDNS/ZDNS_No_Resolve.yaml"
+  },
+  {
+    "slug": "zee",
+    "name": "Zee",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Zee/Zee_No_Resolve.yaml"
+  },
+  {
+    "slug": "zeetv",
+    "name": "ZeeTV",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ZeeTV/ZeeTV_No_Resolve.yaml"
+  },
+  {
+    "slug": "zendesk",
+    "name": "Zendesk",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Zendesk/Zendesk_No_Resolve.yaml"
+  },
+  {
+    "slug": "zhangyue",
+    "name": "ZhangYue",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ZhangYue/ZhangYue_No_Resolve.yaml"
+  },
+  {
+    "slug": "zhanqi",
+    "name": "zhanqi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/zhanqi/zhanqi_No_Resolve.yaml"
+  },
+  {
+    "slug": "zhihu",
+    "name": "Zhihu",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Zhihu/Zhihu_No_Resolve.yaml"
+  },
+  {
+    "slug": "zhihuads",
+    "name": "ZhihuAds",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ZhihuAds/ZhihuAds_No_Resolve.yaml"
+  },
+  {
+    "slug": "zhiyinmanke",
+    "name": "ZhiYinManKe",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ZhiYinManKe/ZhiYinManKe_No_Resolve.yaml"
+  },
+  {
+    "slug": "zhiyunzhong",
+    "name": "ZhiYunZhong",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ZhiYunZhong/ZhiYunZhong_No_Resolve.yaml"
+  },
+  {
+    "slug": "zhongguoshihua",
+    "name": "ZhongGuoShiHua",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ZhongGuoShiHua/ZhongGuoShiHua_No_Resolve.yaml"
+  },
+  {
+    "slug": "zhongweishiji",
+    "name": "ZhongWeiShiJi",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ZhongWeiShiJi/ZhongWeiShiJi_No_Resolve.yaml"
+  },
+  {
+    "slug": "zhongxingtongxun",
+    "name": "ZhongXingTongXun",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ZhongXingTongXun/ZhongXingTongXun_No_Resolve.yaml"
+  },
+  {
+    "slug": "zhongyuanyishang",
+    "name": "ZhongYuanYiShang",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ZhongYuanYiShang/ZhongYuanYiShang_No_Resolve.yaml"
+  },
+  {
+    "slug": "zhuanzhuan",
+    "name": "ZhuanZhuan",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ZhuanZhuan/ZhuanZhuan_No_Resolve.yaml"
+  },
+  {
+    "slug": "zoho",
+    "name": "Zoho",
+    "behavior": "classical",
+    "sourceUrl": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Zoho/Zoho_No_Resolve.yaml"
+  }
+]

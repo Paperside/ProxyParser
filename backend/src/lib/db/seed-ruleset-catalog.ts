@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 
 import type { Database } from "bun:sqlite";
 
+import { encodeMultiSourceSpec, type RulesetSource } from "../rulesets/merge";
+
 // 内置规则源 seed：从仓库离线资产（assets/rulesets）落库 catalog + 内容快照。
 // 离线内置原则（技术方案 §8）：首启无网络也必须可用；后台同步只做其后的更新。
 
@@ -13,13 +15,17 @@ const assetsRulesetsDir = resolve(
   "../../../assets/rulesets"
 );
 
+export type BuiltinGroupKind = "proxy-first" | "direct-first" | "reject" | "direct-builtin";
+
 export interface BuiltinRulesetManifestEntry {
   slug: string;
   name: string;
   description: string;
   behavior: "domain" | "ipcidr" | "classical";
+  groupKind: BuiltinGroupKind;
   recommendedTarget: string;
-  sourceUrl: string;
+  sources: RulesetSource[];
+  extraRules?: string[];
   file: string;
 }
 
@@ -88,12 +94,16 @@ export const seedBuiltinRulesetCatalog = (db: Database): number => {
       continue;
     }
     const catalogId = catalogIdForSlug(entry.slug);
+    const sourceUrl = encodeMultiSourceSpec({
+      sources: entry.sources,
+      extraRules: entry.extraRules ?? []
+    });
     insertCatalog.run(
       catalogId,
       entry.slug,
       entry.name,
       entry.description,
-      entry.sourceUrl,
+      sourceUrl,
       entry.behavior,
       entry.recommendedTarget,
       now,

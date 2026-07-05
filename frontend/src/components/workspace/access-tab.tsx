@@ -1,43 +1,56 @@
-import { useEffect, useRef, useState } from "react";
-import QRCode from "qrcode";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { formatRelative } from "../../lib/format";
 import { useAccess, useAccessMutations } from "../../lib/hooks";
-import type { IssuedToken } from "../../lib/types";
-import { CopyButton, SectionTitle } from "../shared";
+import type { IssuedToken, TokenInfo } from "../../lib/types";
+import { AsyncCopyButton, CopyButton, QrCode, SectionTitle } from "../shared";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardTitle } from "../ui/card";
-import { Dialog, DialogContent } from "../ui/dialog";
+import { Dialog, DialogContent, DialogFooter } from "../ui/dialog";
+import { Field, Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useWorkspace } from "./context";
 
-// 新链接只在此刻展示一次（后端只存哈希）
-const IssuedTokenDialog = ({ issued, onClose }: { issued: IssuedToken; onClose: () => void }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    if (canvasRef.current) {
-      void QRCode.toCanvas(canvasRef.current, issued.url, {
-        width: 168,
-        margin: 1,
-        color: { dark: "#e8eaf2", light: "#00000000" }
-      });
-    }
-  }, [issued.url]);
+// 新链接只在此刻展示一次（后端只存哈希用于鉴权比对，明文另有加密副本供之后按需复制）
+const IssuedTokenDialog = ({ issued, onClose }: { issued: IssuedToken; onClose: () => void }) => (
+  <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <DialogContent
+      title="订阅链接已生成"
+      description="链接明文已加密保存，之后可在列表里随时点「复制」取回；这里再额外展示一次方便你现在就导入。"
+    >
+      <div className="flex flex-col items-center gap-3">
+        <QrCode url={issued.url} />
+        <code className="max-w-full overflow-x-auto whitespace-nowrap rounded-md border border-line bg-bg px-3 py-1.5 font-mono text-[11px] text-muted">
+          {issued.url}
+        </code>
+        <CopyButton text={issued.url} />
+      </div>
+    </DialogContent>
+  </Dialog>
+);
+
+const RenameTokenDialog = ({
+  token,
+  onClose,
+  onSave
+}: {
+  token: TokenInfo;
+  onClose: () => void;
+  onSave: (label: string) => void;
+}) => {
+  const [label, setLabel] = useState(token.label ?? "");
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent
-        title="订阅链接已生成"
-        description="出于安全，链接只在此刻完整展示一次——请立即复制或扫码导入。"
-      >
-        <div className="flex flex-col items-center gap-3">
-          <canvas ref={canvasRef} className="rounded-md border border-line bg-surface2 p-1.5" />
-          <code className="max-w-full overflow-x-auto whitespace-nowrap rounded-md border border-line bg-bg px-3 py-1.5 font-mono text-[11px] text-muted">
-            {issued.url}
-          </code>
-          <CopyButton text={issued.url} />
-        </div>
+      <DialogContent title="重命名链接">
+        <Field label="名称">
+          <Input autoFocus value={label} onChange={(event) => setLabel(event.target.value)} placeholder="例如：客厅路由器" />
+        </Field>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>取消</Button>
+          <Button variant="primary" onClick={() => onSave(label.trim())}>保存</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -48,6 +61,7 @@ export const AccessTab = () => {
   const access = useAccess(detail.id);
   const mutations = useAccessMutations(detail.id);
   const [issued, setIssued] = useState<IssuedToken | null>(null);
+  const [renaming, setRenaming] = useState<TokenInfo | null>(null);
   const [ttlHours, setTtlHours] = useState("24");
 
   const handle = (promise: Promise<IssuedToken>) =>
@@ -59,7 +73,7 @@ export const AccessTab = () => {
     <div className="flex max-w-3xl flex-col gap-4">
       <SectionTitle
         title="访问"
-        desc="每条链接独立可轮换：换掉一台设备的链接不影响其他设备。链接明文只在生成时展示一次。"
+        desc="每条链接独立可轮换：换掉一台设备的链接不影响其他设备。列表里的「复制」随时可用，明文以加密形式保存。"
       />
 
       <Card>
@@ -77,38 +91,43 @@ export const AccessTab = () => {
           {(access.data?.tokens ?? []).map((token) => (
             <div key={token.id} className="flex items-center gap-2.5 border-b border-line py-2 text-[12.5px] last:border-b-0">
               <span className="font-medium">{token.label ?? "未命名"}</span>
-              {token.revokedAt ? <Badge variant="err">已撤销</Badge> : <Badge variant="ok">有效</Badge>}
+              <Badge variant="ok">有效</Badge>
               <span className="text-[11px] text-faint">
                 创建 {formatRelative(token.createdAt)} · 最近使用 {formatRelative(token.lastUsedAt)}
               </span>
-              {!token.revokedAt ? (
-                <span className="ml-auto flex gap-1.5">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      if (confirm("轮换后旧链接立即失效，使用它的设备需要更换新链接。继续？")) {
-                        handle(mutations.rotateToken.mutateAsync(token.id));
-                      }
-                    }}
-                  >
-                    轮换
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={() => {
-                      if (confirm("撤销后此链接立即失效。继续？")) {
-                        void mutations.revokeToken.mutateAsync(token.id);
-                      }
-                    }}
-                  >
-                    撤销
-                  </Button>
-                </span>
-              ) : null}
+              <span className="ml-auto flex gap-1.5">
+                <AsyncCopyButton onReveal={async () => (await mutations.revealToken.mutateAsync(token.id)).url} />
+                <Button size="sm" variant="ghost" onClick={() => setRenaming(token)}>
+                  重命名
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (confirm("轮换后旧链接立即失效，使用它的设备需要更换新链接；名称会保留。继续？")) {
+                      handle(mutations.rotateToken.mutateAsync(token.id));
+                    }
+                  }}
+                >
+                  轮换
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => {
+                    if (confirm("删除后此链接立即失效，且从列表中移除，无法恢复。继续？")) {
+                      void mutations.revokeToken.mutateAsync(token.id);
+                    }
+                  }}
+                >
+                  删除
+                </Button>
+              </span>
             </div>
           ))}
+          {access.data?.tokens.length === 0 ? (
+            <p className="text-xs text-faint">还没有长期链接，点「生成新链接」创建第一条。</p>
+          ) : null}
         </div>
       </Card>
 
@@ -192,6 +211,18 @@ export const AccessTab = () => {
       </Card>
 
       {issued ? <IssuedTokenDialog issued={issued} onClose={() => setIssued(null)} /> : null}
+      {renaming ? (
+        <RenameTokenDialog
+          token={renaming}
+          onClose={() => setRenaming(null)}
+          onSave={(label) => {
+            mutations.renameToken
+              .mutateAsync({ tokenId: renaming.id, label: label.length > 0 ? label : null })
+              .then(() => setRenaming(null))
+              .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "重命名失败"));
+          }}
+        />
+      ) : null}
     </div>
   );
 };

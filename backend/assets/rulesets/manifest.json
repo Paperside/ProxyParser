@@ -1,95 +1,230 @@
 {
-  "comment": "内置规则源清单。file 为仓库内离线快照（离线内置原则，技术方案 §8）；scripts/fetch-rulesets.ts 负责更新。",
+  "comment": "内置规则源清单。file 为仓库内离线快照（离线内置原则，技术方案 §8）；scripts/fetch-rulesets.ts 负责更新。数据来自 blackmatrix7/ios_rule_script（Clash No_Resolve 变体），每个规则组统一合并为单份 classical payload：sources 里 kind=\"domain\" 的条目会被脚本转换成 DOMAIN/DOMAIN-SUFFIX 规则行后与 kind=\"classical\" 条目合并去重。groupKind 驱动推荐模板生成同名策略组：proxy-first（境外服务，默认走 Proxies）/ direct-first（国内服务，默认直连）/ reject（直接落 REJECT，不建组）/ direct-builtin（直接落 DIRECT，不建组）。",
   "entries": [
     {
-      "slug": "geosite-cn",
-      "name": "国内域名（geosite:cn）",
-      "description": "中国大陆常用域名集合，建议指向 DIRECT。",
-      "behavior": "domain",
-      "recommendedTarget": "DIRECT",
-      "sourceUrl": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cn.yaml",
-      "file": "geosite-cn.yaml"
+      "slug": "apple",
+      "name": "Apple",
+      "description": "Apple 全家桶相关域名（App Store、iCloud、推送等），建议指向 Apple 策略组。",
+      "behavior": "classical",
+      "groupKind": "proxy-first",
+      "recommendedTarget": "Apple",
+      "sources": [
+        { "kind": "domain", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Apple/Apple_Domain.yaml" },
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Apple/Apple_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "apple.yaml"
     },
     {
-      "slug": "cn-cidr",
-      "name": "国内 IP 段（CN CIDR）",
-      "description": "中国大陆 IP CIDR 列表，建议指向 DIRECT。",
-      "behavior": "ipcidr",
-      "recommendedTarget": "DIRECT",
-      "sourceUrl": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/cncidr.txt",
-      "file": "cn-cidr.yaml"
+      "slug": "bilibili",
+      "name": "BiliBili",
+      "description": "哔哩哔哩相关域名，国内服务，建议指向 BiliBili 策略组（默认直连）。",
+      "behavior": "classical",
+      "groupKind": "direct-first",
+      "recommendedTarget": "BiliBili",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/BiliBili/BiliBili_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "bilibili.yaml"
     },
     {
-      "slug": "private",
-      "name": "内网与保留地址",
-      "description": "局域网、回环等私有域名，建议指向 DIRECT。",
-      "behavior": "domain",
-      "recommendedTarget": "DIRECT",
-      "sourceUrl": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/private.txt",
-      "file": "private.yaml"
-    },
-    {
-      "slug": "reject-ads",
-      "name": "广告与追踪拦截",
-      "description": "广告、追踪、恶意域名集合，建议指向 REJECT。",
-      "behavior": "domain",
-      "recommendedTarget": "REJECT",
-      "sourceUrl": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/reject.txt",
-      "file": "reject-ads.yaml"
-    },
-    {
-      "slug": "gfw-proxy",
-      "name": "代理域名（GFW 列表）",
-      "description": "常见被墙域名集合，建议指向 Proxies。",
-      "behavior": "domain",
-      "recommendedTarget": "Proxies",
-      "sourceUrl": "https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/proxy.txt",
-      "file": "gfw-proxy.yaml"
-    },
-    {
-      "slug": "geosite-openai",
-      "name": "OpenAI",
-      "description": "OpenAI / ChatGPT 相关域名，建议指向 AI 组。",
-      "behavior": "domain",
-      "recommendedTarget": "AI",
-      "sourceUrl": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/openai.yaml",
-      "file": "geosite-openai.yaml"
-    },
-    {
-      "slug": "geosite-anthropic",
-      "name": "Anthropic",
-      "description": "Anthropic / Claude 相关域名，建议指向 AI 组。",
-      "behavior": "domain",
-      "recommendedTarget": "AI",
-      "sourceUrl": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/anthropic.yaml",
-      "file": "geosite-anthropic.yaml"
-    },
-    {
-      "slug": "geosite-netflix",
+      "slug": "netflix",
       "name": "Netflix",
-      "description": "Netflix 相关域名，建议指向流媒体组。",
-      "behavior": "domain",
-      "recommendedTarget": "Streaming",
-      "sourceUrl": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/netflix.yaml",
-      "file": "geosite-netflix.yaml"
+      "description": "Netflix 相关域名，建议指向 Netflix 策略组。",
+      "behavior": "classical",
+      "groupKind": "proxy-first",
+      "recommendedTarget": "Netflix",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Netflix/Netflix_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "netflix.yaml"
     },
     {
-      "slug": "geosite-youtube",
-      "name": "YouTube",
-      "description": "YouTube 相关域名，建议指向流媒体组。",
-      "behavior": "domain",
-      "recommendedTarget": "Streaming",
-      "sourceUrl": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/youtube.yaml",
-      "file": "geosite-youtube.yaml"
+      "slug": "disney",
+      "name": "Disney+",
+      "description": "Disney+ 相关域名，建议指向 Disney 策略组。",
+      "behavior": "classical",
+      "groupKind": "proxy-first",
+      "recommendedTarget": "Disney",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Disney/Disney_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "disney.yaml"
     },
     {
-      "slug": "geosite-telegram",
+      "slug": "tiktok",
+      "name": "TikTok",
+      "description": "TikTok 相关域名，建议指向 TikTok 策略组。",
+      "behavior": "classical",
+      "groupKind": "proxy-first",
+      "recommendedTarget": "TikTok",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/TikTok/TikTok_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "tiktok.yaml"
+    },
+    {
+      "slug": "openai",
+      "name": "OpenAI",
+      "description": "OpenAI / ChatGPT 相关域名，建议指向 OpenAI 策略组。",
+      "behavior": "classical",
+      "groupKind": "proxy-first",
+      "recommendedTarget": "OpenAI",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OpenAI/OpenAI_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "openai.yaml"
+    },
+    {
+      "slug": "anthropic",
+      "name": "Anthropic",
+      "description": "Anthropic / Claude 相关域名，建议指向 Anthropic 策略组。",
+      "behavior": "classical",
+      "groupKind": "proxy-first",
+      "recommendedTarget": "Anthropic",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Claude/Claude_No_Resolve.yaml" }
+      ],
+      "extraRules": ["DOMAIN-SUFFIX,claudeusercontent.com"],
+      "file": "anthropic.yaml"
+    },
+    {
+      "slug": "steamcn",
+      "name": "SteamCN",
+      "description": "SteamCN 社区相关域名，国内服务，建议指向 SteamCN 策略组（默认直连）。",
+      "behavior": "classical",
+      "groupKind": "direct-first",
+      "recommendedTarget": "SteamCN",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/SteamCN/SteamCN_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "steamcn.yaml"
+    },
+    {
+      "slug": "steam",
+      "name": "Steam",
+      "description": "Steam 平台相关域名，建议指向 Steam 策略组。",
+      "behavior": "classical",
+      "groupKind": "proxy-first",
+      "recommendedTarget": "Steam",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Steam/Steam_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "steam.yaml"
+    },
+    {
+      "slug": "google",
+      "name": "Google",
+      "description": "Google 系服务相关域名，建议指向 Google 策略组。",
+      "behavior": "classical",
+      "groupKind": "proxy-first",
+      "recommendedTarget": "Google",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Google/Google_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "google.yaml"
+    },
+    {
+      "slug": "paypal",
+      "name": "PayPal",
+      "description": "PayPal 相关域名，建议指向 PayPal 策略组。",
+      "behavior": "classical",
+      "groupKind": "proxy-first",
+      "recommendedTarget": "PayPal",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/PayPal/PayPal_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "paypal.yaml"
+    },
+    {
+      "slug": "telegram",
       "name": "Telegram",
-      "description": "Telegram 相关域名，建议指向 Proxies。",
-      "behavior": "domain",
-      "recommendedTarget": "Proxies",
-      "sourceUrl": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/telegram.yaml",
-      "file": "geosite-telegram.yaml"
+      "description": "Telegram 相关域名，建议指向 Telegram 策略组。",
+      "behavior": "classical",
+      "groupKind": "proxy-first",
+      "recommendedTarget": "Telegram",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Telegram/Telegram_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "telegram.yaml"
+    },
+    {
+      "slug": "microsoft",
+      "name": "Microsoft",
+      "description": "Microsoft 系服务相关域名，建议指向 Microsoft 策略组。",
+      "behavior": "classical",
+      "groupKind": "proxy-first",
+      "recommendedTarget": "Microsoft",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Microsoft/Microsoft_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "microsoft.yaml"
+    },
+    {
+      "slug": "globalmedia",
+      "name": "GlobalMedia",
+      "description": "全球流媒体服务相关域名（除 Netflix/Disney+ 外的其余流媒体），建议指向 GlobalMedia 策略组。",
+      "behavior": "classical",
+      "groupKind": "proxy-first",
+      "recommendedTarget": "GlobalMedia",
+      "sources": [
+        { "kind": "domain", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GlobalMedia/GlobalMedia_Domain.yaml" },
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/GlobalMedia/GlobalMedia_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "globalmedia.yaml"
+    },
+    {
+      "slug": "chinamax",
+      "name": "ChinaMax",
+      "description": "中国大陆域名与 IP 段（最全版本），建议指向 ChinaMax 策略组（默认直连）。",
+      "behavior": "classical",
+      "groupKind": "direct-first",
+      "recommendedTarget": "ChinaMax",
+      "sources": [
+        { "kind": "domain", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMax/ChinaMax_Domain.yaml" },
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMax/ChinaMax_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "chinamax.yaml"
+    },
+    {
+      "slug": "advertising",
+      "name": "去广告",
+      "description": "广告、追踪、恶意域名集合，建议指向 REJECT。",
+      "behavior": "classical",
+      "groupKind": "reject",
+      "recommendedTarget": "REJECT",
+      "sources": [
+        { "kind": "domain", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Advertising/Advertising_Domain.yaml" },
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Advertising/Advertising_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "advertising.yaml"
+    },
+    {
+      "slug": "lan",
+      "name": "局域网与保留地址",
+      "description": "局域网、回环等私有地址，建议指向 DIRECT。",
+      "behavior": "classical",
+      "groupKind": "direct-builtin",
+      "recommendedTarget": "DIRECT",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Lan/Lan_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "lan.yaml"
     }
   ]
 }

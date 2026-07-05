@@ -1,9 +1,8 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import QRCode from "qrcode";
 
-import { CopyButton } from "../components/shared";
+import { CopyButton, QrCode } from "../components/shared";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -354,7 +353,6 @@ const PublishAndFinish = ({
   const mutations = useSubscriptionMutations(subscriptionId);
   const [published, setPublished] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const publishAttempted = useRef(false);
 
   useEffect(() => {
@@ -366,16 +364,6 @@ const PublishAndFinish = ({
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "发布失败"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (published && canvasRef.current) {
-      void QRCode.toCanvas(canvasRef.current, token.url, {
-        width: 168,
-        margin: 1,
-        color: { dark: "#e8eaf2", light: "#00000000" }
-      });
-    }
-  }, [published, token.url]);
 
   if (error) {
     return (
@@ -409,7 +397,7 @@ const PublishAndFinish = ({
           在 Clash Verge / Mihomo Party 等客户端中「新建配置 → 订阅链接」粘贴即可。
         </p>
       </div>
-      <canvas ref={canvasRef} className="rounded-md border border-line bg-surface2 p-1.5" />
+      <QrCode url={token.url} />
       <code className="max-w-full overflow-x-auto whitespace-nowrap rounded-md border border-line bg-bg px-3 py-1.5 font-mono text-[11px] text-muted">
         {token.url}
       </code>

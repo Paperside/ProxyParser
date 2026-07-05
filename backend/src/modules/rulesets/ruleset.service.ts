@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { createId } from "../../lib/ids";
 import { normalizeRulesetContent } from "../../lib/rulesets/normalize";
+import { decodeMultiSourceSpec, mergeMultiSourceClassical } from "../../lib/rulesets/merge";
 import { parsePastedRules, type PasteParseReport } from "../../lib/rulesets/parse";
 import { logger } from "../../lib/logging/logger";
 import type { EventRepository } from "../events/event.repository";
@@ -175,11 +176,12 @@ export class RulesetService {
     if (!entry.sourceUrl) {
       throw new RulesetError("该规则源没有远端地址，无法抓取。");
     }
-    const response = await fetch(entry.sourceUrl);
-    if (!response.ok) {
-      throw new RulesetError(`抓取失败：HTTP ${response.status}`);
-    }
-    const normalized = normalizeRulesetContent(await response.text());
+    // 官方多源规则组（source_url 是 JSON 编码的 {sources, extraRules}）与用户单一 URL 导入
+    // 走同一套合并/规范化逻辑，保证在线复检与离线快照重新生成结果一致。
+    const multiSource = decodeMultiSourceSpec(entry.sourceUrl);
+    const normalized = multiSource
+      ? await mergeMultiSourceClassical(multiSource)
+      : normalizeRulesetContent(await this.fetchText(entry.sourceUrl));
     const snapshot: RulesetSnapshotRecord = {
       hash: sha256Hex(normalized.content),
       catalogId: entry.id,
@@ -194,5 +196,13 @@ export class RulesetService {
       this.repository.setLatestSnapshot(entry.id, snapshot.hash, options.badge);
     }
     return this.repository.findSnapshot(snapshot.hash) ?? snapshot;
+  }
+
+  private async fetchText(url: string): Promise<string> {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new RulesetError(`抓取失败：HTTP ${response.status}`);
+    }
+    return response.text();
   }
 }

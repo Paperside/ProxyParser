@@ -1,8 +1,11 @@
-import { useState } from "react";
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ChevronDown, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { cn } from "../../lib/cn";
+
 import type { CustomGroup, GroupMember } from "../../lib/build-config-types";
+import { REGION_CODES, regionLabel } from "../../lib/regions";
 import { SectionTitle } from "../shared";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -10,6 +13,7 @@ import { Card } from "../ui/card";
 import { Dialog, DialogContent, DialogFooter } from "../ui/dialog";
 import { Field, Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { DragHandle, SortableList } from "../ui/sortable-list";
 import { BUILTIN_POLICY_OPTIONS, useWorkspace } from "./context";
 
 const memberLabel = (member: GroupMember, nodeName: (id: string) => string): string => {
@@ -27,13 +31,72 @@ const memberLabel = (member: GroupMember, nodeName: (id: string) => string): str
         case "custom-only":
           return "全部自建节点";
         case "region":
-          return `${member.selector.region} 地区节点`;
+          return `${regionLabel(member.selector.region)} 地区节点`;
         case "tag":
           return `标签 ${member.selector.tag}`;
         case "protocol":
           return `协议 ${member.selector.protocol}`;
       }
   }
+};
+
+// 统一的「可展开代理组条」：Proxies/地区组（生成器产物，只读）与自定义组（Apple/BiliBili 等）
+// 用同一套视觉与交互——头部一行 bar，点击展开查看渲染后的完整成员列表。
+const ExpandableGroupBar = ({
+  name,
+  typeLabel,
+  countLabel,
+  badge,
+  proxies,
+  actions,
+  emptyHint,
+  dragHandle
+}: {
+  name: string;
+  typeLabel: string;
+  countLabel?: string;
+  badge?: string;
+  proxies: string[];
+  actions?: ReactNode;
+  emptyHint?: string;
+  dragHandle?: ReactNode;
+}) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card className="py-3">
+      <div className="flex items-center gap-2.5">
+        {dragHandle}
+        <button
+          type="button"
+          className="flex min-w-0 items-center gap-1.5 text-left"
+          onClick={() => setOpen((o) => !o)}
+        >
+          <ChevronDown className={cn("size-3.5 shrink-0 text-faint transition-transform", open ? "rotate-180" : "-rotate-90")} />
+          <span className="truncate text-[13px] font-semibold">{name}</span>
+        </button>
+        <Badge variant="mono">{typeLabel}</Badge>
+        {badge ? <Badge variant="accent">{badge}</Badge> : null}
+        <span className="text-[11px] text-faint">{countLabel ?? `${proxies.length} 项`}</span>
+        {actions ? <span className="ml-auto flex gap-1.5">{actions}</span> : null}
+      </div>
+      {open ? (
+        <div className="mt-2 flex flex-wrap gap-1.5 border-t border-line pt-2">
+          {proxies.length > 0 ? (
+            proxies.map((proxy, index) => (
+              <span
+                key={`${proxy}-${index}`}
+                className="rounded border border-line-strong bg-bg px-1.5 py-0.5 font-mono text-[11px] text-muted"
+              >
+                {proxy}
+              </span>
+            ))
+          ) : (
+            <p className="text-xs text-faint">{emptyHint ?? "暂无成员。"}</p>
+          )}
+        </div>
+      ) : null}
+    </Card>
+  );
 };
 
 // 组成员选择器：节点 / 组 / 抽象集合 / 内置目标 四类（v0.2 §7.3 标准成员配置）
@@ -48,9 +111,9 @@ const MemberPicker = ({ onAdd }: { onAdd: (member: GroupMember) => void }) => {
         return [
           { value: "all-enabled", label: "所有启用节点" },
           { value: "custom-only", label: "全部自建节点" },
-          ...["HK", "TW", "JP", "US", "SG", "KR"].map((region) => ({
+          ...REGION_CODES.map((region) => ({
             value: `region:${region}`,
-            label: `${region} 地区节点`
+            label: `${regionLabel(region)} 地区节点`
           }))
         ];
       case "group":
@@ -129,6 +192,14 @@ const MemberPicker = ({ onAdd }: { onAdd: (member: GroupMember) => void }) => {
   );
 };
 
+interface MemberRow {
+  id: string;
+  member: GroupMember;
+}
+
+const toMemberRows = (members: GroupMember[]): MemberRow[] =>
+  members.map((member) => ({ id: crypto.randomUUID(), member }));
+
 const GroupEditorDialog = ({
   initial,
   onClose
@@ -139,7 +210,7 @@ const GroupEditorDialog = ({
   const { update, preview } = useWorkspace();
   const [name, setName] = useState(initial?.name ?? "");
   const [type, setType] = useState<CustomGroup["type"]>(initial?.type ?? "select");
-  const [members, setMembers] = useState<GroupMember[]>(initial?.members ?? []);
+  const [rows, setRows] = useState<MemberRow[]>(() => toMemberRows(initial?.members ?? []));
 
   const nodeName = (id: string) =>
     preview?.nodeIndex.find((node) => node.id === id)?.renderedName ?? id.slice(0, 10);
@@ -149,10 +220,11 @@ const GroupEditorDialog = ({
       toast.error("请填写组名");
       return;
     }
-    if (members.length === 0) {
+    if (rows.length === 0) {
       toast.error("代理组至少需要一个成员");
       return;
     }
+    const members = rows.map((row) => row.member);
     update((draft) => {
       const existingIndex = draft.groups.custom.findIndex((group) => group.name === (initial?.name ?? name));
       const nextGroup: CustomGroup = { name: name.trim(), type, members };
@@ -190,31 +262,34 @@ const GroupEditorDialog = ({
             </Select>
           </Field>
         </div>
-        <p className="mb-1.5 text-xs font-medium text-muted">成员（按顺序输出）</p>
-        <div className="mb-3 flex flex-col gap-1">
-          {members.map((member, index) => (
-            <div key={index} className="flex items-center gap-2 rounded-md border border-line bg-bg px-2.5 py-1 text-[12.5px]">
-              <span className="font-mono text-[11px] text-faint">{index + 1}.</span>
-              {memberLabel(member, nodeName)}
-              {member.kind === "node" && member.nodeId.startsWith("n_") ? (
-                <Badge variant="warn" className="text-[10px]">原生节点引用不进模板</Badge>
-              ) : null}
-              <span className="ml-auto flex gap-0.5">
-                <Button size="sm" variant="ghost" disabled={index === 0} onClick={() => setMembers((current) => { const next = [...current]; [next[index - 1], next[index]] = [next[index]!, next[index - 1]!]; return next; })}>
-                  <ArrowUp className="size-3" />
-                </Button>
-                <Button size="sm" variant="ghost" disabled={index === members.length - 1} onClick={() => setMembers((current) => { const next = [...current]; [next[index], next[index + 1]] = [next[index + 1]!, next[index]!]; return next; })}>
-                  <ArrowDown className="size-3" />
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setMembers((current) => current.filter((_, i) => i !== index))}>
-                  <Trash2 className="size-3" />
-                </Button>
-              </span>
-            </div>
-          ))}
-          {members.length === 0 ? <p className="text-xs text-faint">还没有成员。</p> : null}
+        <p className="mb-1.5 text-xs font-medium text-muted">成员（拖拽调整输出顺序）</p>
+        <div className="mb-3">
+          <SortableList
+            items={rows}
+            onReorder={setRows}
+            className="flex flex-col gap-1"
+            renderItem={(row, handle) => (
+              <div className="flex items-center gap-2 rounded-md border border-line bg-bg px-2.5 py-1 text-[12.5px]">
+                <DragHandle {...handle} />
+                {memberLabel(row.member, nodeName)}
+                {row.member.kind === "node" && row.member.nodeId.startsWith("n_") ? (
+                  <Badge variant="warn" className="text-[10px]">原生节点引用不进模板</Badge>
+                ) : null}
+                <span className="ml-auto flex gap-0.5">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setRows((current) => current.filter((item) => item.id !== row.id))}
+                  >
+                    <Trash2 className="size-3" />
+                  </Button>
+                </span>
+              </div>
+            )}
+          />
+          {rows.length === 0 ? <p className="text-xs text-faint">还没有成员。</p> : null}
         </div>
-        <MemberPicker onAdd={(member) => setMembers((current) => [...current, member])} />
+        <MemberPicker onAdd={(member) => setRows((current) => [...current, { id: crypto.randomUUID(), member }])} />
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>取消</Button>
           <Button variant="primary" onClick={save}>保存</Button>
@@ -234,6 +309,10 @@ export const GroupsTab = () => {
   const nodeName = (id: string) =>
     preview?.nodeIndex.find((node) => node.id === id)?.renderedName ?? id.slice(0, 10);
 
+  const customNames = new Set(config.groups.custom.map((group) => group.name));
+  // 生成器产物（Proxies / Auto / 各地区组 / Others）：来自渲染后的真实结果，只读展示
+  const generatedGroups = (preview?.groupIndex ?? []).filter((entry) => !customNames.has(entry.name));
+
   const removeGroup = (name: string) => {
     const referenced = config.rules.targets.some((block) => block.target === name);
     if (referenced) {
@@ -243,6 +322,22 @@ export const GroupsTab = () => {
     update((draft) => {
       draft.groups.custom = draft.groups.custom.filter((group) => group.name !== name);
       draft.groups.order = draft.groups.order.filter((entry) => entry !== name);
+    });
+  };
+
+  // 拖拽调整自定义组相对顺序：只重排 order 里属于自定义组的那些槽位，生成器产物的位置不受影响
+  const reorderCustomGroups = (nextCustom: CustomGroup[]) => {
+    update((draft) => {
+      draft.groups.custom = nextCustom;
+      const nextNames = nextCustom.map((group) => group.name);
+      let cursor = 0;
+      const customNameSet = new Set(nextNames);
+      draft.groups.order = draft.groups.order.map((entry) =>
+        customNameSet.has(entry) ? nextNames[cursor++]! : entry
+      );
+      for (const name of nextNames) {
+        if (!draft.groups.order.includes(name)) draft.groups.order.push(name);
+      }
     });
   };
 
@@ -303,7 +398,7 @@ export const GroupsTab = () => {
                 })
               }
             />
-            <span><strong>地区代理组</strong> — 按推断/确认的地区自动分组（HK / TW / JP / US / SG / KR）</span>
+            <span><strong>地区代理组</strong> — 按推断/确认的地区自动分组（覆盖全球约 50 个常见国家/地区，节点页可手动纠正）</span>
             {regionGen?.kind === "region-groups" ? (
               <label className="ml-4 flex items-center gap-1.5 text-muted">
                 未分类节点
@@ -329,26 +424,51 @@ export const GroupsTab = () => {
         </div>
       </Card>
 
-      <div className="flex flex-col gap-2.5">
-        {config.groups.custom.map((group) => (
-          <Card key={group.name} className="py-3">
-            <div className="flex items-center gap-2.5">
-              <span className="text-[13px] font-semibold">{group.name}</span>
-              <Badge variant="mono">{group.type}</Badge>
-              <span className="ml-auto flex gap-1.5">
-                <Button size="sm" variant="ghost" onClick={() => setEditing(group)}>编辑</Button>
-                <Button size="sm" variant="ghost" onClick={() => removeGroup(group.name)}>删除</Button>
-              </span>
-            </div>
-            <p className="mt-1.5 text-xs text-muted">
-              {group.members.map((member) => memberLabel(member, nodeName)).join(" · ")}
-            </p>
-          </Card>
-        ))}
-        {config.groups.custom.length === 0 ? (
-          <p className="text-xs text-faint">还没有自定义代理组。AI、流媒体等服务分流组在这里创建。</p>
-        ) : null}
-      </div>
+      {generatedGroups.length > 0 ? (
+        <div className="mb-3 flex flex-col gap-2.5">
+          <p className="text-xs font-medium text-muted">生成器产物（只读，随节点自动重算）</p>
+          {generatedGroups.map((entry) => (
+            <ExpandableGroupBar
+              key={entry.name}
+              name={entry.name}
+              typeLabel={entry.type}
+              badge="生成器"
+              proxies={entry.proxies}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {config.groups.custom.length > 0 ? (
+        <SortableList
+          items={config.groups.custom.map((group) => ({ ...group, id: group.name }))}
+          onReorder={(next) => reorderCustomGroups(next.map(({ id: _id, ...group }) => group))}
+          className="flex flex-col gap-2.5"
+          renderItem={(group, handle) => {
+            const rendered = preview?.groupIndex.find((entry) => entry.name === group.name);
+            return (
+              <ExpandableGroupBar
+                name={group.name}
+                typeLabel={group.type}
+                countLabel={rendered ? `${rendered.proxies.length} 项` : `${group.members.length} 条成员配置`}
+                proxies={
+                  rendered ? rendered.proxies : group.members.map((member) => memberLabel(member, nodeName))
+                }
+                emptyHint="代理组至少需要一个成员，点击「编辑」添加。"
+                dragHandle={<DragHandle {...handle} />}
+                actions={
+                  <>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing(group)}>编辑</Button>
+                    <Button size="sm" variant="ghost" onClick={() => removeGroup(group.name)}>删除</Button>
+                  </>
+                }
+              />
+            );
+          }}
+        />
+      ) : (
+        <p className="text-xs text-faint">还没有自定义代理组。AI、流媒体等服务分流组在这里创建。</p>
+      )}
 
       {editing !== null ? (
         <GroupEditorDialog initial={editing === "new" ? null : editing} onClose={() => setEditing(null)} />

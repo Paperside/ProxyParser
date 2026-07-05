@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowUpToLine, CircleAlert, RefreshCw, Sparkles } from "lucide-react";
 
-import { HealthDot } from "../components/shared";
+import { CopyLinkButton, HealthDot } from "../components/shared";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardTitle } from "../components/ui/card";
@@ -112,6 +112,7 @@ export const WorkbenchPage = () => {
                 <Link to="/subscriptions/$subscriptionId" params={{ subscriptionId: sub.id }}>
                   <Button size="sm">打开</Button>
                 </Link>
+                <CopyLinkButton subscriptionId={sub.id} size="sm" />
               </div>
             </Card>
           );

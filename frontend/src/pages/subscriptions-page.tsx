@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 
-import { EmptyState, HealthDot } from "../components/shared";
+import { CopyLinkButton, EmptyState, HealthDot } from "../components/shared";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -93,11 +93,14 @@ export const SubscriptionsPage = () => {
                     {formatRelative(sub.lastPullAt)}
                   </td>
                   <td className="border-b border-line px-3 py-2 text-right">
-                    <Link to="/subscriptions/$subscriptionId" params={{ subscriptionId: sub.id }}>
-                      <Button size="sm" variant="ghost">
-                        编辑
-                      </Button>
-                    </Link>
+                    <span className="inline-flex gap-1.5">
+                      <CopyLinkButton subscriptionId={sub.id} size="sm" variant="ghost" label="复制链接" />
+                      <Link to="/subscriptions/$subscriptionId" params={{ subscriptionId: sub.id }}>
+                        <Button size="sm" variant="ghost">
+                          编辑
+                        </Button>
+                      </Link>
+                    </span>
                   </td>
                 </tr>
               ))}

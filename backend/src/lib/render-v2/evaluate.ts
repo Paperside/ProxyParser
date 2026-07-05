@@ -79,6 +79,8 @@ export interface EvaluateResult {
     protocol: string;
     tags: string[];
   }>;
+  // 渲染后完整代理组列表（含生成器产物与自定义组），供 UI 展开查看真实成员用
+  groupIndex: Array<{ name: string; type: string; proxies: string[] }>;
   renderedHash: string;
 }
 
@@ -387,6 +389,8 @@ export const generateGroups = (
         }
         case "group":
           if (!knownGroupNames.has(member.name)) {
+            // 地区码/Others 是按节点动态生成的：当前没有该地区节点是正常状态，静默跳过而非报错
+            if (isRegionCode(member.name) || member.name === "Others") continue;
             issues.push({
               kind: "dangling-group-ref",
               severity: "error",
@@ -914,6 +918,8 @@ const evaluatePatchMode = (
       } else if (member.kind === "group") {
         if (knownNames.has(member.name)) {
           members.push(member.name);
+        } else if (isRegionCode(member.name) || member.name === "Others") {
+          // 地区码/Others 是按节点动态生成的：当前没有该地区节点是正常状态，静默跳过而非报错
         } else {
           issues.push({
             kind: "dangling-group-ref",
@@ -1028,6 +1034,11 @@ export const evaluate = (input: EvaluateInput): EvaluateResult => {
       regionInferred: !(node.tags.find(isRegionCode) ?? null),
       protocol: node.protocol,
       tags: node.tags
+    })),
+    groupIndex: (document["proxy-groups"] ?? []).map((group) => ({
+      name: group.name,
+      type: group.type,
+      proxies: group.proxies
     })),
     renderedHash: createHash("sha256").update(yamlText).digest("hex")
   };

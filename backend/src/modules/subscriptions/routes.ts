@@ -203,6 +203,17 @@ export const createSubscriptionRoutes = (
         return sendError(error, set);
       }
     })
+    // 工作台卡片 / 订阅列表「复制链接」快捷按钮：一次请求拿到可直接复制的 URL
+    .get(
+      "/subscriptions/:id/primary-link",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          return service.getOrCreatePrimaryLink(currentUser.id, params.id!);
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
     .post("/subscriptions/:id/tokens", ({ params, body, currentUser, set }: Ctx) => {
       try {
         const label = isRecord(body) ? (str(body, "label") ?? null) : null;
@@ -226,6 +237,24 @@ export const createSubscriptionRoutes = (
       ({ params, currentUser, set }: Omit<Ctx, "body">) => {
         try {
           return service.revokeToken(currentUser.id, params.id!, params.tokenId!);
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
+    .patch("/subscriptions/:id/tokens/:tokenId", ({ params, body, currentUser, set }: Ctx) => {
+      try {
+        const label = isRecord(body) ? (str(body, "label") ?? null) : null;
+        return service.renameToken(currentUser.id, params.id!, params.tokenId!, label);
+      } catch (error) {
+        return sendError(error, set);
+      }
+    })
+    .get(
+      "/subscriptions/:id/tokens/:tokenId/reveal",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          return service.revealToken(currentUser.id, params.id!, params.tokenId!);
         } catch (error) {
           return sendError(error, set);
         }
@@ -255,29 +284,29 @@ export const createSubscriptionRoutes = (
       }
     )
 
-    // ── 自建节点敏感字段 ────────────────────────────────────────
-    .post("/secrets", ({ body, currentUser, set }: Omit<Ctx, "params">) => {
+    // ── 自建节点字段拆分（用户只填一张表单，敏感/非敏感由后端按协议 schema 拆分）──
+    .post("/secrets/split", ({ body, currentUser, set }: Omit<Ctx, "params">) => {
       try {
-        if (!isRecord(body) || !isRecord(body.fields)) {
-          throw new SubscriptionError("缺少 fields 对象。");
+        if (!isRecord(body) || typeof body.type !== "string" || !isRecord(body.fields)) {
+          throw new SubscriptionError("缺少 type 或 fields 对象。");
         }
-        const secretRef = secretStore.create(currentUser.id, body.fields);
+        const existingSecretRef =
+          typeof body.secretRef === "string" && body.secretRef.length > 0 ? body.secretRef : null;
+        const result = secretStore.upsertSplit(currentUser.id, body.type, body.fields, existingSecretRef);
         set.status = 201;
-        return { secretRef, fieldNames: Object.keys(body.fields) };
+        return result;
       } catch (error) {
         return sendError(error, set);
       }
     })
-    .put("/secrets/:id", ({ params, body, currentUser, set }: Ctx) => {
+    // 仅用于打开编辑弹窗时回显：解密后的敏感字段（owner 校验）
+    .get("/secrets/:id", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       try {
-        if (!isRecord(body) || !isRecord(body.fields)) {
-          throw new SubscriptionError("缺少 fields 对象。");
-        }
-        const updated = secretStore.update(currentUser.id, params.id!, body.fields);
-        if (!updated) {
+        const fields = secretStore.resolveForOwner(currentUser.id, params.id!);
+        if (!fields) {
           throw new SubscriptionError("敏感字段记录不存在。", 404);
         }
-        return { secretRef: params.id, fieldNames: Object.keys(body.fields) };
+        return { fields };
       } catch (error) {
         return sendError(error, set);
       }

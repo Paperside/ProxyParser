@@ -59,6 +59,7 @@ const main = async () => {
     templateRepository,
     events,
     secretStore,
+    secretBox,
     {
       publicBaseUrl: runtimeConfig.publicBaseUrl,
       mihomo: {

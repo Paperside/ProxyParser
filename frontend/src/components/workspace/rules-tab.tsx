@@ -1,16 +1,18 @@
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { RuleEntry, RuleItem } from "../../lib/build-config-types";
 import { useRulesetMutations, useRulesets } from "../../lib/hooks";
-import type { PasteParseReportDto } from "../../lib/types";
+import type { PasteParseReportDto, RulesetDirectoryEntry } from "../../lib/types";
+import { RulesetDirectoryBrowser } from "../ruleset-directory-browser";
 import { SectionTitle } from "../shared";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogFooter } from "../ui/dialog";
 import { Field, Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { DragHandle, SortableList } from "../ui/sortable-list";
 import { Textarea } from "../ui/textarea";
 import { BUILTIN_POLICY_OPTIONS, useWorkspace } from "./context";
 
@@ -32,26 +34,47 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
   const { update } = useWorkspace();
   const [busy, setBusy] = useState<string | null>(null);
 
-  const importOne = async (catalogId: string, slug: string, entryCountHint: number | null) => {
+  const pushToBlock = (catalogId: string, slug: string, hash: string, emit: "inline" | "provider") => {
+    update((draft) => {
+      let block = draft.rules.targets.find((candidate) => candidate.target === target);
+      if (!block) {
+        block = { target, items: [] };
+        draft.rules.targets.push(block);
+        draft.rules.order.push(target);
+      }
+      block.items.push({ kind: "snapshot", catalogId, slug, hash, emit });
+    });
+  };
+
+  const importOne = async (catalogId: string, slug: string) => {
     setBusy(catalogId);
     try {
       const snapshot = await mutations.ensureSnapshot.mutateAsync(catalogId);
-      update((draft) => {
-        let block = draft.rules.targets.find((candidate) => candidate.target === target);
-        if (!block) {
-          block = { target, items: [] };
-          draft.rules.targets.push(block);
-          draft.rules.order.push(target);
-        }
-        block.items.push({
-          kind: "snapshot",
-          catalogId,
-          slug,
-          hash: snapshot.hash,
-          emit: (entryCountHint ?? snapshot.entryCount) < 50 ? "inline" : "provider"
-        });
-      });
+      pushToBlock(catalogId, slug, snapshot.hash, snapshot.entryCount < 50 ? "inline" : "provider");
       toast.success(`已导入 ${slug}（钉住 @${snapshot.hash.slice(0, 8)}）`);
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "导入失败");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // 从扩展目录导入：先落库为自定义规则源，再直接钉版本写入当前块（一步到位）。
+  // 目录条目大小未知，统一走 provider 引用，不做内联。
+  const importFromDirectory = async (entry: RulesetDirectoryEntry) => {
+    setBusy(entry.slug);
+    try {
+      const created = await mutations.importFromUrl.mutateAsync({
+        name: entry.name,
+        sourceUrl: entry.sourceUrl,
+        behavior: entry.behavior
+      });
+      if (!created.latestSnapshotHash) {
+        throw new Error("导入后没有可用快照。");
+      }
+      pushToBlock(created.id, created.slug, created.latestSnapshotHash, "provider");
+      toast.success(`已导入「${entry.name}」并加入「${target}」`);
       onClose();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "导入失败");
@@ -63,7 +86,7 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent wide title={`导入规则源 → ${target}`} description="内容以钉版本快照进入配置；远端更新需要你在规则库中显式确认。">
-        <div className="flex max-h-96 flex-col gap-1 overflow-y-auto">
+        <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
           {(rulesets.data ?? []).map((entry) => (
             <div key={entry.id} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-surface2">
               <span className="font-mono text-xs">{entry.slug}</span>
@@ -75,12 +98,16 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
                 size="sm"
                 className="ml-auto"
                 disabled={busy !== null}
-                onClick={() => void importOne(entry.id, entry.slug, null)}
+                onClick={() => void importOne(entry.id, entry.slug)}
               >
                 {busy === entry.id ? "钉版本中…" : "导入"}
               </Button>
             </div>
           ))}
+        </div>
+        <div className="mt-3 border-t border-line pt-3">
+          <p className="mb-2 text-[11px] font-medium text-muted">从扩展目录发现更多规则组</p>
+          <RulesetDirectoryBrowser onImport={(entry) => void importFromDirectory(entry)} busySlug={busy} />
         </div>
       </DialogContent>
     </Dialog>
@@ -228,17 +255,9 @@ export const RulesTab = () => {
     ...config.rules.targets.map((block) => block.target).filter((target) => !config.rules.order.includes(target))
   ];
 
-  const moveBlock = (target: string, direction: -1 | 1) => {
+  const reorderBlocks = (nextTargets: string[]) => {
     update((draft) => {
-      const order = [
-        ...draft.rules.order.filter((entry) => draft.rules.targets.some((block) => block.target === entry)),
-        ...draft.rules.targets.map((block) => block.target).filter((entry) => !draft.rules.order.includes(entry))
-      ];
-      const index = order.indexOf(target);
-      const swap = index + direction;
-      if (index < 0 || swap < 0 || swap >= order.length) return;
-      [order[index], order[swap]] = [order[swap]!, order[index]!];
-      draft.rules.order = order;
+      draft.rules.order = nextTargets;
     });
   };
 
@@ -246,6 +265,13 @@ export const RulesTab = () => {
     update((draft) => {
       const block = draft.rules.targets.find((candidate) => candidate.target === target);
       block?.items.splice(itemIndex, 1);
+    });
+  };
+
+  const reorderItems = (target: string, nextItems: RuleItem[]) => {
+    update((draft) => {
+      const block = draft.rules.targets.find((candidate) => candidate.target === target);
+      if (block) block.items = nextItems;
     });
   };
 
@@ -278,77 +304,87 @@ export const RulesTab = () => {
         actions={<Button size="sm" onClick={() => setShowAddBlock(true)}>新增规则块</Button>}
       />
 
-      {orderedTargets.map((target, blockIndex) => {
-        const block = config.rules.targets.find((candidate) => candidate.target === target)!;
-        return (
-          <div key={target} className="mb-2.5 rounded-[10px] border border-line bg-surface">
-            <div className="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5">
-              <span className="text-[13px] font-semibold">{target}</span>
-              <span className="text-[11.5px] text-faint">{block.items.length} 项</span>
-              <span className="ml-auto flex gap-0.5">
-                <Button size="sm" variant="ghost" title="导入规则源" onClick={() => setImportFor(target)}>
-                  导入规则源
-                </Button>
-                <Button size="sm" variant="ghost" title="粘贴规则" onClick={() => setPasteFor(target)}>
-                  粘贴
-                </Button>
-                <Button size="sm" variant="ghost" title="手动加一条" onClick={() => setManualFor(target)}>
-                  <Plus className="size-3" />
-                </Button>
-                <Button size="sm" variant="ghost" disabled={blockIndex === 0} onClick={() => moveBlock(target, -1)}>
-                  <ArrowUp className="size-3" />
-                </Button>
-                <Button size="sm" variant="ghost" disabled={blockIndex === orderedTargets.length - 1} onClick={() => moveBlock(target, 1)}>
-                  <ArrowDown className="size-3" />
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => removeBlock(target)}>
-                  <Trash2 className="size-3" />
-                </Button>
-              </span>
-            </div>
-            <div className="flex flex-col gap-1.5 px-3.5 py-2.5">
-              {block.items.map((item, itemIndex) => (
-                <div key={itemIndex} className="flex items-center gap-2 text-[12.5px]">
-                  <span className="rounded border border-line-strong px-1.5 font-mono text-[10.5px] text-muted">
-                    {item.kind === "snapshot" ? "快照" : "手动"}
-                  </span>
-                  <span className="font-mono text-xs">{itemSummary(item)}</span>
-                  {item.kind === "manual" && item.entries.length <= 4 ? (
-                    <span className="text-[11px] text-faint">
-                      {item.entries.map((entry) => `${entry.type},${entry.value}`).join("；")}
-                    </span>
-                  ) : null}
-                  <Button size="sm" variant="ghost" className="ml-auto" onClick={() => removeItem(target, itemIndex)}>
+      <SortableList
+        items={orderedTargets.map((target) => ({ id: target }))}
+        onReorder={(next) => reorderBlocks(next.map((entry) => entry.id))}
+        renderItem={({ id: target }, blockHandle) => {
+          const block = config.rules.targets.find((candidate) => candidate.target === target)!;
+          return (
+            <div className="mb-2.5 rounded-[10px] border border-line bg-surface">
+              <div className="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5">
+                <DragHandle {...blockHandle} />
+                <span className="text-[13px] font-semibold">{target}</span>
+                <span className="text-[11.5px] text-faint">{block.items.length} 项</span>
+                <span className="ml-auto flex gap-0.5">
+                  <Button size="sm" variant="ghost" title="导入规则源" onClick={() => setImportFor(target)}>
+                    导入规则源
+                  </Button>
+                  <Button size="sm" variant="ghost" title="粘贴规则" onClick={() => setPasteFor(target)}>
+                    粘贴
+                  </Button>
+                  <Button size="sm" variant="ghost" title="手动加一条" onClick={() => setManualFor(target)}>
+                    <Plus className="size-3" />
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => removeBlock(target)}>
                     <Trash2 className="size-3" />
                   </Button>
-                </div>
-              ))}
-              {block.items.length === 0 ? <p className="text-xs text-faint">空块——导入规则源或粘贴规则。</p> : null}
-              {manualFor === target ? (
-                <div className="mt-1 flex items-center gap-2">
-                  <Select value={manualType} onValueChange={setManualType}>
-                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {RULE_TYPES.map((type) => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    autoFocus
-                    className="flex-1"
-                    value={manualValue}
-                    onChange={(event) => setManualValue(event.target.value)}
-                    placeholder="example.com"
-                    onKeyDown={(event) => event.key === "Enter" && addManual()}
-                  />
-                  <Button size="sm" variant="primary" onClick={addManual}>添加</Button>
-                </div>
-              ) : null}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5 px-3.5 py-2.5">
+                <SortableList
+                  items={block.items.map((item, itemIndex) => ({ id: String(itemIndex), item }))}
+                  onReorder={(next) => reorderItems(target, next.map((entry) => entry.item))}
+                  className="flex flex-col gap-1.5"
+                  renderItem={({ item }, itemHandle) => (
+                    <div className="flex items-center gap-2 text-[12.5px]">
+                      <DragHandle {...itemHandle} />
+                      <span className="rounded border border-line-strong px-1.5 font-mono text-[10.5px] text-muted">
+                        {item.kind === "snapshot" ? "快照" : "手动"}
+                      </span>
+                      <span className="font-mono text-xs">{itemSummary(item)}</span>
+                      {item.kind === "manual" && item.entries.length <= 4 ? (
+                        <span className="text-[11px] text-faint">
+                          {item.entries.map((entry) => `${entry.type},${entry.value}`).join("；")}
+                        </span>
+                      ) : null}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="ml-auto"
+                        onClick={() => removeItem(target, block.items.indexOf(item))}
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </div>
+                  )}
+                />
+                {block.items.length === 0 ? <p className="text-xs text-faint">空块——导入规则源或粘贴规则。</p> : null}
+                {manualFor === target ? (
+                  <div className="mt-1 flex items-center gap-2">
+                    <Select value={manualType} onValueChange={setManualType}>
+                      <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {RULE_TYPES.map((type) => (
+                          <SelectItem key={type} value={type}>{type}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      autoFocus
+                      className="flex-1"
+                      value={manualValue}
+                      onChange={(event) => setManualValue(event.target.value)}
+                      placeholder="example.com"
+                      onKeyDown={(event) => event.key === "Enter" && addManual()}
+                    />
+                    <Button size="sm" variant="primary" onClick={addManual}>添加</Button>
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        }}
+      />
 
       <div className="rounded-[10px] border border-dashed border-line-strong bg-surface/60 px-3.5 py-2.5">
         <div className="flex items-center gap-3 text-[12.5px]">

@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 
 import type { AuthService } from "../auth/auth.service";
 import type { UserRecord } from "../users/user.repository";
+import { searchRulesetDirectory } from "../../lib/rulesets/directory";
 import { RulesetError, RulesetService } from "./ruleset.service";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -36,6 +37,14 @@ export const createRulesetRoutes = (authService: AuthService, service: RulesetSe
       currentUser: authService.authenticate(headers.authorization)
     }))
     .get("/", ({ currentUser }: Pick<Ctx, "currentUser">) => service.list(currentUser.id))
+    // 扩展目录：blackmatrix7 全量规则组的只读索引，搜索 + 分页浏览，导入前不落库
+    .get("/directory", ({ query }: Pick<Ctx, "query">) =>
+      searchRulesetDirectory(
+        query.q ?? null,
+        Number.parseInt(query.page ?? "1", 10) || 1,
+        Number.parseInt(query.pageSize ?? "30", 10) || 30
+      )
+    )
     .get("/:id", ({ params, currentUser, set }: Omit<Ctx, "body" | "query">) => {
       try {
         return service.getById(currentUser.id, params.id!);

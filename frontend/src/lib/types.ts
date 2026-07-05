@@ -156,11 +156,18 @@ export interface NodeIndexEntry {
   tags: string[];
 }
 
+export interface GroupIndexEntry {
+  name: string;
+  type: string;
+  proxies: string[];
+}
+
 export interface PreviewResult {
   yamlText: string;
   issues: EvaluateIssueDto[];
   stats: { nodeCount: number; groupCount: number; ruleCount: number; providerCount: number };
   nodeIndex: NodeIndexEntry[];
+  groupIndex: GroupIndexEntry[];
   diffVsActive: DiffSummary | null;
   activeReleaseSeq: number | null;
 }
@@ -200,6 +207,11 @@ export interface TokenInfo {
 }
 
 export interface IssuedToken extends TokenInfo {
+  token: string;
+  url: string;
+}
+
+export interface RevealedToken {
   token: string;
   url: string;
 }
@@ -252,6 +264,21 @@ export interface RulesetCatalogEntry {
   updateAvailable: boolean;
   lastCheckedAt: string | null;
   lastCheckError: string | null;
+}
+
+// 扩展目录：blackmatrix7 全量规则组的只读索引，仅供搜索/浏览，导入后才会出现在 RulesetCatalogEntry 列表里
+export interface RulesetDirectoryEntry {
+  slug: string;
+  name: string;
+  behavior: "domain" | "classical";
+  sourceUrl: string;
+}
+
+export interface RulesetDirectorySearchResult {
+  items: RulesetDirectoryEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface RulesetDiff {

@@ -75,7 +75,8 @@ const createTestContext = (options: { mihomo?: boolean } = {}) => {
   const rulesetService = new RulesetService(rulesetRepository, events);
   const templateRepository = new TemplateRepository(db);
   const subscriptionRepository = new SubscriptionRepository(db);
-  const secretStore = new SecretStore(db, new SecretBox(randomBytes(32)));
+  const secretBox = new SecretBox(randomBytes(32));
+  const secretStore = new SecretStore(db, secretBox);
   const backendDataDir = resolve(import.meta.dir, "..", "data");
   const subscriptionService = new SubscriptionService(
     subscriptionRepository,
@@ -84,6 +85,7 @@ const createTestContext = (options: { mihomo?: boolean } = {}) => {
     templateRepository,
     events,
     secretStore,
+    secretBox,
     {
       publicBaseUrl: "https://pp.test",
       mihomo: options.mihomo
@@ -156,7 +158,9 @@ describe("发布管线", () => {
       expect.arrayContaining(["HK-01", "US-01"])
     );
     const groupNames = doc["proxy-groups"].map((g) => g.name);
-    expect(groupNames).toEqual(expect.arrayContaining(["Proxies", "AI", "Streaming", "HK", "US"]));
+    expect(groupNames).toEqual(
+      expect.arrayContaining(["Proxies", "OpenAI", "Anthropic", "ChinaMax", "HK", "US"])
+    );
     expect(doc.rules?.[doc.rules.length - 1]).toBe("MATCH,Proxies");
     // 规则快照以不可变哈希端点输出
     const providers = doc["rule-providers"] as Record<string, { url: string }>;
@@ -410,7 +414,7 @@ describe("规则库", () => {
     const ctx = createTestContext();
     const list = ctx.rulesetService.list(ctx.userId);
     expect(list.length).toBeGreaterThanOrEqual(10);
-    const openai = list.find((entry) => entry.slug === "geosite-openai")!;
+    const openai = list.find((entry) => entry.slug === "openai")!;
     expect(openai.latestSnapshotHash).toBeTruthy();
     const snapshot = ctx.rulesetService.getPublicSnapshot(openai.latestSnapshotHash!);
     expect(snapshot?.content).toContain("openai");
@@ -427,13 +431,14 @@ describe("规则库", () => {
 
     const openai = ctx.rulesetService
       .list(ctx.userId)
-      .find((entry) => entry.slug === "geosite-openai")!;
+      .find((entry) => entry.slug === "openai")!;
     const oldHash = openai.latestSnapshotHash!;
 
     globalThis.fetch = (async () =>
-      new Response("payload:\n  - '+.openai.com'\n  - '+.chatgpt.com'\n  - '+.new-ai.example'\n", {
-        status: 200
-      })) as unknown as typeof fetch;
+      new Response(
+        "payload:\n  - DOMAIN-SUFFIX,openai.com\n  - DOMAIN-SUFFIX,chatgpt.com\n  - DOMAIN-SUFFIX,new-ai.example\n",
+        { status: 200 }
+      )) as unknown as typeof fetch;
 
     const result = await ctx.rulesetService.checkForUpdates(openai.id);
     expect(result.updated).toBe(true);
@@ -451,7 +456,7 @@ describe("规则库", () => {
     expect(applied[0]!.changed).toBe(true);
     const release = ctx.subscriptionService.publish(ctx.userId, subscription.id, {
       trigger: "ruleset_update",
-      triggerDetail: "geosite-openai 更新"
+      triggerDetail: "openai 更新"
     });
     expect(release.renderedYaml).toContain(result.newHash!);
   });
@@ -491,21 +496,21 @@ describe("规则追踪器", () => {
 
     const hit = ctx.subscriptionService.trace(ctx.userId, subscription.id, "chat.openai.com", false);
     expect(hit.verdict).toBe("hit");
-    expect(hit.target).toBe("AI");
-    expect(hit.matched?.ruleText).toContain("RULE-SET,geosite-openai");
+    expect(hit.target).toBe("OpenAI");
+    expect(hit.matched?.ruleText).toContain("RULE-SET,openai");
 
-    // 域名 .example 是保留 TLD，会被 private 规则命中直连——这本身是正确行为；
-    // 兜底断言改用 TEST-NET-3 IP（不属于任何 CIDR 规则集）
+    // router.asus.com 命中 Lan 规则组，直连
     const direct = ctx.subscriptionService.trace(
       ctx.userId,
       subscription.id,
-      "totally-unknown-domain.example",
+      "router.asus.com",
       false
     );
     expect(direct.verdict).toBe("hit");
     expect(direct.target).toBe("DIRECT");
 
-    const fallback = ctx.subscriptionService.trace(ctx.userId, subscription.id, "203.0.113.9", false);
+    // 兜底断言用一个不落入任何 CIDR/域名规则集的公共 IP
+    const fallback = ctx.subscriptionService.trace(ctx.userId, subscription.id, "8.8.8.8", false);
     expect(fallback.verdict).toBe("final");
     expect(fallback.target).toBe("Proxies");
   });
@@ -563,6 +568,62 @@ describe("模板 v2", () => {
     const record = ctx.subscriptionRepository.findById(subscription.id)!;
     const result = extractTemplate(record.draftBuildConfig!);
     expect("error" in result && result.error).toContain("patch");
+  });
+});
+
+// ── 自建节点字段拆分（用户只填一张表单，敏感字段加密下沉后端） ───
+
+describe("SecretStore.upsertSplit", () => {
+  test("新建：有敏感字段时创建加密记录，extra 只含非敏感字段", () => {
+    const ctx = createTestContext();
+    const result = ctx.secretStore.upsertSplit(
+      ctx.userId,
+      "trojan",
+      { password: "home-secret", sni: "home.test", "skip-cert-verify": true },
+      null
+    );
+    expect(result.secretRef).not.toBeNull();
+    expect(result.extra).toEqual({ sni: "home.test", "skip-cert-verify": true });
+    expect(ctx.secretStore.resolveForOwner(ctx.userId, result.secretRef!)).toEqual({
+      password: "home-secret"
+    });
+  });
+
+  test("新建：全无敏感字段时不创建记录，secretRef 为 null", () => {
+    const ctx = createTestContext();
+    const result = ctx.secretStore.upsertSplit(ctx.userId, "http", { headers: { "X-Foo": "bar" } }, null);
+    expect(result.secretRef).toBeNull();
+    expect(result.extra).toEqual({ headers: { "X-Foo": "bar" } });
+  });
+
+  test("编辑：已有 secretRef 时原地更新加密内容", () => {
+    const ctx = createTestContext();
+    const created = ctx.secretStore.upsertSplit(ctx.userId, "trojan", { password: "old-pass" }, null);
+    const updated = ctx.secretStore.upsertSplit(
+      ctx.userId,
+      "trojan",
+      { password: "new-pass", sni: "home.test" },
+      created.secretRef
+    );
+    expect(updated.secretRef).toBe(created.secretRef!);
+    expect(ctx.secretStore.resolveForOwner(ctx.userId, updated.secretRef!)).toEqual({
+      password: "new-pass"
+    });
+  });
+
+  test("编辑：敏感字段被清空后删除孤儿记录，secretRef 归 null", () => {
+    const ctx = createTestContext();
+    const created = ctx.secretStore.upsertSplit(ctx.userId, "trojan", { password: "old-pass" }, null);
+    const cleared = ctx.secretStore.upsertSplit(ctx.userId, "trojan", { sni: "home.test" }, created.secretRef);
+    expect(cleared.secretRef).toBeNull();
+    expect(ctx.secretStore.resolveForOwner(ctx.userId, created.secretRef!)).toBeNull();
+  });
+
+  test("resolveForOwner 对非本人记录返回 null", () => {
+    const ctx = createTestContext();
+    const otherUserId = createUser(ctx.db, "bob");
+    const created = ctx.secretStore.upsertSplit(ctx.userId, "trojan", { password: "secret" }, null);
+    expect(ctx.secretStore.resolveForOwner(otherUserId, created.secretRef!)).toBeNull();
   });
 });
 

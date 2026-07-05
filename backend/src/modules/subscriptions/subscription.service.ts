@@ -22,6 +22,7 @@ import {
   type MihomoGateOptions
 } from "../../lib/validate/mihomo-gate";
 import type { SecretStore } from "./secret-store";
+import type { SecretBox } from "../../lib/security/secret-box";
 import type { ClashProxyDocument } from "../../types";
 import type { EventRepository } from "../events/event.repository";
 import type { RulesetRepository } from "../rulesets/ruleset.repository";
@@ -91,6 +92,7 @@ export class SubscriptionService {
     private readonly templateRepository: TemplateRepository,
     private readonly events: EventRepository,
     private readonly secretStore: SecretStore,
+    private readonly secretBox: SecretBox,
     private readonly options: SubscriptionServiceOptions
   ) {}
 
@@ -287,6 +289,7 @@ export class SubscriptionService {
       issues: result.issues,
       stats: result.stats,
       nodeIndex: result.nodeIndex,
+      groupIndex: result.groupIndex,
       diffVsActive,
       activeReleaseSeq: activeRelease?.seq ?? null
     };
@@ -571,6 +574,7 @@ export class SubscriptionService {
     const record = this.repository.createToken({
       subscriptionId,
       tokenHash: sha256Hex(plaintext),
+      tokenCiphertext: this.secretBox.encrypt({ token: plaintext }),
       label,
       rotatedFromId
     });
@@ -582,16 +586,48 @@ export class SubscriptionService {
     return this.issueToken(id, label, null);
   }
 
+  // 轮换：换掉明文本体，但保留原名字（用户不会感觉"改名"）；旧链接直接删除，不留历史行。
   rotateToken(ownerUserId: string, id: string, tokenId: string) {
     this.requireOwned(ownerUserId, id);
-    this.repository.revokeToken(tokenId);
-    return this.issueToken(id, "轮换后的新链接", tokenId);
+    const previous = this.repository.findTokenById(id, tokenId);
+    this.repository.deleteToken(id, tokenId);
+    return this.issueToken(id, previous?.label ?? null, tokenId);
   }
 
+  // 长期链接「撤销」= 硬删除，删除后不再出现在列表里（短期分享链接维持软撤销 + 历史展示）。
   revokeToken(ownerUserId: string, id: string, tokenId: string) {
     this.requireOwned(ownerUserId, id);
-    this.repository.revokeToken(tokenId);
+    this.repository.deleteToken(id, tokenId);
     return { ok: true };
+  }
+
+  renameToken(ownerUserId: string, id: string, tokenId: string, label: string | null) {
+    this.requireOwned(ownerUserId, id);
+    this.repository.renameToken(id, tokenId, label);
+    return { ok: true };
+  }
+
+  // 按需解密明文供"复制/查看二维码"使用：不常驻前端，每次点击即时请求一次。
+  revealToken(ownerUserId: string, id: string, tokenId: string) {
+    this.requireOwned(ownerUserId, id);
+    const ciphertext = this.repository.getTokenCiphertext(id, tokenId);
+    if (!ciphertext) {
+      throw new SubscriptionError("链接不存在或已被删除。", 404);
+    }
+    const { token } = this.secretBox.decrypt(ciphertext) as { token: string };
+    return { token, url: `${this.options.publicBaseUrl}/s/${id}/${token}` };
+  }
+
+  // 工作台卡片 / 订阅列表的「复制链接」快捷按钮：优先复用最早创建的长期链接（通常就是「默认设备」），
+  // 一条都没有时（比如都被删除了）就地补建一条，始终保证点一下就能拿到可用链接。
+  getOrCreatePrimaryLink(ownerUserId: string, id: string) {
+    this.requireOwned(ownerUserId, id);
+    const tokens = this.repository.listTokens(id);
+    if (tokens.length === 0) {
+      return this.issueToken(id, "默认设备", null);
+    }
+    const oldest = [...tokens].sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]!;
+    return this.revealToken(ownerUserId, id, oldest.id);
   }
 
   listAccess(ownerUserId: string, id: string) {

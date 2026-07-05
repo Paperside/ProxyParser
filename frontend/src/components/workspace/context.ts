@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 
 import type { BuildConfig } from "../../lib/build-config-types";
+import { REGION_CODES } from "../../lib/regions";
 import type { PreviewResult, SubscriptionDetail } from "../../lib/types";
 
 // 订阅工作台上下文：
@@ -46,7 +47,7 @@ export const deriveGroupNames = (config: BuildConfig): string[] => {
     }
     if (generator.kind === "auto-group") names.push(generator.name);
     if (generator.kind === "region-groups") {
-      names.push("HK", "TW", "JP", "US", "SG", "KR", "Others");
+      names.push(...REGION_CODES, "Others");
     }
   }
   for (const group of config.groups.custom) {

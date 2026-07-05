@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { X } from "lucide-react";
-import { toast } from "sonner";
 
-import type { NodeTransform } from "../../lib/build-config-types";
-import { useSecretMutations } from "../../lib/hooks";
+import type { CustomNode, NodeTransform } from "../../lib/build-config-types";
+import { REGION_CODES, regionLabel } from "../../lib/regions";
 import type { NodeIndexEntry } from "../../lib/types";
 import { SectionTitle } from "../shared";
 import { Badge } from "../ui/badge";
@@ -12,7 +11,7 @@ import { Card } from "../ui/card";
 import { Dialog, DialogContent, DialogFooter } from "../ui/dialog";
 import { Field, Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Textarea } from "../ui/textarea";
+import { CustomNodeDialog } from "./custom-node-dialog";
 import { useWorkspace } from "./context";
 
 const TRANSFORM_LABEL: Record<string, string> = {
@@ -21,98 +20,7 @@ const TRANSFORM_LABEL: Record<string, string> = {
   "trim-whitespace": "整理空白"
 };
 
-const REGIONS = ["HK", "TW", "JP", "US", "SG", "KR"];
-
-const AddCustomNodeDialog = ({ onClose }: { onClose: () => void }) => {
-  const { update } = useWorkspace();
-  const secrets = useSecretMutations();
-  const [form, setForm] = useState({ name: "", type: "trojan", server: "", port: "443" });
-  const [secretJson, setSecretJson] = useState('{\n  "password": ""\n}');
-  const [extraJson, setExtraJson] = useState('{\n  "skip-cert-verify": false\n}');
-
-  const submit = async () => {
-    let secretFields: Record<string, unknown> | null = null;
-    let extra: Record<string, unknown> = {};
-    try {
-      const parsed = JSON.parse(secretJson) as Record<string, unknown>;
-      if (Object.keys(parsed).length > 0 && Object.values(parsed).some((v) => v !== "")) {
-        secretFields = parsed;
-      }
-    } catch {
-      toast.error("敏感字段不是合法 JSON");
-      return;
-    }
-    try {
-      extra = JSON.parse(extraJson) as Record<string, unknown>;
-    } catch {
-      toast.error("其他字段不是合法 JSON");
-      return;
-    }
-    const port = Number(form.port);
-    if (!form.name || !form.server || !Number.isInteger(port)) {
-      toast.error("请填写名称、服务器与端口");
-      return;
-    }
-    let secretRef: string | null = null;
-    if (secretFields) {
-      const created = await secrets.create.mutateAsync(secretFields);
-      secretRef = created.secretRef;
-    }
-    update((draft) => {
-      draft.nodes.custom.push({
-        id: `cn_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`,
-        name: form.name,
-        type: form.type,
-        server: form.server,
-        port,
-        secretRef,
-        extra
-      });
-    });
-    toast.success("自建节点已加入草稿");
-    onClose();
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent title="新增自建节点" description="敏感字段（密码 / UUID / 私钥）单独加密存储，不会出现在模板与分享中。">
-        <div className="grid grid-cols-2 gap-3.5">
-          <Field label="名称">
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Home VPS" />
-          </Field>
-          <Field label="协议">
-            <Select value={form.type} onValueChange={(type) => setForm({ ...form, type })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {["trojan", "ss", "vmess", "vless", "hysteria2", "tuic"].map((type) => (
-                  <SelectItem key={type} value={type}>{type}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="服务器">
-            <Input value={form.server} onChange={(e) => setForm({ ...form, server: e.target.value })} placeholder="example.com" />
-          </Field>
-          <Field label="端口">
-            <Input value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} />
-          </Field>
-        </div>
-        <div className="mt-3.5 flex flex-col gap-3.5">
-          <Field label="敏感字段（JSON）" hint="如 password / uuid / private-key，加密存储">
-            <Textarea value={secretJson} onChange={(e) => setSecretJson(e.target.value)} className="min-h-20" />
-          </Field>
-          <Field label="其他字段（JSON）" hint="如 sni / skip-cert-verify / network 等非敏感参数">
-            <Textarea value={extraJson} onChange={(e) => setExtraJson(e.target.value)} className="min-h-20" />
-          </Field>
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>取消</Button>
-          <Button variant="primary" onClick={() => void submit()}>加入草稿</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
+const CLEAR_REGION_SENTINEL = "__auto__";
 
 const RenameDialog = ({ node, onClose }: { node: NodeIndexEntry; onClose: () => void }) => {
   const { update } = useWorkspace();
@@ -146,7 +54,8 @@ const RenameDialog = ({ node, onClose }: { node: NodeIndexEntry; onClose: () => 
 
 export const NodesTab = () => {
   const { config, update, preview, detail } = useWorkspace();
-  const [showAdd, setShowAdd] = useState(false);
+  // "new"：新增弹窗；CustomNode：编辑该节点；null：不显示
+  const [customDialog, setCustomDialog] = useState<"new" | CustomNode | null>(null);
   const [renaming, setRenaming] = useState<NodeIndexEntry | null>(null);
 
   const nodes = preview?.nodeIndex ?? [];
@@ -167,13 +76,22 @@ export const NodesTab = () => {
     });
   };
 
-  const confirmRegion = (node: NodeIndexEntry) => {
-    if (!node.region) return;
+  // 手动设置/清除节点地区标签：原生节点写 overrides.tags，自建节点写 custom.tags。
+  // 标签优先于名称推断（见 evaluate.ts collectNodes），设置后不再被自动识别覆盖。
+  const setRegion = (node: NodeIndexEntry, region: string | null) => {
     update((draft) => {
+      if (node.sourceId === null) {
+        const custom = draft.nodes.custom.find((n) => n.id === node.id);
+        if (!custom) return;
+        const others = (custom.tags ?? []).filter((tag) => !REGION_CODES.includes(tag));
+        custom.tags = region ? [...others, region] : others;
+        return;
+      }
       const existing = draft.nodes.overrides.find((o) => o.nodeId === node.id);
-      const tags = [...new Set([...(existing?.tags ?? []), node.region!])];
+      const others = (existing?.tags ?? []).filter((tag) => !REGION_CODES.includes(tag));
+      const tags = region ? [...others, region] : others;
       if (existing) existing.tags = tags;
-      else draft.nodes.overrides.push({ nodeId: node.id, tags });
+      else if (tags.length > 0) draft.nodes.overrides.push({ nodeId: node.id, tags });
     });
   };
 
@@ -188,7 +106,7 @@ export const NodesTab = () => {
       <SectionTitle
         title="节点"
         desc={`${nodes.filter((n) => n.sourceId !== null).length} 个原生节点（${detail.sourceNames.join("、")}）+ ${config.nodes.custom.length} 个自建。默认原样展示，只有你主动添加的转换会生效。`}
-        actions={<Button size="sm" onClick={() => setShowAdd(true)}>新增自建节点</Button>}
+        actions={<Button size="sm" onClick={() => setCustomDialog("new")}>新增自建节点</Button>}
       />
 
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[10px] border border-line bg-surface px-3.5 py-2.5">
@@ -243,22 +161,38 @@ export const NodesTab = () => {
                     <Badge variant="mono">{node.protocol}</Badge>
                   </td>
                   <td className="border-b border-line px-3 py-1.5">
-                    {node.region ? (
-                      <Badge className={node.regionInferred ? "badge-inferred" : ""}>
-                        {node.region}
-                        {node.regionInferred ? " · 推断" : " · 已确认"}
-                      </Badge>
-                    ) : (
-                      <span className="text-faint">—</span>
-                    )}
+                    <Select
+                      value={node.regionInferred ? CLEAR_REGION_SENTINEL : node.region ?? CLEAR_REGION_SENTINEL}
+                      onValueChange={(value) =>
+                        setRegion(node, value === CLEAR_REGION_SENTINEL ? null : value)
+                      }
+                    >
+                      <SelectTrigger className="h-6.5 w-auto min-w-24 gap-1.5 border-none bg-transparent px-1 text-[12.5px]" title="设置地区">
+                        <SelectValue>
+                          {node.region ? (
+                            <Badge className={node.regionInferred ? "badge-inferred" : ""}>
+                              {node.region}
+                              {node.regionInferred ? " · 推断" : " · 已设置"}
+                            </Badge>
+                          ) : (
+                            <span className="text-faint">未识别</span>
+                          )}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={CLEAR_REGION_SENTINEL}>
+                          自动识别{node.regionInferred && node.region ? `（当前 ${node.region}）` : ""}
+                        </SelectItem>
+                        {REGION_CODES.map((code) => (
+                          <SelectItem key={code} value={code}>
+                            {regionLabel(code)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </td>
                   <td className="border-b border-line px-3 py-1.5">
                     <div className="flex justify-end gap-1">
-                      {node.region && node.regionInferred && !isCustom ? (
-                        <Button size="sm" variant="ghost" title="确认地区标签" onClick={() => confirmRegion(node)}>
-                          确认
-                        </Button>
-                      ) : null}
                       {!isCustom ? (
                         <>
                           <Button size="sm" variant="ghost" onClick={() => setRenaming(node)}>
@@ -269,9 +203,21 @@ export const NodesTab = () => {
                           </Button>
                         </>
                       ) : (
-                        <Button size="sm" variant="ghost" onClick={() => removeCustom(node.id)}>
-                          移除
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const custom = config.nodes.custom.find((n) => n.id === node.id);
+                              if (custom) setCustomDialog(custom);
+                            }}
+                          >
+                            编辑
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => removeCustom(node.id)}>
+                            移除
+                          </Button>
+                        </>
                       )}
                     </div>
                   </td>
@@ -289,10 +235,15 @@ export const NodesTab = () => {
         </table>
       </Card>
       <p className="mt-2.5 text-[11.5px] text-faint">
-        虚线徽章为系统推断（仅用于生成地区组），不会修改你的数据；「确认」后转为你的标签。
+        虚线徽章为系统推断（仅用于生成地区组），不会修改你的数据；点击地区徽章可手动设置或清除标签，原生节点与自建节点均支持，设置后不再被自动识别覆盖。
       </p>
 
-      {showAdd ? <AddCustomNodeDialog onClose={() => setShowAdd(false)} /> : null}
+      {customDialog ? (
+        <CustomNodeDialog
+          node={customDialog === "new" ? undefined : customDialog}
+          onClose={() => setCustomDialog(null)}
+        />
+      ) : null}
       {renaming ? <RenameDialog node={renaming} onClose={() => setRenaming(null)} /> : null}
     </div>
   );

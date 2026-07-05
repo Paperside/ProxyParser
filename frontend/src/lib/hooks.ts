@@ -11,8 +11,10 @@ import type {
   PreviewResult,
   ReleaseDetail,
   ReleaseSummary,
+  RevealedToken,
   RulesetCatalogEntry,
   RulesetDiff,
+  RulesetDirectorySearchResult,
   SourceSummary,
   SubscriptionDetail,
   SubscriptionSummary,
@@ -179,6 +181,15 @@ export const useSubscriptionMutations = (id?: string) => {
           method: "DELETE"
         }),
       onSuccess: invalidate
+    }),
+    // 工作台卡片 / 订阅列表「复制链接」快捷按钮：优先复用已有长期链接，没有时后端会补建一条
+    copyPrimaryLink: useMutation({
+      mutationFn: () => {
+        if (!id) throw new Error("缺少订阅 ID");
+        return authorizedRequest<RevealedToken>(`/api/subscriptions/${id}/primary-link`, {
+          method: "GET"
+        });
+      }
     })
   };
 };
@@ -247,6 +258,20 @@ export const useAccessMutations = (id: string) => {
         }),
       onSuccess: invalidate
     }),
+    renameToken: useMutation({
+      mutationFn: ({ tokenId, label }: { tokenId: string; label: string | null }) =>
+        authorizedRequest<{ ok: boolean }>(`/api/subscriptions/${id}/tokens/${tokenId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ label })
+        }),
+      onSuccess: invalidate
+    }),
+    revealToken: useMutation({
+      mutationFn: (tokenId: string) =>
+        authorizedRequest<RevealedToken>(`/api/subscriptions/${id}/tokens/${tokenId}/reveal`, {
+          method: "GET"
+        })
+    }),
     createTempToken: useMutation({
       mutationFn: (body: { label: string | null; ttlSeconds: number }) =>
         authorizedRequest<IssuedToken>(`/api/subscriptions/${id}/temp-tokens`, {
@@ -281,6 +306,19 @@ export const useRulesets = () => {
   return useQuery({
     queryKey: keys.rulesets,
     queryFn: () => authorizedRequest<RulesetCatalogEntry[]>("/api/rulesets")
+  });
+};
+
+// 扩展目录：blackmatrix7 全量规则组，搜索 + 分页浏览，不落库直到用户导入
+export const useRulesetDirectory = (query: string, page: number, pageSize = 30) => {
+  const { authorizedRequest } = useAuth();
+  return useQuery({
+    queryKey: ["rulesets", "directory", query, page, pageSize],
+    queryFn: () =>
+      authorizedRequest<RulesetDirectorySearchResult>(
+        `/api/rulesets/directory?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`
+      ),
+    placeholderData: (previous) => previous
   });
 };
 
@@ -419,15 +457,21 @@ export const useTemplateMutations = () => {
   };
 };
 
+// 节点表单只有一张字段清单，敏感/非敏感的拆分与加密都在后端完成。
 export const useSecretMutations = () => {
   const { authorizedRequest } = useAuth();
   return {
-    create: useMutation({
-      mutationFn: (fields: Record<string, unknown>) =>
-        authorizedRequest<{ secretRef: string; fieldNames: string[] }>("/api/secrets", {
-          method: "POST",
-          body: JSON.stringify({ fields })
-        })
+    split: useMutation({
+      mutationFn: (body: { type: string; fields: Record<string, unknown>; secretRef?: string | null }) =>
+        authorizedRequest<{ secretRef: string | null; extra: Record<string, unknown> }>(
+          "/api/secrets/split",
+          { method: "POST", body: JSON.stringify(body) }
+        )
+    }),
+    // 仅用于打开编辑弹窗时回显敏感字段
+    resolve: useMutation({
+      mutationFn: (id: string) =>
+        authorizedRequest<{ fields: Record<string, unknown> }>(`/api/secrets/${id}`)
     })
   };
 };
