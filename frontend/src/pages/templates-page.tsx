@@ -1,1086 +1,184 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Copy, ExternalLink, Layers3, PencilLine, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { useState } from "react";
+import { toast } from "sonner";
 
+import { EmptyState } from "../components/shared";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle
-} from "../components/ui/dialog";
-import { Input } from "../components/ui/input";
-import { ScrollArea } from "../components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "../components/ui/select";
-import { Textarea } from "../components/ui/textarea";
-import {
-  formatRelativeDate,
-  publishStatusText,
-  shareModeText,
-  visibilityText
-} from "../lib/format";
-import type { ShareMode, TemplateDetail, TemplatePayload, Visibility } from "../lib/types";
-import { useWorkspace } from "../providers/workspace-provider";
+import { Dialog, DialogContent, DialogFooter } from "../components/ui/dialog";
+import { Field, Input } from "../components/ui/input";
+import { formatRelative } from "../lib/format";
+import { useSources, useTemplate, useTemplateMutations, useTemplates } from "../lib/hooks";
+import type { TemplateSummary } from "../lib/types";
 
-type TemplateEditorState = {
-  displayName: string;
-  slug: string;
-  description: string;
-  visibility: Visibility;
-  shareMode: ShareMode;
-  publishStatus: "draft" | "published" | "archived";
-  versionNote: string;
-  rulesMode: "patch" | "full_override";
-  groupsMode: "patch" | "full_override";
-  configMode: "patch" | "full_override";
-  customProxiesPolicy: "append" | "replace_same_name" | "fail_on_conflict";
-  ruleProviderRefsText: string;
-  rulesText: string;
-  proxyGroupsJson: string;
-  configPatchJson: string;
-  customProxiesJson: string;
-  exportedYaml: string;
-};
+// 应用模板 → 选订阅源 → 创建新订阅（黄金迁移路径：换机场 10 分钟）
+const InstantiateDialog = ({ template, onClose }: { template: TemplateSummary; onClose: () => void }) => {
+  const navigate = useNavigate();
+  const sources = useSources();
+  const mutations = useTemplateMutations();
+  const detail = useTemplate(template.id);
+  const [displayName, setDisplayName] = useState(`${template.displayName} 订阅`);
+  const [sourceId, setSourceId] = useState<string | null>(null);
 
-const emptyTemplateForm = (): TemplateEditorState => ({
-  displayName: "",
-  slug: "",
-  description: "",
-  visibility: "private",
-  shareMode: "disabled",
-  publishStatus: "draft",
-  versionNote: "",
-  rulesMode: "patch",
-  groupsMode: "patch",
-  configMode: "patch",
-  customProxiesPolicy: "append",
-  ruleProviderRefsText: "",
-  rulesText: "",
-  proxyGroupsJson: "[]",
-  configPatchJson: "{}",
-  customProxiesJson: "[]",
-  exportedYaml: ""
-});
+  const placeholderNodes =
+    detail.data?.payload?.nodes.custom.filter((node) => node.secretPlaceholder) ?? [];
 
-const formatJson = (value: unknown) => {
-  return JSON.stringify(value, null, 2);
-};
-
-const normalizeLines = (value: string) => {
-  return value
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-};
-
-const buildTemplateForm = (detail?: TemplateDetail): TemplateEditorState => {
-  if (!detail) {
-    return emptyTemplateForm();
-  }
-
-  return {
-    displayName: detail.displayName,
-    slug: detail.slug ?? "",
-    description: detail.description ?? "",
-    visibility: detail.visibility,
-    shareMode: detail.shareMode,
-    publishStatus: detail.publishStatus,
-    versionNote: detail.versionNote ?? "",
-    rulesMode: detail.payload.rulesMode,
-    groupsMode: detail.payload.groupsMode,
-    configMode: detail.payload.configMode,
-    customProxiesPolicy: detail.payload.customProxiesPolicy,
-    ruleProviderRefsText: detail.payload.ruleProviderRefs.join("\n"),
-    rulesText: detail.payload.rules.join("\n"),
-    proxyGroupsJson: formatJson(detail.payload.proxyGroups),
-    configPatchJson: formatJson(detail.payload.configPatch),
-    customProxiesJson: formatJson(detail.payload.customProxies),
-    exportedYaml: detail.exportedYaml ?? ""
+  const submit = async () => {
+    if (!sourceId) return;
+    try {
+      const created = await mutations.instantiate.mutateAsync({
+        id: template.id,
+        displayName,
+        sourceIds: [sourceId]
+      });
+      toast.success("已按模板创建订阅（草稿）。预览确认后发布即可。");
+      onClose();
+      void navigate({
+        to: "/subscriptions/$subscriptionId",
+        params: { subscriptionId: created.subscription.id }
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "应用失败");
+    }
   };
-};
 
-const parseTemplatePayload = (form: TemplateEditorState): TemplatePayload => {
-  let proxyGroupsValue: unknown;
-  let configPatchValue: unknown;
-  let customProxiesValue: unknown;
-
-  try {
-    proxyGroupsValue = JSON.parse(form.proxyGroupsJson);
-  } catch {
-    throw new Error("规则组 JSON 不是合法格式。");
-  }
-
-  try {
-    configPatchValue = JSON.parse(form.configPatchJson);
-  } catch {
-    throw new Error("配置 JSON 不是合法格式。");
-  }
-
-  try {
-    customProxiesValue = JSON.parse(form.customProxiesJson);
-  } catch {
-    throw new Error("自定义节点 JSON 不是合法格式。");
-  }
-
-  if (!Array.isArray(proxyGroupsValue)) {
-    throw new Error("规则组 JSON 必须是数组。");
-  }
-
-  if (typeof configPatchValue !== "object" || configPatchValue === null || Array.isArray(configPatchValue)) {
-    throw new Error("配置 JSON 必须是对象。");
-  }
-
-  if (!Array.isArray(customProxiesValue)) {
-    throw new Error("自定义节点 JSON 必须是数组。");
-  }
-
-  return {
-    rulesMode: form.rulesMode,
-    groupsMode: form.groupsMode,
-    configMode: form.configMode,
-    customProxiesPolicy: form.customProxiesPolicy,
-    ruleProviderRefs: normalizeLines(form.ruleProviderRefsText),
-    rules: normalizeLines(form.rulesText),
-    proxyGroups: proxyGroupsValue as TemplatePayload["proxyGroups"],
-    configPatch: configPatchValue as TemplatePayload["configPatch"],
-    customProxies: customProxiesValue as TemplatePayload["customProxies"]
-  };
-};
-
-const TemplateDialog = ({
-  open,
-  form,
-  isSaving,
-  isLoadingDetail,
-  errorMessage,
-  editingId,
-  onOpenChange,
-  onSubmit,
-  onChange
-}: {
-  open: boolean;
-  form: TemplateEditorState;
-  isSaving: boolean;
-  isLoadingDetail: boolean;
-  errorMessage: string | null;
-  editingId: string | null;
-  onOpenChange: (nextOpen: boolean) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onChange: (nextForm: TemplateEditorState) => void;
-}) => {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(96vw,1180px)]">
-        <DialogHeader>
-          <DialogTitle>{editingId ? "编辑模板" : "新建模板"}</DialogTitle>
-          <DialogDescription>
-            管理规则、分组、配置与自定义节点，决定最终扩展订阅的重构方式。
-          </DialogDescription>
-        </DialogHeader>
-
-        <ScrollArea className="mt-6 h-[min(78vh,820px)] pr-4">
-          {isLoadingDetail ? (
-            <div className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 px-5 py-10 text-center text-sm text-[#73726c]">
-              正在载入模板详情...
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title={`应用模板：${template.displayName}`} description="选择订阅源，模板的分组、规则与配置将一次套用。">
+        <div className="flex flex-col gap-3.5">
+          <Field label="新订阅名称">
+            <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+          </Field>
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-muted">订阅源</p>
+            <div className="flex flex-col gap-1">
+              {(sources.data ?? []).map((source) => (
+                <label key={source.id} className="flex items-center gap-2 rounded px-1 py-1 text-[13px] hover:bg-surface2">
+                  <input
+                    type="radio"
+                    name="tpl-source"
+                    checked={sourceId === source.id}
+                    onChange={() => setSourceId(source.id)}
+                  />
+                  {source.displayName}
+                  <span className="text-[11px] text-faint">{source.proxyCount} 节点</span>
+                </label>
+              ))}
             </div>
-          ) : (
-            <form className="space-y-6 pb-2" onSubmit={onSubmit}>
-              <section className="grid gap-4 md:grid-cols-2">
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">模板名称</span>
-                  <Input
-                    required
-                    value={form.displayName}
-                    onChange={(event) => {
-                      onChange({
-                        ...form,
-                        displayName: event.target.value
-                      });
-                    }}
-                    placeholder="例如：流媒体增强 / 极简直连"
-                  />
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">标识</span>
-                  <Input
-                    value={form.slug}
-                    onChange={(event) => {
-                      onChange({
-                        ...form,
-                        slug: event.target.value
-                      });
-                    }}
-                    placeholder="market-friendly-slug"
-                  />
-                </label>
-
-                <label className="block space-y-2 md:col-span-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">描述</span>
-                  <Textarea
-                    value={form.description}
-                    onChange={(event) => {
-                      onChange({
-                        ...form,
-                        description: event.target.value
-                      });
-                    }}
-                    placeholder="简要说明这个模板适合什么场景。"
-                  />
-                </label>
-              </section>
-
-              <section className="grid gap-4 md:grid-cols-3">
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">可见性</span>
-                  <Select
-                    value={form.visibility}
-                    onValueChange={(value) => {
-                      onChange({
-                        ...form,
-                        visibility: value as Visibility
-                      });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="private">私有</SelectItem>
-                      <SelectItem value="unlisted">凭链接访问</SelectItem>
-                      <SelectItem value="public">公开</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">共享方式</span>
-                  <Select
-                    value={form.shareMode}
-                    onValueChange={(value) => {
-                      onChange({
-                        ...form,
-                        shareMode: value as ShareMode
-                      });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="disabled">不共享</SelectItem>
-                      <SelectItem value="view">仅查看</SelectItem>
-                      <SelectItem value="fork">允许复用</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">发布状态</span>
-                  <Select
-                    value={form.publishStatus}
-                    onValueChange={(value) => {
-                      onChange({
-                        ...form,
-                        publishStatus: value as TemplateEditorState["publishStatus"]
-                      });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="draft">草稿</SelectItem>
-                      <SelectItem value="published">发布到市场</SelectItem>
-                      <SelectItem value="archived">归档</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </label>
-              </section>
-
-              <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">规则模式</span>
-                  <Select
-                    value={form.rulesMode}
-                    onValueChange={(value) => {
-                      onChange({
-                        ...form,
-                        rulesMode: value as TemplateEditorState["rulesMode"]
-                      });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="patch">Patch</SelectItem>
-                      <SelectItem value="full_override">Full Override</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">分组模式</span>
-                  <Select
-                    value={form.groupsMode}
-                    onValueChange={(value) => {
-                      onChange({
-                        ...form,
-                        groupsMode: value as TemplateEditorState["groupsMode"]
-                      });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="patch">Patch</SelectItem>
-                      <SelectItem value="full_override">Full Override</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">配置模式</span>
-                  <Select
-                    value={form.configMode}
-                    onValueChange={(value) => {
-                      onChange({
-                        ...form,
-                        configMode: value as TemplateEditorState["configMode"]
-                      });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="patch">Patch</SelectItem>
-                      <SelectItem value="full_override">Full Override</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">自定义节点冲突策略</span>
-                  <Select
-                    value={form.customProxiesPolicy}
-                    onValueChange={(value) => {
-                      onChange({
-                        ...form,
-                        customProxiesPolicy: value as TemplateEditorState["customProxiesPolicy"]
-                      });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="append">追加</SelectItem>
-                      <SelectItem value="replace_same_name">同名替换</SelectItem>
-                      <SelectItem value="fail_on_conflict">冲突时报错</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </label>
-              </section>
-
-              <section className="grid gap-4 xl:grid-cols-2">
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">规则源引用</span>
-                  <Textarea
-                    value={form.ruleProviderRefsText}
-                    onChange={(event) => {
-                      onChange({
-                        ...form,
-                        ruleProviderRefsText: event.target.value
-                      });
-                    }}
-                    className="min-h-40 font-mono text-xs"
-                    placeholder="每行一个规则源标识"
-                  />
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">规则列表</span>
-                  <Textarea
-                    value={form.rulesText}
-                    onChange={(event) => {
-                      onChange({
-                        ...form,
-                        rulesText: event.target.value
-                      });
-                    }}
-                    className="min-h-40 font-mono text-xs"
-                    placeholder="每行一条 Mihomo 规则"
-                  />
-                </label>
-              </section>
-
-              <section className="grid gap-4 xl:grid-cols-2">
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">规则组 JSON</span>
-                  <Textarea
-                    value={form.proxyGroupsJson}
-                    onChange={(event) => {
-                      onChange({
-                        ...form,
-                        proxyGroupsJson: event.target.value
-                      });
-                    }}
-                    className="min-h-64 font-mono text-xs"
-                  />
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">配置 JSON</span>
-                  <Textarea
-                    value={form.configPatchJson}
-                    onChange={(event) => {
-                      onChange({
-                        ...form,
-                        configPatchJson: event.target.value
-                      });
-                    }}
-                    className="min-h-64 font-mono text-xs"
-                  />
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">自定义节点 JSON</span>
-                  <Textarea
-                    value={form.customProxiesJson}
-                    onChange={(event) => {
-                      onChange({
-                        ...form,
-                        customProxiesJson: event.target.value
-                      });
-                    }}
-                    className="min-h-64 font-mono text-xs"
-                  />
-                </label>
-
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">版本备注</span>
-                  <Textarea
-                    value={form.versionNote}
-                    onChange={(event) => {
-                      onChange({
-                        ...form,
-                        versionNote: event.target.value
-                      });
-                    }}
-                    className="min-h-40"
-                    placeholder="记录这次模板变更的意图。"
-                  />
-                </label>
-              </section>
-
-              {form.exportedYaml ? (
-                <section className="space-y-2">
-                  <span className="text-sm font-medium text-[#5f5e58]">当前导出预览</span>
-                  <Textarea value={form.exportedYaml} readOnly className="min-h-72 font-mono text-xs" />
-                </section>
-              ) : null}
-
-              {errorMessage ? (
-                <div
-                  role="alert"
-                  className="rounded-lg border border-[#cd5c58]/50 bg-[#f7ecec] px-4 py-3 text-sm text-[#7f2c28]"
-                >
-                  {errorMessage}
-                </div>
-              ) : null}
-
-              <div className="flex justify-end">
-                <Button type="submit" disabled={isSaving}>
-                  {isSaving ? "保存中..." : "保存模板"}
-                </Button>
-              </div>
-            </form>
-          )}
-        </ScrollArea>
+          </div>
+          {placeholderNodes.length > 0 ? (
+            <p className="rounded-md bg-warn-bg px-3 py-2 text-xs text-warn">
+              模板含 {placeholderNodes.length} 个自建节点（{placeholderNodes.map((node) => node.name).join("、")}）。
+              出于安全，敏感字段不随模板保存——创建后请在「节点」页为它们补全凭据。
+            </p>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>取消</Button>
+          <Button variant="primary" disabled={!sourceId || mutations.instantiate.isPending} onClick={() => void submit()}>
+            创建订阅
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 };
 
-export const TemplatesPage = ({
-  section
-}: {
-  section: "mine" | "market";
-}) => {
-  const workspace = useWorkspace();
-  const navigate = useNavigate();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<TemplateEditorState>(emptyTemplateForm);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
-  const [busyActionId, setBusyActionId] = useState<string | null>(null);
-  const [rulesetForm, setRulesetForm] = useState({
-    name: "",
-    slug: "",
-    description: "",
-    sourceUrl: "",
-    visibility: "private" as Visibility,
-    behavior: "classical" as "domain" | "ipcidr" | "classical"
-  });
+const ReportDialog = ({ templateId, onClose }: { templateId: string; onClose: () => void }) => {
+  const detail = useTemplate(templateId);
+  const report = detail.data?.extractionReport;
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title="模板内容报告" description="提炼时记录了什么、剔除了什么。">
+        {report ? (
+          <div className="flex flex-col gap-3 text-xs">
+            <div>
+              <p className="mb-1 font-medium text-ok">已记录</p>
+              {report.recorded.map((item) => (
+                <p key={item} className="text-muted">· {item}</p>
+              ))}
+            </div>
+            {report.dropped.length > 0 ? (
+              <div>
+                <p className="mb-1 font-medium text-warn">未进入模板</p>
+                {report.dropped.map((item, index) => (
+                  <p key={index} className="text-muted">· {item.detail}</p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-xs text-faint">该模板没有提炼报告（官方内置或手工创建）。</p>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+};
 
-  const sortedTemplates = useMemo(() => {
-    return [...workspace.templates].sort((left, right) => {
-      return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
-    });
-  }, [workspace.templates]);
-
-  const customRulesets = useMemo(() => {
-    return workspace.marketplaceRulesets.filter((ruleset) => !ruleset.isOfficial);
-  }, [workspace.marketplaceRulesets]);
-
-  const officialRulesets = useMemo(() => {
-    return workspace.marketplaceRulesets.filter((ruleset) => ruleset.isOfficial);
-  }, [workspace.marketplaceRulesets]);
-
-  const openCreateDialog = () => {
-    setEditingId(null);
-    setForm(emptyTemplateForm());
-    setErrorMessage(null);
-    setDialogOpen(true);
-  };
-
-  const openEditDialog = async (templateId: string) => {
-    setDialogOpen(true);
-    setEditingId(templateId);
-    setIsLoadingDetail(true);
-    setErrorMessage(null);
-
-    try {
-      const detail = await workspace.getTemplateDetail(templateId);
-      setForm(buildTemplateForm(detail));
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "模板详情载入失败。");
-    } finally {
-      setIsLoadingDetail(false);
-    }
-  };
-
-  const handleSave = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsSaving(true);
-    setErrorMessage(null);
-
-    try {
-      const payload = parseTemplatePayload(form);
-      const requestBody = {
-        displayName: form.displayName,
-        slug: form.slug || undefined,
-        description: form.description || undefined,
-        visibility: form.visibility,
-        shareMode: form.shareMode,
-        publishStatus: form.publishStatus,
-        versionNote: form.versionNote || undefined,
-        payload
-      };
-
-      if (editingId) {
-        await workspace.updateTemplate(editingId, requestBody);
-        setDialogOpen(false);
-        setFeedbackMessage("模板已更新。");
-      } else {
-        await workspace.createTemplate(requestBody);
-        setDialogOpen(false);
-        setFeedbackMessage("模板已创建。");
-      }
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "保存失败。");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const runDelete = async (templateId: string, displayName: string) => {
-    if (!window.confirm(`确认删除模板“${displayName}”？`)) {
-      return;
-    }
-
-    setBusyActionId(templateId);
-    setFeedbackMessage(null);
-
-    try {
-      await workspace.deleteTemplate(templateId);
-      setFeedbackMessage("模板已删除。");
-    } catch (error) {
-      setFeedbackMessage(error instanceof Error ? error.message : "删除失败。");
-    } finally {
-      setBusyActionId(null);
-    }
-  };
-
-  const handleForkTemplate = async (templateId: string, displayName: string) => {
-    setBusyActionId(`fork-${templateId}`);
-    setFeedbackMessage(null);
-
-    try {
-      await workspace.forkTemplate(templateId);
-      setFeedbackMessage(`已将模板“${displayName}”复制到我的模板。`);
-
-      if (section !== "mine") {
-        await navigate({
-          to: "/templates/mine"
-        });
-      }
-    } catch (error) {
-      setFeedbackMessage(error instanceof Error ? error.message : "复制模板失败。");
-    } finally {
-      setBusyActionId(null);
-    }
-  };
-
-  const handleCreateRuleset = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setBusyActionId("create-ruleset");
-    setFeedbackMessage(null);
-
-    try {
-      await workspace.createRuleset(rulesetForm);
-      setRulesetForm({
-        name: "",
-        slug: "",
-        description: "",
-        sourceUrl: "",
-        visibility: "private",
-        behavior: "classical"
-      });
-      setFeedbackMessage("第三方规则源已导入并加入你的规则目录。");
-    } catch (error) {
-      setFeedbackMessage(error instanceof Error ? error.message : "导入规则源失败。");
-    } finally {
-      setBusyActionId(null);
-    }
-  };
-
-  const runRulesetAction = async (
-    actionId: string,
-    action: () => Promise<void>,
-    successMessage: string
-  ) => {
-    setBusyActionId(actionId);
-    setFeedbackMessage(null);
-
-    try {
-      await action();
-      setFeedbackMessage(successMessage);
-    } catch (error) {
-      setFeedbackMessage(error instanceof Error ? error.message : "操作失败。");
-    } finally {
-      setBusyActionId(null);
-    }
-  };
+export const TemplatesPage = () => {
+  const templates = useTemplates();
+  const mutations = useTemplateMutations();
+  const [instantiating, setInstantiating] = useState<TemplateSummary | null>(null);
+  const [reportFor, setReportFor] = useState<string | null>(null);
 
   return (
-    <div className="space-y-6">
-      <Card className="rounded-lg p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-sm font-medium text-[#73726c]">模板</p>
-            <h3 className="mt-2 text-2xl font-semibold text-[#141413]">
-              让配置重构可复用
-            </h3>
-            <p className="mt-2 text-sm text-[#73726c]">
-              模板定义规则、规则组、配置覆盖与自定义节点，是扩展订阅的核心能力。
-            </p>
-          </div>
+    <div className="mx-auto max-w-[1180px] px-5 pb-16 pt-6">
+      <div className="mb-5">
+        <h1 className="text-lg font-semibold">模板</h1>
+        <p className="text-xs text-muted">
+          与订阅源脱钩的构建方案。在订阅工作台点「提炼为模板」沉淀；换机场时应用模板，一次套用全部分组与规则。
+        </p>
+      </div>
 
-          <Button onClick={openCreateDialog}>
-            <Plus className="size-4" />
-            新建模板
-          </Button>
-        </div>
-      </Card>
-
-      {feedbackMessage ? (
-        <div
-          role="status"
-          aria-live="polite"
-          className="rounded-lg border border-[#dedcd1] border-l-[#c96442] border-l-4 bg-[#fffdf8] px-5 py-4 text-sm text-[#5f5e58] shadow-[0_1px_2px_rgba(20,20,19,0.04)]"
-        >
-          {feedbackMessage}
-        </div>
-      ) : null}
-
-      {section === "mine" ? (
-          <div className="space-y-4">
-            {sortedTemplates.length === 0 ? (
-              <Card className="rounded-lg p-10 text-center text-sm text-[#73726c]">
-                还没有模板，创建一个模板来定义你的规则与配置重构方案。
-              </Card>
-            ) : null}
-
-            {sortedTemplates.map((template) => (
-              <Card key={template.id} className="rounded-lg p-6">
-                <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="text-xl font-semibold text-[#141413]">
-                        {template.displayName}
-                      </h4>
-                      <Badge>{publishStatusText[template.publishStatus]}</Badge>
-                      <Badge>{visibilityText[template.visibility]}</Badge>
-                      <Badge>{shareModeText[template.shareMode]}</Badge>
-                      <Badge>版本 {template.latestVersion}</Badge>
-                    </div>
-                    <p className="text-sm text-[#73726c]">{template.description ?? "暂无说明"}</p>
-                    <div className="grid gap-2 text-sm text-[#73726c] sm:grid-cols-2 xl:grid-cols-3">
-                      <p>标识：{template.slug ?? "未设置"}</p>
-                      <p>最近更新：{formatRelativeDate(template.updatedAt)}</p>
-                      <p>版本号：{template.latestVersion}</p>
-                    </div>
-                    {template.sourceLabel ? (
-                      <p className="text-sm text-[#73726c]">
-                        来源：{template.sourceLabel}
-                        {template.sourceUrl ? (
-                          <>
-                            {" · "}
-                            <a
-                              href={template.sourceUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[#3d3d3a] underline-offset-4 hover:underline"
-                            >
-                              查看来源
-                            </a>
-                          </>
-                        ) : null}
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="secondary" onClick={() => void openEditDialog(template.id)}>
-                      <PencilLine className="size-4" />
-                      编辑
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      disabled={busyActionId === template.id}
-                      onClick={() => void runDelete(template.id, template.displayName)}
-                    >
-                      <Trash2 className="size-4" />
-                      删除
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
+      {templates.data && templates.data.length === 0 ? (
+        <EmptyState title="还没有模板" description="先把一个订阅打磨好，再从它的工作台提炼模板。" />
       ) : (
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <Card className="rounded-lg p-6">
-              <div className="flex items-center gap-3">
-                <div className="flex size-11 items-center justify-center rounded-lg bg-[#141413] text-[#faf9f5]">
-                  <Layers3 className="size-5" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold text-[#141413]">社区模板</h3>
-                  <p className="mt-1 text-sm text-[#73726c]">
-                    来自公开模板库，适合作为你自己的模板参考。
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-6 space-y-4">
-                {workspace.marketplaceTemplates.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-[#dedcd1] bg-[#f5f4ed]/80 px-4 py-8 text-center text-sm text-[#73726c]">
-                    当前还没有公开模板。
-                  </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {(templates.data ?? []).map((template) => (
+            <Card key={template.id} className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                {template.displayName}
+                {template.isOfficial ? <Badge variant="accent">官方</Badge> : null}
+                <Badge variant="mono">v{template.latestVersion}</Badge>
+                {!template.isOfficial ? (
+                  <Badge>{{ private: "私有", unlisted: "链接可见", public: "公开" }[template.visibility]}</Badge>
                 ) : null}
-
-                {workspace.marketplaceTemplates.map((template) => (
-                  <div
-                    key={template.id}
-                    className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-4"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-[#141413]">{template.displayName}</p>
-                      {template.isOfficial ? (
-                        <Badge className="border-[#80aadd]/45 bg-[#d6e4f6] text-[#3266ad]">官方</Badge>
-                      ) : null}
-                      <Badge>{publishStatusText[template.publishStatus]}</Badge>
-                      <Badge>{visibilityText[template.visibility]}</Badge>
-                    </div>
-                    <p className="mt-2 text-sm text-[#73726c]">
-                      {template.description ?? "暂无说明"}
-                    </p>
-                    <p className="mt-3 text-sm text-[#73726c]">
-                      作者：{template.ownerDisplayName ?? template.ownerUserId}
-                    </p>
-                    {template.sourceLabel ? (
-                      <p className="mt-2 text-sm text-[#73726c]">
-                        来源：{template.sourceLabel}
-                        {template.sourceUrl ? (
-                          <>
-                            {" · "}
-                            <a
-                              href={template.sourceUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[#3d3d3a] underline-offset-4 hover:underline"
-                            >
-                              查看
-                            </a>
-                          </>
-                        ) : null}
-                      </p>
-                    ) : null}
-                    <p className="mt-3 text-xs text-[#73726c]">
-                      {template.slug ?? "未设置标识"}
-                    </p>
-                    <div className="mt-4">
-                      <Button
-                        variant="secondary"
-                        disabled={busyActionId === `fork-${template.id}`}
-                        onClick={() => void handleForkTemplate(template.id, template.displayName)}
-                      >
-                        <Copy className="size-4" />
-                        复制到我的模板
-                      </Button>
-                    </div>
-                  </div>
-                ))}
               </div>
-            </Card>
-
-            <Card className="rounded-lg p-6">
-              <div className="flex items-center gap-3">
-                <div className="flex size-11 items-center justify-center rounded-lg bg-[#141413] text-[#faf9f5]">
-                  <ExternalLink className="size-5" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold text-[#141413]">内置规则源</h3>
-                  <p className="mt-1 text-sm text-[#73726c]">
-                    官方规则源会定时同步；你也可以导入第三方规则源，在向导和模板里直接引用。
-                  </p>
-                </div>
-              </div>
-
-              <form className="mt-6 space-y-4 rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-4" onSubmit={handleCreateRuleset}>
-                <div className="grid gap-4 xl:grid-cols-2">
-                  <label className="block space-y-2">
-                    <span className="text-sm font-medium text-[#5f5e58]">规则源名称</span>
-                    <Input
-                      required
-                      value={rulesetForm.name}
-                      onChange={(event) =>
-                        setRulesetForm((current) => ({
-                          ...current,
-                          name: event.target.value
-                        }))
-                      }
-                      placeholder="例如：自定义 OpenAI 规则"
-                    />
-                  </label>
-                  <label className="block space-y-2">
-                    <span className="text-sm font-medium text-[#5f5e58]">标识</span>
-                    <Input
-                      value={rulesetForm.slug}
-                      onChange={(event) =>
-                        setRulesetForm((current) => ({
-                          ...current,
-                          slug: event.target.value
-                        }))
-                      }
-                      placeholder="my-openai-ruleset"
-                    />
-                  </label>
-                  <label className="block space-y-2 xl:col-span-2">
-                    <span className="text-sm font-medium text-[#5f5e58]">规则源地址</span>
-                    <Input
-                      required
-                      value={rulesetForm.sourceUrl}
-                      onChange={(event) =>
-                        setRulesetForm((current) => ({
-                          ...current,
-                          sourceUrl: event.target.value
-                        }))
-                      }
-                      placeholder="https://example.com/rules.yaml"
-                    />
-                  </label>
-                  <label className="block space-y-2 xl:col-span-2">
-                    <span className="text-sm font-medium text-[#5f5e58]">描述</span>
-                    <Textarea
-                      value={rulesetForm.description}
-                      onChange={(event) =>
-                        setRulesetForm((current) => ({
-                          ...current,
-                          description: event.target.value
-                        }))
-                      }
-                      placeholder="说明这个规则源适合什么场景。"
-                    />
-                  </label>
-                  <label className="block space-y-2">
-                    <span className="text-sm font-medium text-[#5f5e58]">行为类型</span>
-                    <Select
-                      value={rulesetForm.behavior}
-                      onValueChange={(value) =>
-                        setRulesetForm((current) => ({
-                          ...current,
-                          behavior: value as typeof current.behavior
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="classical">classical</SelectItem>
-                        <SelectItem value="domain">domain</SelectItem>
-                        <SelectItem value="ipcidr">ipcidr</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </label>
-                  <label className="block space-y-2">
-                    <span className="text-sm font-medium text-[#5f5e58]">可见性</span>
-                    <Select
-                      value={rulesetForm.visibility}
-                      onValueChange={(value) =>
-                        setRulesetForm((current) => ({
-                          ...current,
-                          visibility: value as Visibility
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="private">私有</SelectItem>
-                        <SelectItem value="unlisted">凭链接访问</SelectItem>
-                        <SelectItem value="public">公开</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </label>
-                </div>
-
-                <Button type="submit" disabled={busyActionId === "create-ruleset"}>
-                  <Plus className="size-4" />
-                  导入第三方规则源
+              {template.description ? (
+                <p className="text-xs text-muted">{template.description}</p>
+              ) : null}
+              <p className="text-[11px] text-faint">更新于 {formatRelative(template.updatedAt)}</p>
+              <div className="mt-1 flex gap-2">
+                <Button size="sm" variant="primary" onClick={() => setInstantiating(template)}>
+                  应用到订阅源
                 </Button>
-              </form>
-
-              <div className="mt-6 space-y-6">
-                {customRulesets.length > 0 ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-lg font-semibold text-[#141413]">我的规则源</h4>
-                      <Badge>{customRulesets.length} 个</Badge>
-                    </div>
-                    {customRulesets.map((ruleset) => (
-                      <div
-                        key={ruleset.id}
-                        className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-4"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium text-[#141413]">{ruleset.name}</p>
-                          <Badge>{visibilityText[ruleset.visibility]}</Badge>
-                          <Badge>{ruleset.metadata.behavior ? String(ruleset.metadata.behavior) : "classical"}</Badge>
-                          {ruleset.latestFetchStatus ? (
-                            <Badge>{ruleset.latestFetchStatus === "success" ? "已缓存" : "同步失败"}</Badge>
-                          ) : null}
-                        </div>
-                        <p className="mt-2 text-sm text-[#73726c]">
-                          {ruleset.description ?? "暂无说明"}
-                        </p>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <Button
-                            variant="secondary"
-                            disabled={busyActionId === `ruleset-sync-${ruleset.id}`}
-                            onClick={() =>
-                              void runRulesetAction(
-                                `ruleset-sync-${ruleset.id}`,
-                                () => workspace.syncRuleset(ruleset.id).then(() => undefined),
-                                "规则源已重新同步。"
-                              )
-                            }
-                          >
-                            <RefreshCw className="size-4" />
-                            立即同步
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            disabled={busyActionId === `ruleset-delete-${ruleset.id}`}
-                            onClick={() =>
-                              void runRulesetAction(
-                                `ruleset-delete-${ruleset.id}`,
-                                () => workspace.deleteRuleset(ruleset.id),
-                                "规则源已删除。"
-                              )
-                            }
-                          >
-                            <Trash2 className="size-4" />
-                            删除
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-
-                {officialRulesets.map((ruleset) => (
-                  <div
-                    key={ruleset.id}
-                    className="rounded-lg border border-[#dedcd1] bg-[#f5f4ed]/80 p-4"
+                <Button size="sm" variant="ghost" onClick={() => setReportFor(template.id)}>
+                  内容报告
+                </Button>
+                {!template.isOfficial ? (
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => {
+                      if (confirm(`删除模板「${template.displayName}」？`)) {
+                        void mutations.remove.mutateAsync(template.id);
+                      }
+                    }}
                   >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium text-[#141413]">{ruleset.name}</p>
-                      {ruleset.isOfficial ? (
-                        <Badge className="border-[#7ab948]/40 bg-[#e9f1dc] text-[#265b19]">
-                          官方
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <p className="mt-2 text-sm text-[#73726c]">{ruleset.description ?? "暂无说明"}</p>
-                    <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-[#9c9a92]">
-                      <span>{ruleset.slug}</span>
-                      <span>{ruleset.sourceType}</span>
-                      {ruleset.latestFetchedAt ? <span>{formatRelativeDate(ruleset.latestFetchedAt)}</span> : null}
-                    </div>
-                  </div>
-                ))}
+                    删除
+                  </Button>
+                ) : null}
               </div>
             </Card>
-          </div>
+          ))}
+        </div>
       )}
 
-      <TemplateDialog
-        open={dialogOpen}
-        form={form}
-        isSaving={isSaving}
-        isLoadingDetail={isLoadingDetail}
-        errorMessage={errorMessage}
-        editingId={editingId}
-        onOpenChange={(nextOpen) => {
-          setDialogOpen(nextOpen);
-          if (!nextOpen) {
-            setErrorMessage(null);
-            setIsLoadingDetail(false);
-          }
-        }}
-        onSubmit={handleSave}
-        onChange={setForm}
-      />
+      {instantiating ? (
+        <InstantiateDialog template={instantiating} onClose={() => setInstantiating(null)} />
+      ) : null}
+      {reportFor ? <ReportDialog templateId={reportFor} onClose={() => setReportFor(null)} /> : null}
     </div>
   );
 };

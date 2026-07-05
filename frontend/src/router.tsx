@@ -6,84 +6,76 @@ import {
   createRoute,
   createRouter
 } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 
 import { AppShell } from "./components/app-shell";
 import { useAuth } from "./providers/auth-provider";
-import { DashboardPage } from "./pages/dashboard-page";
-import { GeneratedSubscriptionWizardPage } from "./pages/generated-subscription-wizard-page";
 import { LoginPage } from "./pages/login-page";
 import { RegisterPage } from "./pages/register-page";
-import { SettingsPage } from "./pages/settings-page";
-import { SubscriptionsPage } from "./pages/subscriptions-page";
-import { TemplatesPage } from "./pages/templates-page";
 
-const FullscreenLoader = () => {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-[#faf9f5]">
-      <div className="rounded-lg border border-[#dedcd1] bg-[#fffdf8] px-6 py-4 text-sm text-[#73726c] shadow-[0_1px_2px_rgba(20,20,19,0.04)]">
-        正在载入工作区...
-      </div>
+// 路由级代码分割（技术方案 §14.2）
+const WorkbenchPage = lazy(() =>
+  import("./pages/workbench-page").then((m) => ({ default: m.WorkbenchPage }))
+);
+const SubscriptionsPage = lazy(() =>
+  import("./pages/subscriptions-page").then((m) => ({ default: m.SubscriptionsPage }))
+);
+const NewSubscriptionPage = lazy(() =>
+  import("./pages/new-subscription-page").then((m) => ({ default: m.NewSubscriptionPage }))
+);
+const SubscriptionWorkspacePage = lazy(() =>
+  import("./pages/subscription-workspace-page").then((m) => ({
+    default: m.SubscriptionWorkspacePage
+  }))
+);
+const SourcesPage = lazy(() =>
+  import("./pages/sources-page").then((m) => ({ default: m.SourcesPage }))
+);
+const RulesetsPage = lazy(() =>
+  import("./pages/rulesets-page").then((m) => ({ default: m.RulesetsPage }))
+);
+const TemplatesPage = lazy(() =>
+  import("./pages/templates-page").then((m) => ({ default: m.TemplatesPage }))
+);
+const SettingsPage = lazy(() =>
+  import("./pages/settings-page").then((m) => ({ default: m.SettingsPage }))
+);
+
+const FullscreenLoader = () => (
+  <div className="flex min-h-screen items-center justify-center bg-bg">
+    <div className="rounded-md border border-line bg-surface px-6 py-3 text-sm text-muted">
+      正在载入…
     </div>
-  );
-};
-
-const RootComponent = () => {
-  return <Outlet />;
-};
+  </div>
+);
 
 const EntryRedirect = () => {
   const auth = useAuth();
-
-  if (auth.isBooting) {
-    return <FullscreenLoader />;
-  }
-
-  return <Navigate to={auth.session ? "/dashboard" : "/login"} />;
-};
-
-const SubscriptionsRedirect = () => {
-  return <Navigate to="/subscriptions/upstream" />;
-};
-
-const TemplatesRedirect = () => {
-  return <Navigate to="/templates/mine" />;
+  if (auth.isBooting) return <FullscreenLoader />;
+  return <Navigate to={auth.session ? "/workbench" : "/login"} />;
 };
 
 const GuestLayout = () => {
   const auth = useAuth();
-
-  if (auth.isBooting) {
-    return <FullscreenLoader />;
-  }
-
-  if (auth.session) {
-    return <Navigate to="/dashboard" />;
-  }
-
+  if (auth.isBooting) return <FullscreenLoader />;
+  if (auth.session) return <Navigate to="/workbench" />;
   return <Outlet />;
 };
 
 const ProtectedLayout = () => {
   const auth = useAuth();
-
-  if (auth.isBooting) {
-    return <FullscreenLoader />;
-  }
-
-  if (!auth.session) {
-    return <Navigate to="/login" />;
-  }
-
+  if (auth.isBooting) return <FullscreenLoader />;
+  if (!auth.session) return <Navigate to="/login" />;
   return (
     <AppShell>
-      <Outlet />
+      <Suspense fallback={<FullscreenLoader />}>
+        <Outlet />
+      </Suspense>
     </AppShell>
   );
 };
 
-const rootRoute = createRootRoute({
-  component: RootComponent
-});
+const rootRoute = createRootRoute({ component: () => <Outlet /> });
 
 const entryRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -115,79 +107,77 @@ const appRoute = createRoute({
   component: ProtectedLayout
 });
 
-const dashboardRoute = createRoute({
+const workbenchRoute = createRoute({
   getParentRoute: () => appRoute,
-  path: "/dashboard",
-  component: DashboardPage
+  path: "/workbench",
+  component: () => <WorkbenchPage />
 });
 
 const subscriptionsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/subscriptions",
-  component: SubscriptionsRedirect
+  component: () => <SubscriptionsPage />
 });
 
-const subscriptionsUpstreamRoute = createRoute({
+const newSubscriptionRoute = createRoute({
   getParentRoute: () => appRoute,
-  path: "/subscriptions/upstream",
-  component: () => <SubscriptionsPage section="upstream" />
+  path: "/subscriptions/new",
+  component: () => <NewSubscriptionPage />
 });
 
-const subscriptionsGeneratedRoute = createRoute({
+const subscriptionWorkspaceRoute = createRoute({
   getParentRoute: () => appRoute,
-  path: "/subscriptions/generated",
-  component: () => <SubscriptionsPage section="generated" />
+  path: "/subscriptions/$subscriptionId",
+  component: () => <SubscriptionWorkspacePage />
 });
 
-const generatedSubscriptionWizardRoute = createRoute({
+const subscriptionWorkspaceTabRoute = createRoute({
   getParentRoute: () => appRoute,
-  path: "/subscriptions/drafts/$draftId",
-  component: GeneratedSubscriptionWizardPage
+  path: "/subscriptions/$subscriptionId/$tab",
+  component: () => <SubscriptionWorkspacePage />
+});
+
+const sourcesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/sources",
+  component: () => <SourcesPage />
+});
+
+const rulesetsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/rulesets",
+  component: () => <RulesetsPage />
 });
 
 const templatesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/templates",
-  component: TemplatesRedirect
-});
-
-const templatesMineRoute = createRoute({
-  getParentRoute: () => appRoute,
-  path: "/templates/mine",
-  component: () => <TemplatesPage section="mine" />
-});
-
-const templatesMarketRoute = createRoute({
-  getParentRoute: () => appRoute,
-  path: "/templates/market",
-  component: () => <TemplatesPage section="market" />
+  component: () => <TemplatesPage />
 });
 
 const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/settings",
-  component: SettingsPage
+  component: () => <SettingsPage />
 });
 
 const routeTree = rootRoute.addChildren([
   entryRoute,
   guestRoute.addChildren([loginRoute, registerRoute]),
   appRoute.addChildren([
-    dashboardRoute,
+    workbenchRoute,
     subscriptionsRoute,
-    subscriptionsUpstreamRoute,
-    subscriptionsGeneratedRoute,
-    generatedSubscriptionWizardRoute,
+    newSubscriptionRoute,
+    subscriptionWorkspaceRoute,
+    subscriptionWorkspaceTabRoute,
+    sourcesRoute,
+    rulesetsRoute,
     templatesRoute,
-    templatesMineRoute,
-    templatesMarketRoute,
     settingsRoute
   ])
 ]);
 
-export const router = createRouter({
-  routeTree
-});
+export const router = createRouter({ routeTree });
 
 declare module "@tanstack/react-router" {
   interface Register {
@@ -195,6 +185,4 @@ declare module "@tanstack/react-router" {
   }
 }
 
-export const AppRouter = () => {
-  return <RouterProvider router={router} />;
-};
+export const AppRouter = () => <RouterProvider router={router} />;

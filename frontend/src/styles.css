@@ -1,91 +1,95 @@
 @import "tailwindcss";
 
-@theme {
-  --font-sans:
-    "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
-}
+/* ProxyParser Next — 设计令牌
+   视觉规格来源：designs/proxyparser-next/styles.css（深色高密度控制台）。 */
 
 :root {
-  color-scheme: light;
-  --pp-ink: #141413;
-  --pp-muted: #73726c;
-  --pp-subtle: #9c9a92;
-  --pp-paper: #faf9f5;
-  --pp-paper-soft: #f5f4ed;
-  --pp-surface: #fffdf8;
-  --pp-surface-cool: #f2f5f4;
-  --pp-border: #dedcd1;
-  --pp-border-soft: rgba(31, 30, 29, 0.14);
-  --pp-accent: #c96442;
-  --pp-accent-soft: #f6e8df;
-  --pp-success: #437426;
-  --pp-danger: #a73d39;
-  --pp-info: #3266ad;
-  background: var(--pp-paper);
+  color-scheme: dark;
+  --pp-bg: oklch(0.155 0.012 255);
+  --pp-surface: oklch(0.195 0.014 255);
+  --pp-surface-2: oklch(0.235 0.016 255);
+  --pp-border: oklch(0.32 0.02 255 / 0.55);
+  --pp-border-strong: oklch(0.42 0.025 255 / 0.7);
+  --pp-text: oklch(0.93 0.006 255);
+  --pp-muted: oklch(0.66 0.015 255);
+  --pp-faint: oklch(0.52 0.015 255);
+  --pp-accent: oklch(0.78 0.11 210);
+  --pp-accent-strong: oklch(0.7 0.13 215);
+  --pp-accent-bg: oklch(0.78 0.11 210 / 0.12);
+  --pp-on-accent: oklch(0.14 0.01 255);
+  --pp-ok: oklch(0.76 0.15 155);
+  --pp-ok-bg: oklch(0.76 0.15 155 / 0.12);
+  --pp-warn: oklch(0.82 0.14 85);
+  --pp-warn-bg: oklch(0.82 0.14 85 / 0.12);
+  --pp-err: oklch(0.68 0.19 25);
+  --pp-err-bg: oklch(0.68 0.19 25 / 0.12);
+}
+
+@theme {
+  --font-sans: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, "PingFang SC", monospace;
+
+  --color-bg: var(--pp-bg);
+  --color-surface: var(--pp-surface);
+  --color-surface2: var(--pp-surface-2);
+  --color-line: var(--pp-border);
+  --color-line-strong: var(--pp-border-strong);
+  --color-ink: var(--pp-text);
+  --color-muted: var(--pp-muted);
+  --color-faint: var(--pp-faint);
+  --color-accent: var(--pp-accent);
+  --color-accent-strong: var(--pp-accent-strong);
+  --color-accent-bg: var(--pp-accent-bg);
+  --color-on-accent: var(--pp-on-accent);
+  --color-ok: var(--pp-ok);
+  --color-ok-bg: var(--pp-ok-bg);
+  --color-warn: var(--pp-warn);
+  --color-warn-bg: var(--pp-warn-bg);
+  --color-err: var(--pp-err);
+  --color-err-bg: var(--pp-err-bg);
 }
 
 html,
-body,
-#root {
-  min-height: 100%;
-}
-
 body {
-  margin: 0;
-  min-height: 100vh;
-  background: var(--pp-paper);
-  color: var(--pp-ink);
+  background: var(--pp-bg);
+  color: var(--pp-text);
   font-family: var(--font-sans);
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-
-* {
-  box-sizing: border-box;
+  font-size: 13px;
+  line-height: 1.65;
 }
 
 ::selection {
-  background: rgba(201, 100, 66, 0.18);
+  background: var(--pp-accent-bg);
 }
 
-@keyframes pp-page-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* 健康灯（纯 CSS 圆点，带轻微辉光） */
+.health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  display: inline-block;
+  flex: none;
+}
+.health-dot[data-health="ok"] {
+  background: var(--pp-ok);
+  box-shadow: 0 0 6px oklch(0.76 0.15 155 / 0.5);
+}
+.health-dot[data-health="warn"] {
+  background: var(--pp-warn);
+  box-shadow: 0 0 6px oklch(0.82 0.14 85 / 0.5);
+}
+.health-dot[data-health="error"] {
+  background: var(--pp-err);
+  box-shadow: 0 0 6px oklch(0.68 0.19 25 / 0.5);
 }
 
-@keyframes pp-soft-pop {
-  from {
-    opacity: 0;
-    transform: translateY(4px) scale(0.99);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+/* 推断徽章：虚线 = 系统推断，非用户数据 */
+.badge-inferred {
+  border-style: dashed !important;
 }
 
-@layer utilities {
-  .pp-page-motion {
-    animation: pp-page-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  }
-
-  .pp-soft-pop {
-    animation: pp-soft-pop 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  }
+/* 细滚动条 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pp-border-strong) transparent;
 }

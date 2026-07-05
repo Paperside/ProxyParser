@@ -5,17 +5,15 @@ import { cn } from "../../lib/cn";
 export const Textarea = React.forwardRef<
   HTMLTextAreaElement,
   React.TextareaHTMLAttributes<HTMLTextAreaElement>
->(({ className, ...props }, ref) => {
-  return (
-    <textarea
-      ref={ref}
-      className={cn(
-        "min-h-32 w-full rounded-lg border border-[#dedcd1] bg-[#fffdf8] px-4 py-3 text-sm text-[#141413] outline-none transition-[border-color,box-shadow,background-color] placeholder:text-[#9c9a92] focus:border-[#c96442] focus:bg-white focus:shadow-[0_0_0_3px_rgba(201,100,66,0.12)]",
-        className
-      )}
-      {...props}
-    />
-  );
-});
+>(({ className, ...props }, ref) => (
+  <textarea
+    ref={ref}
+    className={cn(
+      "min-h-24 w-full rounded-md border border-line-strong bg-bg px-2.5 py-2 font-mono text-xs text-ink placeholder:text-faint focus:border-accent focus:outline-none",
+      className
+    )}
+    {...props}
+  />
+));
 
 Textarea.displayName = "Textarea";

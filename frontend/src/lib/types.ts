@@ -1,28 +1,9 @@
-export type Visibility = "private" | "unlisted" | "public";
-export type ShareMode = "disabled" | "view" | "fork";
-export type SyncStatus = "idle" | "syncing" | "success" | "failed" | "stale";
-export type RenderStatus = "pending" | "rendering" | "success" | "failed" | "degraded";
-export type UpstreamSourceKind = "url" | "uploaded_yaml";
-export type ManagedSubscriptionMode = "template" | "draft";
-export type TemplateShareabilityStatus =
-  | "unknown"
-  | "shareable"
-  | "source_locked"
-  | "sanitized";
-export type SubscriptionShareScope = "user" | "public" | "unlisted";
-export type SubscriptionShareGrantMode = "view" | "fork" | "subscribe";
-export type GeneratedSubscriptionDraftStepKey =
-  | "source"
-  | "proxies"
-  | "groups_rules"
-  | "settings";
-export type GeneratedSubscriptionDraftCurrentStep =
-  | GeneratedSubscriptionDraftStepKey
-  | "preview";
-export type GeneratedSubscriptionDraftShareability =
-  | "unknown"
-  | "shareable"
-  | "source_locked";
+// 前端 API DTO 类型（与后端各 service 返回结构对应）
+import type {
+  BuildConfig,
+  TemplateExtractionReport,
+  TemplatePayloadV2
+} from "./build-config-types";
 
 export interface User {
   id: string;
@@ -44,6 +25,23 @@ export interface Session {
   refreshTokenExpiresAt: string;
 }
 
+export interface AuthTokens {
+  accessToken: string;
+  accessTokenExpiresAt: string;
+  refreshToken: string;
+  refreshTokenExpiresAt: string;
+}
+
+export interface LoginResponse {
+  user: User;
+  tokens: AuthTokens;
+}
+
+export type RegisterResponse = LoginResponse;
+
+export type Health = "ok" | "warn" | "error";
+export type SyncStatus = "idle" | "syncing" | "success" | "failed" | "stale";
+
 export interface UsageInfo {
   upload: number | null;
   download: number | null;
@@ -51,279 +49,265 @@ export interface UsageInfo {
   expire: number | null;
 }
 
-export interface ParsedConfig {
-  proxies: Array<{ name: string }>;
-  "proxy-groups": Array<{ name: string; type: string; proxies: string[] }>;
-  rules?: string[];
-}
+// ── 订阅源 ───────────────────────────────────────────────────
 
-export interface AutoGroupOptions {
-  enabled: boolean;
-  includeAutoGroup: boolean;
-  unclassifiedPolicy: "others" | "ignore";
-}
-
-export interface RuleProviderAttachment {
-  type: "attach-rule-provider";
-  providerSlug: string;
-  targetPolicy: string;
-  insert: {
-    position: "top" | "bottom" | "before-match";
-  };
-}
-
-export interface UpstreamSource {
+export interface SourceSummary {
   id: string;
   ownerUserId: string;
   displayName: string;
   sourceUrl: string;
-  sourceKind: UpstreamSourceKind;
+  sourceKind: "url" | "uploaded_yaml";
   uploadedFileName: string | null;
-  visibility: Visibility;
-  shareMode: ShareMode;
   isEnabled: boolean;
+  syncIntervalMinutes: number;
+  nextSyncAt: string | null;
   lastSyncStatus: SyncStatus;
   lastSyncAt: string | null;
   lastSuccessfulSyncAt: string | null;
-  lastFailedSyncAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  headers: Record<string, string>;
+  lastErrorMessage: string | null;
   usage: UsageInfo | null;
   proxyCount: number;
   groupCount: number;
   ruleCount: number;
-}
-
-export interface UpstreamSourceDetail extends UpstreamSource {
-  latestSnapshotId: string | null;
-  parsedConfig: ParsedConfig | null;
-}
-
-export interface TemplatePayload {
-  rulesMode: "patch" | "full_override";
-  groupsMode: "patch" | "full_override";
-  configMode: "patch" | "full_override";
-  customProxiesPolicy: "append" | "replace_same_name" | "fail_on_conflict";
-  ruleProviderRefs: string[];
-  ruleProviderAttachments?: RuleProviderAttachment[];
-  autoGroup?: AutoGroupOptions | null;
-  rules: string[];
-  proxyGroups: Array<{ name: string; type: string; proxies: string[] }>;
-  configPatch: Record<string, unknown>;
-  customProxies: Array<{ name: string }>;
-}
-
-export interface Template {
-  id: string;
-  ownerUserId: string;
-  ownerDisplayName: string | null;
-  isOfficial: boolean;
-  displayName: string;
-  slug: string | null;
-  description: string | null;
-  sourceTemplateId: string | null;
-  sourceLabel: string | null;
-  sourceUrl: string | null;
-  shareabilityStatus: TemplateShareabilityStatus;
-  sanitizedFromTemplateId: string | null;
-  lockedReasons: string[];
-  visibility: Visibility;
-  shareMode: ShareMode;
-  publishStatus: "draft" | "published" | "archived";
-  latestVersionId: string | null;
-  latestVersion: number;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface TemplateDetail extends Template {
-  payload: TemplatePayload;
-  exportedYaml: string | null;
-  versionNote: string | null;
-}
-
-export interface GeneratedSubscription {
+export interface SyncReport {
   id: string;
-  ownerUserId: string;
   upstreamSourceId: string;
-  templateId: string;
-  draftId: string | null;
-  renderMode: ManagedSubscriptionMode;
+  fromSnapshotId: string | null;
+  toSnapshotId: string;
+  nodesAdded: Array<{ id: string; name: string }>;
+  nodesRemoved: Array<{ id: string; name: string }>;
+  nodesRenamed: Array<{ id: string; from: string; to: string }>;
+  nodesUpdated: Array<{ id: string; name: string }>;
+  createdAt: string;
+}
+
+// ── 订阅 ─────────────────────────────────────────────────────
+
+export interface SubscriptionSummary {
+  id: string;
   displayName: string;
-  visibility: Visibility;
-  shareMode: ShareMode;
   isEnabled: boolean;
-  currentSnapshotId: string | null;
-  lastSuccessfulSnapshotId: string | null;
-  lastSyncStatus: SyncStatus;
-  lastRenderStatus: RenderStatus;
-  lastSyncAt: string | null;
-  lastRenderAt: string | null;
-  lastErrorMessage: string | null;
-  latestHeaders: Record<string, string>;
-  latestUsage: UsageInfo | null;
+  health: Health;
+  healthReasons: string[];
+  publishPolicy: "auto" | "confirm";
+  pendingUpstreamChange: boolean;
+  hasDraft: boolean;
+  mode: "rebuild" | "patch" | null;
+  sourceNames: string[];
+  activeReleaseSeq: number | null;
+  activeReleaseAt: string | null;
+  lastPullAt: string | null;
+  issueCount: { warn: number; error: number };
+  usage: UsageInfo | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface GeneratedSubscriptionDetail extends GeneratedSubscription {
-  renderedYaml: string | null;
-  templateName: string | null;
-  sourceName: string | null;
+export interface Issue {
+  id: string;
+  subscriptionId: string;
+  kind: string;
+  severity: "warn" | "error";
+  refs: Record<string, unknown>;
+  message: string;
+  suggestion: string | null;
+  createdAt: string;
 }
 
-export interface SubscriptionTempTokenSummary {
+export interface SubscriptionDetail extends SubscriptionSummary {
+  buildConfig: BuildConfig | null;
+  draftBuildConfig: BuildConfig | null;
+  activeRelease: { id: string; seq: number; createdAt: string; trigger: string } | null;
+  issues: Issue[];
+}
+
+export interface DiffSummary {
+  nodes: {
+    added: string[];
+    removed: string[];
+    renamed: Array<{ from: string; to: string }>;
+    updated: string[];
+  };
+  groups: { added: string[]; removed: string[]; membersChanged: string[] };
+  ruleCountDelta: number;
+  configKeysChanged: string[];
+  identical: boolean;
+}
+
+export interface EvaluateIssueDto {
+  kind: string;
+  severity: "warn" | "error";
+  message: string;
+  refs: Record<string, unknown>;
+}
+
+export interface NodeIndexEntry {
   id: string;
-  managedSubscriptionId: string | null;
+  renderedName: string;
+  sourceId: string | null;
+  disabled: boolean;
+  region: string | null;
+  regionInferred: boolean;
+  protocol: string;
+  tags: string[];
+}
+
+export interface PreviewResult {
+  yamlText: string;
+  issues: EvaluateIssueDto[];
+  stats: { nodeCount: number; groupCount: number; ruleCount: number; providerCount: number };
+  nodeIndex: NodeIndexEntry[];
+  diffVsActive: DiffSummary | null;
+  activeReleaseSeq: number | null;
+}
+
+export interface MihomoValidationDto {
+  available: boolean;
+  passed: boolean | null;
+  exitCode: number | null;
+  output: string | null;
+  durationMs: number | null;
+}
+
+export interface ReleaseSummary {
+  id: string;
+  seq: number;
+  trigger: "manual" | "upstream_sync" | "ruleset_update" | "rollback";
+  triggerDetail: string | null;
+  diffSummary: DiffSummary | Record<string, never>;
+  validation: { structuralErrors: number; mihomo: MihomoValidationDto | null };
+  createdBy: string | null;
+  createdAt: string;
+  isActive: boolean;
+}
+
+export interface ReleaseDetail extends Omit<ReleaseSummary, "isActive"> {
+  renderedYaml: string;
+}
+
+export interface TokenInfo {
+  id: string;
+  subscriptionId: string;
   label: string | null;
-  expiresAt: string;
   revokedAt: string | null;
   lastUsedAt: string | null;
   createdAt: string;
+  expiresAt?: string;
 }
 
-export interface SubscriptionShareGrant {
+export interface IssuedToken extends TokenInfo {
+  token: string;
+  url: string;
+}
+
+export interface PullLogEntry {
   id: string;
-  managedSubscriptionId: string;
-  ownerUserId: string;
-  targetUserId: string | null;
-  targetEmail: string | null;
-  scope: SubscriptionShareScope;
-  mode: SubscriptionShareGrantMode;
-  createdAt: string;
-  updatedAt: string;
-  revokedAt: string | null;
+  token_kind: string;
+  status: string;
+  http_status: number;
+  served_release_id: string | null;
+  client_ip: string | null;
+  user_agent: string | null;
+  error_message: string | null;
+  created_at: string;
 }
 
-export interface GeneratedSubscriptionSnapshot {
-  id: string;
-  managedSubscriptionId: string;
-  renderedYaml: string;
-  renderedJson: string | null;
-  forwardedHeadersJson: string | null;
-  validationStatus: "success" | "failed";
-  validationError: string | null;
-  createdAt: string;
+export interface AccessInfo {
+  tokens: TokenInfo[];
+  tempTokens: TokenInfo[];
+  pullLogs: PullLogEntry[];
 }
 
-export interface GeneratedSubscriptionSnapshotCompare {
-  baseSnapshot: GeneratedSubscriptionSnapshot;
-  targetSnapshot: GeneratedSubscriptionSnapshot;
-  summary: {
-    addedLineCount: number;
-    removedLineCount: number;
-  };
-  addedLines: string[];
-  removedLines: string[];
+export interface TraceResultDto {
+  verdict: "hit" | "maybe" | "final" | "no-rules";
+  matched: { ruleText: string; index: number; via: string | null } | null;
+  target: string | null;
+  groupChain: string[];
+  maybeNotes: string[];
 }
 
-export interface GeneratedSubscriptionDraftStep {
-  id: string;
-  stepKey: GeneratedSubscriptionDraftStepKey;
-  patchMode: "patch" | "full_override" | null;
-  editorMode: "visual" | "raw";
-  operations: unknown;
-  raw: unknown;
-  summary: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
+export interface CreateSubscriptionResponse {
+  subscription: SubscriptionDetail;
+  token: IssuedToken;
 }
 
-export interface GeneratedSubscriptionDraft {
-  id: string;
-  ownerUserId: string;
-  upstreamSourceId: string | null;
-  displayName: string;
-  currentStep: GeneratedSubscriptionDraftCurrentStep;
-  shareabilityStatus: GeneratedSubscriptionDraftShareability;
-  createdAt: string;
-  updatedAt: string;
-}
+// ── 规则库 ───────────────────────────────────────────────────
 
-export interface GeneratedSubscriptionDraftDetail extends GeneratedSubscriptionDraft {
-  selectedSourceSnapshotId: string | null;
-  lastPreviewYaml: string | null;
-  steps: GeneratedSubscriptionDraftStep[];
-}
-
-export interface GeneratedSubscriptionDraftPreview {
-  draft: GeneratedSubscriptionDraftDetail;
-  sourceSnapshotId: string;
-  shareabilityStatus: Exclude<GeneratedSubscriptionDraftShareability, "unknown">;
-  lockedReasons: string[];
-  stats: {
-    proxyCount: number;
-    groupCount: number;
-    ruleCount: number;
-  };
-  document: {
-    proxies: Array<Record<string, unknown>>;
-    "proxy-groups": Array<Record<string, unknown>>;
-    rules?: string[];
-    [key: string]: unknown;
-  };
-  yamlText: string;
-}
-
-export interface MarketplaceRuleset {
+export interface RulesetCatalogEntry {
   id: string;
   ownerUserId: string | null;
   slug: string;
   name: string;
   description: string | null;
-  sourceType: "git_repo" | "http_file" | "inline";
   sourceUrl: string | null;
-  sourceRepo: string | null;
-  visibility: Visibility;
+  behavior: "domain" | "ipcidr" | "classical";
+  recommendedTarget: string | null;
   isOfficial: boolean;
-  status: "active" | "disabled" | "archived";
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-  latestFetchStatus: "success" | "failed" | null;
-  latestFetchedAt: string | null;
-  latestExpiresAt: string | null;
-  hasCachedContent: boolean;
+  status: string;
+  latestSnapshotHash: string | null;
+  updateAvailable: boolean;
+  lastCheckedAt: string | null;
+  lastCheckError: string | null;
 }
 
-export interface MarketplaceTemplate {
+export interface RulesetDiff {
+  fromHash: string | null;
+  toHash: string;
+  addedCount: number;
+  removedCount: number;
+  addedSample: string[];
+  removedSample: string[];
+  toEntryCount: number;
+}
+
+export interface PasteParseReportDto {
+  entries: Array<{ type: string; value: string; extra?: string }>;
+  totalLines: number;
+  duplicatesRemoved: number;
+  normalizedCount: number;
+  strippedTargets: number;
+  skippedMatch: number;
+  invalid: Array<{ line: string; reason: string }>;
+}
+
+// ── 模板 ─────────────────────────────────────────────────────
+
+export interface TemplateSummary {
   id: string;
+  ownerUserId: string;
   displayName: string;
   slug: string | null;
   description: string | null;
-  visibility: Visibility;
-  publishStatus: "draft" | "published" | "archived";
-  ownerUserId: string;
-  ownerDisplayName: string | null;
+  visibility: "private" | "unlisted" | "public";
   isOfficial: boolean;
-  sourceLabel: string | null;
-  sourceUrl: string | null;
+  latestVersion: number;
+  createdAt: string;
   updatedAt: string;
 }
 
-export interface AuditLogEntry {
+export interface TemplateDetail extends TemplateSummary {
+  payload: TemplatePayloadV2 | null;
+  extractionReport: TemplateExtractionReport | null;
+}
+
+// ── 事件 ─────────────────────────────────────────────────────
+
+export interface EventEntry {
   id: string;
-  actorUserId: string | null;
-  entityType: string;
+  entityKind: "source" | "subscription" | "ruleset";
   entityId: string;
-  action: string;
-  summary: string | null;
-  before: Record<string, unknown> | null;
-  after: Record<string, unknown> | null;
+  kind: string;
+  payload: Record<string, unknown>;
   createdAt: string;
 }
 
-export interface LoginResponse {
-  user: User;
-  tokens: {
-    accessToken: string;
-    accessTokenExpiresAt: string;
-    refreshToken: string;
-    refreshTokenExpiresAt: string;
-  };
-}
-
-export interface RegisterResponse extends LoginResponse {
-  subscriptionSecret: string;
+export interface InstanceHealth {
+  database: { path: string; migrationCount: number; tableCount: number; rulesetCatalogCount: number };
+  scheduler: { lastTickAt: string | null };
+  mihomoGate: { available: boolean };
+  publicBaseUrl: string;
 }
