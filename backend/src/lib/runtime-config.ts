@@ -7,12 +7,19 @@ export interface RuntimeConfig {
   port: number;
   databasePath: string;
   migrationsDir: string;
+  assetsDir: string;
+  dataDir: string;
+  publicBaseUrl: string;
+  mihomoPath: string | null;
+  secretKey: string | null;
   defaultLocale: string;
   jwtSecret: string;
   jwtIssuer: string;
   jwtAccessTtlSeconds: number;
   jwtRefreshTtlSeconds: number;
   subscriptionTempTokenTtlSeconds: number;
+  sourceSyncDefaultIntervalMinutes: number;
+  rulesetCheckIntervalMinutes: number;
 }
 
 const runtimeDir = dirname(fileURLToPath(import.meta.url));
@@ -38,7 +45,8 @@ const resolveDatabasePath = () => {
   const configuredPath = process.env.DATABASE_PATH;
 
   if (!configuredPath) {
-    return resolve(backendRootDir, "data", "proxyparser.sqlite");
+    // Next 版本全新 schema，与旧 proxyparser.sqlite 彻底切断
+    return resolve(backendRootDir, "data", "proxyparser.v2.sqlite");
   }
 
   return isAbsolute(configuredPath)
@@ -47,11 +55,18 @@ const resolveDatabasePath = () => {
 };
 
 export const getRuntimeConfig = (): RuntimeConfig => {
+  const port = readNumberEnv("PORT", 3001);
+
   return {
     host: process.env.HOST ?? "0.0.0.0",
-    port: readNumberEnv("PORT", 3001),
+    port,
     databasePath: resolveDatabasePath(),
     migrationsDir: resolve(backendRootDir, "migrations"),
+    assetsDir: resolve(backendRootDir, "assets"),
+    dataDir: resolve(backendRootDir, "data"),
+    publicBaseUrl: process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`,
+    mihomoPath: process.env.PROXYPARSER_MIHOMO_PATH ?? null,
+    secretKey: process.env.PP_SECRET_KEY ?? null,
     defaultLocale: process.env.DEFAULT_LOCALE ?? "zh-CN",
     jwtSecret: process.env.JWT_SECRET ?? "dev-insecure-change-me",
     jwtIssuer: process.env.JWT_ISSUER ?? "proxyparser",
@@ -60,7 +75,9 @@ export const getRuntimeConfig = (): RuntimeConfig => {
     subscriptionTempTokenTtlSeconds: readNumberEnv(
       "SUBSCRIPTION_TEMP_TOKEN_TTL_SECONDS",
       24 * 60 * 60
-    )
+    ),
+    sourceSyncDefaultIntervalMinutes: readNumberEnv("SOURCE_SYNC_INTERVAL_MINUTES", 360),
+    rulesetCheckIntervalMinutes: readNumberEnv("RULESET_CHECK_INTERVAL_MINUTES", 24 * 60)
   };
 };
 

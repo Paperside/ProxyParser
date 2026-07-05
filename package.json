@@ -18,6 +18,7 @@
     "dev:backend": "bun run --filter @proxyparser/backend dev",
     "dev:frontend": "bun run --filter @proxyparser/frontend dev",
     "start:backend": "bun run --filter @proxyparser/backend start",
-    "start:frontend": "bun run --filter @proxyparser/frontend start"
+    "start:frontend": "bun run --filter @proxyparser/frontend start",
+    "sync-types": "cp backend/src/lib/build-config/types.ts frontend/src/lib/build-config-types.ts && printf '// ⚠️ 生成自 backend/src/lib/build-config/types.ts —— 勿手改，改动后运行 bun run sync-types。\\n%s' \"$(cat frontend/src/lib/build-config-types.ts)\" > frontend/src/lib/build-config-types.ts && cp backend/src/lib/nodes/protocol-schema.ts frontend/src/lib/node-protocol-schema.generated.ts && printf '// ⚠️ 生成自 backend/src/lib/nodes/protocol-schema.ts —— 勿手改，改动后运行 bun run sync-types。\\n%s' \"$(cat frontend/src/lib/node-protocol-schema.generated.ts)\" > frontend/src/lib/node-protocol-schema.generated.ts"
   }
 }

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProxyParser — 工作台</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .health-card { display: flex; flex-direction: column; gap: 8px; }
+  .health-card .name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .health-card .stats { display: flex; gap: 14px; color: var(--text-faint); font-size: 11.5px; }
+  .pending-strip {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    background: var(--warn-bg); border: 1px solid oklch(0.82 0.14 85 / 0.3);
+    border-radius: var(--radius-lg); margin-bottom: 20px;
+  }
+</style>
+</head>
+<body data-screen-label="01 工作台">
+
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">P</span>ProxyParser</div>
+  <nav class="nav">
+    <a href="01-工作台.html" aria-current="page">工作台</a>
+    <a href="02-订阅列表.html">订阅</a>
+    <a href="#">订阅源</a>
+    <a href="#">规则库</a>
+    <a href="#">模板</a>
+    <a href="#">设置</a>
+  </nav>
+  <div class="topbar-right"><div class="avatar">李</div></div>
+</header>
+
+<main class="page">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">工作台</h1>
+      <p class="page-desc">2 个订阅正在服务 · 最近拉取 4 分钟前</p>
+    </div>
+    <div class="actions"><a class="btn btn-primary" href="04-创建向导.html">新建订阅</a></div>
+  </div>
+
+  <div class="pending-strip">
+    <span class="dot dot-warn"></span>
+    <span>1 个订阅需要处理：<strong>家庭路由器</strong> 的订阅源同步失败已持续 14 小时，正在服务 v8 的缓存版本。</span>
+    <span class="spacer"></span>
+    <a class="btn btn-sm" href="03-订阅工作台.html">查看问题</a>
+  </div>
+
+  <div class="grid-2" style="margin-bottom: 20px;">
+    <div class="card health-card">
+      <div class="name"><span class="dot dot-ok"></span>日常主力 <span class="badge mono">v14</span></div>
+      <div class="stats">
+        <span>来源 白云机场</span><span>节点 45</span><span>规则 1,286</span>
+        <span>最近发布 今天 09:12（自动）</span><span>最近拉取 4 分钟前</span>
+      </div>
+      <div class="row">
+        <button class="btn btn-sm">复制链接</button>
+        <a class="btn btn-sm btn-ghost" href="03-订阅工作台.html">打开</a>
+      </div>
+    </div>
+    <div class="card health-card">
+      <div class="name"><span class="dot dot-warn"></span>家庭路由器 <span class="badge mono">v8</span></div>
+      <div class="stats">
+        <span>来源 白云机场 + 自建 VPS</span><span>节点 46</span><span>规则 964</span>
+        <span>上游过期 14 小时</span><span>最近拉取 1 小时前</span>
+      </div>
+      <div class="row">
+        <button class="btn btn-sm">复制链接</button>
+        <a class="btn btn-sm btn-ghost" href="03-订阅工作台.html">打开</a>
+        <span class="badge badge-warn">正在服务缓存版本</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">最近事件 <span class="hint">同步、发布与规则源动态</span></div>
+    <div class="feed">
+      <div class="feed-item">
+        <div class="feed-icon" style="color: var(--ok);">↥</div>
+        <div class="feed-body">
+          <div class="feed-title"><strong>日常主力</strong> 自动发布 <span class="mono">v14</span> — 上游同步触发</div>
+          <div class="feed-meta">今天 09:12 · 变化：<span class="mono">+3 节点（US-04、US-05、SG-02）</span> · <span class="mono">-1 节点（HK-03）</span> · 12 个节点凭据轮换</div>
+        </div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-icon">⟳</div>
+        <div class="feed-body">
+          <div class="feed-title">订阅源 <strong>白云机场</strong> 同步成功</div>
+          <div class="feed-meta">今天 09:12 · 45 节点 · 流量已用 62% · 32 天后到期</div>
+        </div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-icon" style="color: var(--accent);">◎</div>
+        <div class="feed-body">
+          <div class="feed-title">规则源 <strong>geosite-cn</strong> 有更新可用 <span class="badge badge-accent">+120 / -3 条</span></div>
+          <div class="feed-meta">昨天 22:00 · 影响 2 个订阅 · <a href="#">查看差异并更新</a></div>
+        </div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-icon" style="color: var(--warn);">!</div>
+        <div class="feed-body">
+          <div class="feed-title">订阅源 <strong>白云机场（家庭线路）</strong> 同步失败</div>
+          <div class="feed-meta">昨天 19:40 起，重试 6 次 · <span class="mono">HTTP 521</span> · 家庭路由器 已切换为缓存服务</div>
+        </div>
+      </div>
+      <div class="feed-item">
+        <div class="feed-icon">↥</div>
+        <div class="feed-body">
+          <div class="feed-title"><strong>家庭路由器</strong> 发布 <span class="mono">v8</span> — 手动发布</div>
+          <div class="feed-meta">3 天前 · 变化：广告拦截规则块 +842 条 · DNS 配置调整</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>

@@ -1,0 +1,177 @@
+import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
+
+import { formatRelative, usageSummary } from "../../lib/format";
+import { useSubscriptionMutations, useTemplateMutations } from "../../lib/hooks";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Card, CardTitle } from "../ui/card";
+import { Dialog, DialogContent, DialogFooter } from "../ui/dialog";
+import { Field, Input } from "../ui/input";
+import { useWorkspace } from "./context";
+
+// 提炼模板：先看报告，确认后保存（对应产品文档 §9.5）
+const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
+  const { detail } = useWorkspace();
+  const mutations = useTemplateMutations();
+  const [report, setReport] = useState<{
+    recorded: string[];
+    dropped: Array<{ reason: string; detail: string }>;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState(`${detail.displayName} 方案`);
+  const [loading, setLoading] = useState(false);
+
+  const loadPreview = () => {
+    setLoading(true);
+    mutations.extractPreview
+      .mutateAsync(detail.id)
+      .then((result) => setReport(result.report))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "提炼失败"))
+      .finally(() => setLoading(false));
+  };
+
+  if (!report && !error && !loading) {
+    loadPreview();
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title="提炼为模板" description="模板与订阅源脱钩：换机场时套用即可。以下是将被记录与剔除的内容。">
+        {error ? (
+          <p className="rounded-md bg-err-bg px-3 py-2 text-xs text-err">{error}</p>
+        ) : report ? (
+          <div className="flex flex-col gap-4">
+            <div className="text-xs">
+              <p className="mb-1 font-medium text-ok">可记录</p>
+              {report.recorded.map((item) => (
+                <p key={item} className="text-muted">· {item}</p>
+              ))}
+              {report.dropped.length > 0 ? (
+                <>
+                  <p className="mb-1 mt-3 font-medium text-warn">不可记录（将被剔除）</p>
+                  {report.dropped.map((item, index) => (
+                    <p key={index} className="text-muted">· {item.detail}</p>
+                  ))}
+                </>
+              ) : null}
+            </div>
+            <Field label="模板名称">
+              <Input value={name} onChange={(event) => setName(event.target.value)} />
+            </Field>
+          </div>
+        ) : (
+          <p className="text-xs text-muted">正在分析…</p>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>取消</Button>
+          <Button
+            variant="primary"
+            disabled={!report || mutations.create.isPending}
+            onClick={() =>
+              mutations.create
+                .mutateAsync({ subscriptionId: detail.id, displayName: name })
+                .then(() => {
+                  toast.success("模板已保存");
+                  onClose();
+                })
+                .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "保存失败"))
+            }
+          >
+            确认保存模板
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export const OverviewTab = () => {
+  const { detail, config, preview } = useWorkspace();
+  const navigate = useNavigate();
+  const mutations = useSubscriptionMutations(detail.id);
+  const [showExtract, setShowExtract] = useState(false);
+  const usage = usageSummary(detail.usage);
+
+  return (
+    <div className="flex max-w-2xl flex-col gap-4">
+      <Card>
+        <CardTitle>状态</CardTitle>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-[12.5px]">
+          <dt className="text-faint">构建模式</dt>
+          <dd>
+            {config.mode === "rebuild" ? "完整重组（可提炼模板）" : "保留源配置（与该订阅源绑定）"}
+          </dd>
+          <dt className="text-faint">订阅源</dt>
+          <dd>{detail.sourceNames.join(" + ")}</dd>
+          <dt className="text-faint">当前版本</dt>
+          <dd>
+            {detail.activeReleaseSeq !== null
+              ? `v${detail.activeReleaseSeq}（${formatRelative(detail.activeReleaseAt)}）`
+              : "未发布"}
+          </dd>
+          <dt className="text-faint">最近拉取</dt>
+          <dd>{formatRelative(detail.lastPullAt)}</dd>
+          {usage ? (
+            <>
+              <dt className="text-faint">上游流量</dt>
+              <dd>
+                已用 {usage.percent}%
+                {usage.expireDays !== null ? ` · ${usage.expireDays} 天后到期` : ""}
+              </dd>
+            </>
+          ) : null}
+          {preview ? (
+            <>
+              <dt className="text-faint">当前草稿</dt>
+              <dd className="font-mono text-xs">
+                {preview.stats.nodeCount} 节点 · {preview.stats.groupCount} 组 ·{" "}
+                {preview.stats.ruleCount} 规则
+              </dd>
+            </>
+          ) : null}
+        </dl>
+        {detail.healthReasons.length > 0 ? (
+          <div className="mt-3 flex flex-col gap-1">
+            {detail.healthReasons.map((reason) => (
+              <Badge key={reason} variant={detail.health === "error" ? "err" : "warn"}>
+                {reason}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
+      </Card>
+
+      <Card>
+        <CardTitle>操作</CardTitle>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" disabled={config.mode !== "rebuild"} onClick={() => setShowExtract(true)}>
+            提炼为模板
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => {
+              if (
+                confirm(
+                  `删除订阅「${detail.displayName}」？所有版本历史和订阅链接将立即失效，客户端将无法再拉取。`
+                )
+              ) {
+                void mutations.remove.mutateAsync(detail.id).then(() => {
+                  toast.success("订阅已删除");
+                  void navigate({ to: "/subscriptions" });
+                });
+              }
+            }}
+          >
+            删除订阅
+          </Button>
+        </div>
+        {config.mode !== "rebuild" ? (
+          <p className="mt-2 text-[11px] text-faint">保留源配置模式与订阅源绑定，不能提炼为通用模板。</p>
+        ) : null}
+      </Card>
+    </div>
+  );
+};

@@ -1,5 +1,13 @@
 # ProxyParser Deployment Guide
 
+> **Next 版本（2026-07）要点** — 在旧流程基础上注意以下变化：
+>
+> 1. 公开路由变化：`/subscribe/*` 已移除；新增 `/s/*`（订阅拉取）与 `/rs/*`（不可变规则快照），Nginx 需将这两个前缀转发到 backend。
+> 2. 数据库文件更名为 `proxyparser.v2.sqlite`（`DATABASE_PATH` 可覆盖）。旧库不再读取。
+> 3. 必设环境变量：`PUBLIC_BASE_URL`（对外地址，订阅链接与 rule-provider URL 以此生成）、`JWT_SECRET`；建议设 `PP_SECRET_KEY`（hex 64 位），否则首启在 `/data/.secret-key` 生成，需随库一起备份。
+> 4. backend 镜像构建期会执行 `bun scripts/fetch-mihomo.ts` 内置校验内核（linux/amd64 注意 `--platform`）；失败不阻断构建，运行时降级为结构校验并在设置页提示。
+> 5. 备份 = `/data` 目录整体（SQLite + `.secret-key`）。
+
 This project is deployed as Docker images built away from the production server. The production host is intentionally small, so it must not run TypeScript checks, Vite builds, or Docker builds.
 
 ## Architecture
@@ -12,7 +20,8 @@ https://proxyparser.example.com
   +-- /             -> 127.0.0.1:8080  frontend container, nginx static files
   +-- /api/*        -> 127.0.0.1:3001  backend container, Bun/Elysia
   +-- /swagger*     -> 127.0.0.1:3001
-  +-- /subscribe/*  -> 127.0.0.1:3001
+  +-- /s/*          -> 127.0.0.1:3001  订阅拉取（只读已发布版本）
+  +-- /rs/*         -> 127.0.0.1:3001  不可变规则快照（可加 CDN/长缓存）
 
 SQLite data lives outside the image:
   host /var/lib/proxyparser -> container /data

@@ -1,22 +1,22 @@
 import { Elysia } from "elysia";
 
-import type { UserRecord } from "../users/user.repository";
 import type { AuthService } from "../auth/auth.service";
+import type { UserRecord } from "../users/user.repository";
 import { UpstreamSourceError, UpstreamSourceService } from "./upstream-source.service";
 
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === "object" && value !== null;
-};
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
 
 const optionalString = (source: Record<string, unknown>, key: string) => {
   const value = source[key];
-
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
+  if (typeof value !== "string") return undefined;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : undefined;
+};
+
+const optionalNumber = (source: Record<string, unknown>, key: string) => {
+  const value = source[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 };
 
 const optionalBoolean = (source: Record<string, unknown>, key: string) => {
@@ -24,117 +24,96 @@ const optionalBoolean = (source: Record<string, unknown>, key: string) => {
   return typeof value === "boolean" ? value : undefined;
 };
 
-const sendSourceError = (
-  error: unknown,
-  set: { status?: number | string }
-) => {
+const sendError = (error: unknown, set: { status?: number | string }) => {
   if (error instanceof UpstreamSourceError) {
     set.status = error.status;
-    return {
-      message: error.message
-    };
+    return { message: error.message };
   }
-
   throw error;
 };
 
-const requireUser = (authService: AuthService, authorizationHeader: string | undefined | null) => {
-  return authService.authenticate(authorizationHeader);
-};
-
-const parseCreateBody = (body: unknown) => {
-  if (!isRecord(body)) {
-    throw new UpstreamSourceError("请求体格式错误。", 400);
-  }
-
-  return {
-    displayName: optionalString(body, "displayName") ?? "",
-    sourceUrl: optionalString(body, "sourceUrl") ?? "",
-    visibility: optionalString(body, "visibility") as
-      | "private"
-      | "unlisted"
-      | "public"
-      | undefined,
-    shareMode: optionalString(body, "shareMode") as
-      | "disabled"
-      | "view"
-      | "fork"
-      | undefined
-  };
-};
-
-const parseUpdateBody = (body: unknown) => {
-  if (!isRecord(body)) {
-    throw new UpstreamSourceError("请求体格式错误。", 400);
-  }
-
-  return {
-    displayName: optionalString(body, "displayName"),
-    sourceUrl: optionalString(body, "sourceUrl"),
-    visibility: optionalString(body, "visibility") as
-      | "private"
-      | "unlisted"
-      | "public"
-      | undefined,
-    shareMode: optionalString(body, "shareMode") as
-      | "disabled"
-      | "view"
-      | "fork"
-      | undefined,
-    isEnabled: optionalBoolean(body, "isEnabled")
-  };
+type Ctx = {
+  currentUser: UserRecord;
+  set: { status?: number | string };
+  params: { id: string };
+  body: unknown;
 };
 
 export const createUpstreamSourceRoutes = (
   authService: AuthService,
-  upstreamSourceService: UpstreamSourceService
+  sourceService: UpstreamSourceService
 ) => {
-  return new Elysia({ prefix: "/api/upstream-sources" })
-    .derive(({ headers }) => {
-      const user = requireUser(authService, headers.authorization);
-
-      return {
-        currentUser: user
-      };
+  return new Elysia({ prefix: "/api/sources" })
+    .derive(({ headers }) => ({
+      currentUser: authService.authenticate(headers.authorization)
+    }))
+    .get("/", ({ currentUser }: Pick<Ctx, "currentUser">) => {
+      return sourceService.listByOwner(currentUser.id);
     })
-    .get("/", ({ currentUser }: { currentUser: UserRecord }) => {
-      return upstreamSourceService.listByOwner(currentUser.id);
-    })
-    .post("/", ({ body, currentUser, set }: { body: unknown; currentUser: UserRecord; set: { status?: number | string } }) => {
+    .post("/", async ({ body, currentUser, set }: Omit<Ctx, "params">) => {
       try {
-        const created = upstreamSourceService.create(currentUser.id, parseCreateBody(body));
+        if (!isRecord(body)) throw new UpstreamSourceError("请求体格式错误。");
+        const yamlContent = optionalString(body, "yamlContent");
+        const created = yamlContent
+          ? sourceService.createFromUpload(currentUser.id, {
+              displayName: optionalString(body, "displayName") ?? "",
+              yamlContent,
+              uploadedFileName: optionalString(body, "uploadedFileName")
+            })
+          : await sourceService.create(currentUser.id, {
+              displayName: optionalString(body, "displayName") ?? "",
+              sourceUrl: optionalString(body, "sourceUrl") ?? "",
+              syncIntervalMinutes: optionalNumber(body, "syncIntervalMinutes")
+            });
         set.status = 201;
         return created;
       } catch (error) {
-        return sendSourceError(error, set);
+        return sendError(error, set);
       }
     })
-    .get("/:id", ({ params, currentUser, set }: { params: { id: string }; currentUser: UserRecord; set: { status?: number | string } }) => {
+    .get("/:id", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       try {
-        return upstreamSourceService.getById(currentUser.id, params.id);
+        return sourceService.getById(currentUser.id, params.id);
       } catch (error) {
-        return sendSourceError(error, set);
+        return sendError(error, set);
       }
     })
-    .patch("/:id", ({ params, body, currentUser, set }: { params: { id: string }; body: unknown; currentUser: UserRecord; set: { status?: number | string } }) => {
+    .get("/:id/sync-reports", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       try {
-        return upstreamSourceService.update(currentUser.id, params.id, parseUpdateBody(body));
+        return sourceService.listSyncReports(currentUser.id, params.id);
       } catch (error) {
-        return sendSourceError(error, set);
+        return sendError(error, set);
       }
     })
-    .post("/:id/sync", async ({ params, currentUser, set }: { params: { id: string }; currentUser: UserRecord; set: { status?: number | string } }) => {
+    .patch("/:id", ({ params, body, currentUser, set }: Ctx) => {
       try {
-        return await upstreamSourceService.sync(currentUser.id, params.id);
+        if (!isRecord(body)) throw new UpstreamSourceError("请求体格式错误。");
+        const yamlContent = optionalString(body, "yamlContent");
+        if (yamlContent) {
+          return sourceService.replaceUpload(currentUser.id, params.id, yamlContent);
+        }
+        return sourceService.update(currentUser.id, params.id, {
+          displayName: optionalString(body, "displayName"),
+          sourceUrl: optionalString(body, "sourceUrl"),
+          isEnabled: optionalBoolean(body, "isEnabled"),
+          syncIntervalMinutes: optionalNumber(body, "syncIntervalMinutes")
+        });
       } catch (error) {
-        return sendSourceError(error, set);
+        return sendError(error, set);
       }
     })
-    .delete("/:id", ({ params, currentUser, set }: { params: { id: string }; currentUser: UserRecord; set: { status?: number | string } }) => {
+    .post("/:id/sync", async ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       try {
-        return upstreamSourceService.delete(currentUser.id, params.id);
+        return await sourceService.syncByOwner(currentUser.id, params.id);
       } catch (error) {
-        return sendSourceError(error, set);
+        return sendError(error, set);
+      }
+    })
+    .delete("/:id", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+      try {
+        return sourceService.delete(currentUser.id, params.id);
+      } catch (error) {
+        return sendError(error, set);
       }
     });
 };

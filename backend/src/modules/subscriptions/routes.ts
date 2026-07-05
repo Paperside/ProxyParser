@@ -1,344 +1,343 @@
 import { Elysia } from "elysia";
 
-import { logger } from "../../lib/logging/logger";
-import {
-  applyRateLimitHeaders,
-  InMemoryRateLimiter,
-  resolveRateLimitSubject
-} from "../../lib/security/rate-limiter";
-import type { AuditLogService } from "../audit/audit-log.service";
-import { AuthError, type AuthService } from "../auth/auth.service";
-import { ManagedSubscriptionError, ManagedSubscriptionService } from "./managed-subscription.service";
+import type { AuthService } from "../auth/auth.service";
+import type { UserRecord } from "../users/user.repository";
+import type { SecretStore } from "./secret-store";
+import { SubscriptionError, SubscriptionService, type StartKind } from "./subscription.service";
 
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === "object" && value !== null;
-};
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
 
-const optionalString = (source: Record<string, unknown>, key: string) => {
+const str = (source: Record<string, unknown>, key: string) => {
   const value = source[key];
-
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
+  if (typeof value !== "string") return undefined;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : undefined;
 };
 
-const optionalBoolean = (source: Record<string, unknown>, key: string) => {
-  const value = source[key];
-  return typeof value === "boolean" ? value : undefined;
-};
-
-const optionalNumber = (source: Record<string, unknown>, key: string) => {
-  const value = source[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-};
-
-const parseShareGrantBody = (body: unknown) => {
-  if (!isRecord(body)) {
-    throw new ManagedSubscriptionError("请求体格式错误。", 400);
-  }
-
-  return {
-    scope: optionalString(body, "scope") as "user" | "public" | "unlisted" | undefined,
-    mode: optionalString(body, "mode") as "view" | "fork" | "subscribe" | undefined,
-    targetUserId: optionalString(body, "targetUserId"),
-    targetEmail: optionalString(body, "targetEmail")
-  };
-};
-
-const parseSubscriptionBody = (body: unknown) => {
-  if (!isRecord(body)) {
-    throw new ManagedSubscriptionError("请求体格式错误。", 400);
-  }
-
-  return {
-    upstreamSourceId: optionalString(body, "upstreamSourceId"),
-    templateId: optionalString(body, "templateId"),
-    displayName: optionalString(body, "displayName"),
-    visibility: optionalString(body, "visibility") as
-      | "private"
-      | "unlisted"
-      | "public"
-      | undefined,
-    shareMode: optionalString(body, "shareMode") as
-      | "disabled"
-      | "view"
-      | "fork"
-      | undefined,
-    isEnabled: optionalBoolean(body, "isEnabled")
-  };
-};
-
-const parseCompareQuery = (query: Record<string, unknown>) => {
-  return {
-    baseSnapshotId: typeof query.baseSnapshotId === "string" ? query.baseSnapshotId : "",
-    targetSnapshotId: typeof query.targetSnapshotId === "string" ? query.targetSnapshotId : ""
-  };
-};
-
-const sendSubscriptionError = (
-  error: unknown,
-  set: { status?: number | string }
-) => {
-  if (error instanceof AuthError) {
+const sendError = (error: unknown, set: { status?: number | string }) => {
+  if (error instanceof SubscriptionError) {
     set.status = error.status;
-    return {
-      message: error.message
-    };
+    return { message: error.message, issues: error.issues };
   }
-
-  if (error instanceof ManagedSubscriptionError) {
-    set.status = error.status;
-    return {
-      message: error.message
-    };
-  }
-
   throw error;
 };
 
-export const createManagedSubscriptionRoutes = (
+type Ctx = {
+  currentUser: UserRecord;
+  set: { status?: number | string };
+  params: Record<string, string>;
+  body: unknown;
+};
+
+export const createSubscriptionRoutes = (
   authService: AuthService,
-  managedSubscriptionService: ManagedSubscriptionService,
-  auditLogService: AuditLogService
+  service: SubscriptionService,
+  secretStore: SecretStore
 ) => {
-  return new Elysia({ prefix: "/api/subscriptions" })
-    .get("/", ({ headers, set }) => {
-      try {
-        const user = authService.authenticate(headers.authorization);
-        return managedSubscriptionService.listByOwner(user.id);
-      } catch (error) {
-        return sendSubscriptionError(error, set);
-      }
-    })
-    .post("/", ({ headers, body, set }) => {
-      try {
-        const user = authService.authenticate(headers.authorization);
-        const parsed = parseSubscriptionBody(body);
+  return new Elysia({ prefix: "/api" })
+    .derive(({ headers }) => ({
+      currentUser: authService.authenticate(headers.authorization)
+    }))
 
-        if (!parsed.displayName || !parsed.upstreamSourceId || !parsed.templateId) {
-          throw new ManagedSubscriptionError("名称、上游订阅源和模板不能为空。", 400);
-        }
-
-        const created = managedSubscriptionService.create(user.id, {
-          displayName: parsed.displayName,
-          upstreamSourceId: parsed.upstreamSourceId,
-          templateId: parsed.templateId,
-          visibility: parsed.visibility,
-          shareMode: parsed.shareMode
+    // ── 订阅 CRUD ─────────────────────────────────────────────
+    .get("/subscriptions", ({ currentUser }: Pick<Ctx, "currentUser">) =>
+      service.listByOwner(currentUser.id)
+    )
+    .post("/subscriptions", ({ body, currentUser, set }: Omit<Ctx, "params">) => {
+      try {
+        if (!isRecord(body)) throw new SubscriptionError("请求体格式错误。");
+        const sourceIds = Array.isArray(body.sourceIds)
+          ? body.sourceIds.filter((id): id is string => typeof id === "string")
+          : [];
+        const startRaw = isRecord(body.start) ? body.start : {};
+        const kind = (str(startRaw, "kind") ?? "recommended") as StartKind;
+        const created = service.create(currentUser.id, {
+          displayName: str(body, "displayName") ?? "",
+          sourceIds,
+          start: { kind, templateId: str(startRaw, "templateId") }
         });
-
         set.status = 201;
         return created;
       } catch (error) {
-        return sendSubscriptionError(error, set);
+        return sendError(error, set);
       }
     })
-    .get("/:id", ({ headers, params, set }) => {
+    .get("/subscriptions/:id", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       try {
-        const user = authService.authenticate(headers.authorization);
-        return managedSubscriptionService.getById(user.id, params.id);
+        return service.getDetail(currentUser.id, params.id!);
       } catch (error) {
-        return sendSubscriptionError(error, set);
+        return sendError(error, set);
       }
     })
-    .get("/:id/snapshots", ({ headers, params, set }) => {
+    .patch("/subscriptions/:id", ({ params, body, currentUser, set }: Ctx) => {
       try {
-        const user = authService.authenticate(headers.authorization);
-        return managedSubscriptionService.listSnapshots(user.id, params.id);
-      } catch (error) {
-        return sendSubscriptionError(error, set);
-      }
-    })
-    .get("/:id/snapshots/compare", ({ headers, params, query, set }) => {
-      try {
-        const user = authService.authenticate(headers.authorization);
-        const parsed = parseCompareQuery(query as Record<string, unknown>);
-
-        if (!parsed.baseSnapshotId || !parsed.targetSnapshotId) {
-          throw new ManagedSubscriptionError("baseSnapshotId 和 targetSnapshotId 不能为空。", 400);
-        }
-
-        return managedSubscriptionService.compareSnapshots(
-          user.id,
-          params.id,
-          parsed.baseSnapshotId,
-          parsed.targetSnapshotId
-        );
-      } catch (error) {
-        return sendSubscriptionError(error, set);
-      }
-    })
-    .patch("/:id", ({ headers, params, body, set }) => {
-      try {
-        const user = authService.authenticate(headers.authorization);
-        return managedSubscriptionService.update(user.id, params.id, parseSubscriptionBody(body));
-      } catch (error) {
-        return sendSubscriptionError(error, set);
-      }
-    })
-    .delete("/:id", ({ headers, params, set }) => {
-      try {
-        const user = authService.authenticate(headers.authorization);
-        return managedSubscriptionService.delete(user.id, params.id);
-      } catch (error) {
-        return sendSubscriptionError(error, set);
-      }
-    })
-    .post("/:id/render", async ({ headers, params, set }) => {
-      try {
-        const user = authService.authenticate(headers.authorization);
-        return await managedSubscriptionService.render(user.id, params.id);
-      } catch (error) {
-        return sendSubscriptionError(error, set);
-      }
-    })
-    .post("/:id/secret/rotate", ({ headers, params, set }) => {
-      try {
-        const user = authService.authenticate(headers.authorization);
-        const result = managedSubscriptionService.rotateSecret(user.id, params.id);
-        auditLogService.record({
-          actorUserId: user.id,
-          entityType: "user_subscription_secret",
-          entityId: user.id,
-          action: "subscription_secret.rotate",
-          summary: `通过生成订阅 ${params.id} 入口轮换长期秘钥。`
+        if (!isRecord(body)) throw new SubscriptionError("请求体格式错误。");
+        return service.updateMeta(currentUser.id, params.id!, {
+          displayName: str(body, "displayName"),
+          isEnabled: typeof body.isEnabled === "boolean" ? body.isEnabled : undefined,
+          publishPolicy:
+            body.publishPolicy === "auto" || body.publishPolicy === "confirm"
+              ? body.publishPolicy
+              : undefined
         });
-        return result;
       } catch (error) {
-        return sendSubscriptionError(error, set);
+        return sendError(error, set);
       }
     })
-    .get("/:id/temp-tokens", ({ headers, params, set }) => {
+    .delete("/subscriptions/:id", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       try {
-        const user = authService.authenticate(headers.authorization);
-        return managedSubscriptionService.listTempTokens(user.id, params.id);
+        return service.delete(currentUser.id, params.id!);
       } catch (error) {
-        return sendSubscriptionError(error, set);
+        return sendError(error, set);
       }
     })
-    .post("/:id/temp-token", ({ headers, params, body, set }) => {
-      try {
-        const user = authService.authenticate(headers.authorization);
-        const expiresInSeconds = isRecord(body)
-          ? optionalNumber(body, "expiresInSeconds")
-          : undefined;
 
-        const result = managedSubscriptionService.createTempToken(
-          user.id,
-          params.id,
-          expiresInSeconds
-        );
-        auditLogService.record({
-          actorUserId: user.id,
-          entityType: "managed_subscription",
-          entityId: params.id,
-          action: "subscription.temp_token.create",
-          summary: "创建临时订阅令牌。",
-          after: {
-            expiresAt: result.expiresAt
-          }
-        });
-        return result;
+    // ── 草稿 / 预览 / 发布 ─────────────────────────────────────
+    .put("/subscriptions/:id/draft", ({ params, body, currentUser, set }: Ctx) => {
+      try {
+        return service.saveDraft(currentUser.id, params.id!, body);
       } catch (error) {
-        return sendSubscriptionError(error, set);
+        return sendError(error, set);
       }
     })
-    .delete("/:id/temp-tokens/:tokenId", ({ headers, params, set }) => {
+    .delete("/subscriptions/:id/draft", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       try {
-        const user = authService.authenticate(headers.authorization);
-        return managedSubscriptionService.revokeTempToken(user.id, params.id, params.tokenId);
+        return service.discardDraft(currentUser.id, params.id!);
       } catch (error) {
-        return sendSubscriptionError(error, set);
+        return sendError(error, set);
       }
     })
-    .get("/:id/share-grants", ({ headers, params, set }) => {
+    .post("/subscriptions/:id/preview", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       try {
-        const user = authService.authenticate(headers.authorization);
-        return managedSubscriptionService.listShareGrants(user.id, params.id);
+        return service.preview(currentUser.id, params.id!);
       } catch (error) {
-        return sendSubscriptionError(error, set);
+        return sendError(error, set);
       }
     })
-    .post("/:id/share-grants", ({ headers, params, body, set }) => {
+    .post("/subscriptions/:id/publish", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       try {
-        const user = authService.authenticate(headers.authorization);
-        const parsed = parseShareGrantBody(body);
-
-        if (!parsed.scope || !parsed.mode) {
-          throw new ManagedSubscriptionError("共享范围和模式不能为空。", 400);
+        const release = service.publish(currentUser.id, params.id!, { trigger: "manual" });
+        return {
+          id: release.id,
+          seq: release.seq,
+          diffSummary: release.diffSummary,
+          validation: release.validation,
+          createdAt: release.createdAt
+        };
+      } catch (error) {
+        return sendError(error, set);
+      }
+    })
+    .post("/subscriptions/:id/rollback", ({ params, body, currentUser, set }: Ctx) => {
+      try {
+        if (!isRecord(body) || typeof body.releaseId !== "string") {
+          throw new SubscriptionError("缺少 releaseId。");
         }
+        const release = service.rollback(currentUser.id, params.id!, body.releaseId);
+        return { id: release.id, seq: release.seq, createdAt: release.createdAt };
+      } catch (error) {
+        return sendError(error, set);
+      }
+    })
 
+    // ── 版本 ──────────────────────────────────────────────────
+    .get("/subscriptions/:id/releases", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+      try {
+        return service.listReleases(currentUser.id, params.id!);
+      } catch (error) {
+        return sendError(error, set);
+      }
+    })
+    .get(
+      "/subscriptions/:id/releases/:releaseId",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          const release = service.getRelease(currentUser.id, params.id!, params.releaseId!);
+          return {
+            id: release.id,
+            seq: release.seq,
+            trigger: release.trigger,
+            triggerDetail: release.triggerDetail,
+            diffSummary: release.diffSummary,
+            validation: release.validation,
+            renderedYaml: release.renderedYaml,
+            createdBy: release.createdBy,
+            createdAt: release.createdAt
+          };
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
+
+    // ── 规则追踪 ───────────────────────────────────────────────
+    .post("/subscriptions/:id/trace", ({ params, body, currentUser, set }: Ctx) => {
+      try {
+        if (!isRecord(body) || typeof body.query !== "string" || body.query.trim().length === 0) {
+          throw new SubscriptionError("缺少 query。");
+        }
+        return service.trace(currentUser.id, params.id!, body.query, body.draft !== false);
+      } catch (error) {
+        return sendError(error, set);
+      }
+    })
+
+    // ── 问题 ──────────────────────────────────────────────────
+    .get("/subscriptions/:id/issues", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+      try {
+        service.getDetail(currentUser.id, params.id!);
+        return service.listByOwner(currentUser.id).length >= 0
+          ? service.getDetail(currentUser.id, params.id!).issues
+          : [];
+      } catch (error) {
+        return sendError(error, set);
+      }
+    })
+
+    // ── 访问与 Token ───────────────────────────────────────────
+    .get("/subscriptions/:id/access", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+      try {
+        return service.listAccess(currentUser.id, params.id!);
+      } catch (error) {
+        return sendError(error, set);
+      }
+    })
+    // 工作台卡片 / 订阅列表「复制链接」快捷按钮：一次请求拿到可直接复制的 URL
+    .get(
+      "/subscriptions/:id/primary-link",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          return service.getOrCreatePrimaryLink(currentUser.id, params.id!);
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
+    .post("/subscriptions/:id/tokens", ({ params, body, currentUser, set }: Ctx) => {
+      try {
+        const label = isRecord(body) ? (str(body, "label") ?? null) : null;
+        return service.createToken(currentUser.id, params.id!, label);
+      } catch (error) {
+        return sendError(error, set);
+      }
+    })
+    .post(
+      "/subscriptions/:id/tokens/:tokenId/rotate",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          return service.rotateToken(currentUser.id, params.id!, params.tokenId!);
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
+    .delete(
+      "/subscriptions/:id/tokens/:tokenId",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          return service.revokeToken(currentUser.id, params.id!, params.tokenId!);
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
+    .patch("/subscriptions/:id/tokens/:tokenId", ({ params, body, currentUser, set }: Ctx) => {
+      try {
+        const label = isRecord(body) ? (str(body, "label") ?? null) : null;
+        return service.renameToken(currentUser.id, params.id!, params.tokenId!, label);
+      } catch (error) {
+        return sendError(error, set);
+      }
+    })
+    .get(
+      "/subscriptions/:id/tokens/:tokenId/reveal",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          return service.revealToken(currentUser.id, params.id!, params.tokenId!);
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
+    .post("/subscriptions/:id/temp-tokens", ({ params, body, currentUser, set }: Ctx) => {
+      try {
+        const record = isRecord(body) ? body : {};
+        const ttlSeconds =
+          typeof record.ttlSeconds === "number" ? record.ttlSeconds : 24 * 3600;
+        return service.createTempToken(currentUser.id, params.id!, {
+          label: str(record, "label") ?? null,
+          ttlSeconds
+        });
+      } catch (error) {
+        return sendError(error, set);
+      }
+    })
+    .delete(
+      "/subscriptions/:id/temp-tokens/:tokenId",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          return service.revokeTempToken(currentUser.id, params.id!, params.tokenId!);
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
+
+    // ── 自建节点字段拆分（用户只填一张表单，敏感/非敏感由后端按协议 schema 拆分）──
+    .post("/secrets/split", ({ body, currentUser, set }: Omit<Ctx, "params">) => {
+      try {
+        if (!isRecord(body) || typeof body.type !== "string" || !isRecord(body.fields)) {
+          throw new SubscriptionError("缺少 type 或 fields 对象。");
+        }
+        const existingSecretRef =
+          typeof body.secretRef === "string" && body.secretRef.length > 0 ? body.secretRef : null;
+        const result = secretStore.upsertSplit(currentUser.id, body.type, body.fields, existingSecretRef);
         set.status = 201;
-        return managedSubscriptionService.upsertShareGrant(user.id, params.id, {
-          scope: parsed.scope,
-          mode: parsed.mode,
-          targetUserId: parsed.targetUserId,
-          targetEmail: parsed.targetEmail
-        });
+        return result;
       } catch (error) {
-        return sendSubscriptionError(error, set);
+        return sendError(error, set);
       }
     })
-    .delete("/:id/share-grants/:grantId", ({ headers, params, set }) => {
+    // 仅用于打开编辑弹窗时回显：解密后的敏感字段（owner 校验）
+    .get("/secrets/:id", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       try {
-        const user = authService.authenticate(headers.authorization);
-        return managedSubscriptionService.revokeShareGrant(user.id, params.id, params.grantId);
+        const fields = secretStore.resolveForOwner(currentUser.id, params.id!);
+        if (!fields) {
+          throw new SubscriptionError("敏感字段记录不存在。", 404);
+        }
+        return { fields };
       } catch (error) {
-        return sendSubscriptionError(error, set);
+        return sendError(error, set);
       }
-    });
-};
+    })
 
-const subscribePolicy = {
-  keyPrefix: "subscribe:pull",
-  limit: 120,
-  windowMs: 60 * 1000
-} as const;
-
-export const createPublicSubscriptionRoutes = (
-  managedSubscriptionService: ManagedSubscriptionService,
-  rateLimiter: InMemoryRateLimiter
-) => {
-  return new Elysia()
-    .get("/subscribe/:id", async ({ params, query, headers, request, set }) => {
+    // ── 规则源更新应用 ──────────────────────────────────────────
+    .post("/rulesets/apply-update", ({ body, currentUser, set }: Omit<Ctx, "params">) => {
       try {
-        const rateLimitResult = rateLimiter.consume(resolveRateLimitSubject(request), subscribePolicy);
-        applyRateLimitHeaders(set, rateLimitResult);
-
-        if (!rateLimitResult.allowed) {
-          throw new ManagedSubscriptionError("订阅拉取过于频繁，请稍后再试。", 429);
+        if (
+          !isRecord(body) ||
+          typeof body.catalogId !== "string" ||
+          typeof body.toHash !== "string" ||
+          !Array.isArray(body.subscriptionIds)
+        ) {
+          throw new SubscriptionError("需要 catalogId、toHash 与 subscriptionIds。");
         }
-
-        const token =
-          typeof query.token === "string" ? query.token : "";
-        const result = await managedSubscriptionService.deliver(
-          params.id,
-          token,
-          request.headers.get("x-forwarded-for"),
-          headers["user-agent"]
-        );
-
-        for (const [key, value] of Object.entries(result.headers)) {
-          set.headers[key] = value;
-        }
-        set.headers["content-type"] = "text/yaml; charset=utf-8";
-
-        logger.info({
-          event: "subscription.pull.success",
-          subscriptionId: params.id,
-          status: result.status
+        return service.applyRulesetUpdate(currentUser.id, {
+          catalogId: body.catalogId,
+          toHash: body.toHash,
+          subscriptionIds: body.subscriptionIds.filter(
+            (id): id is string => typeof id === "string"
+          )
         });
-        return result.yamlText;
       } catch (error) {
-        logger.warn({
-          event: "subscription.pull.failed",
-          subscriptionId: params.id,
-          reason: error instanceof Error ? error.message : String(error)
-        });
-        return sendSubscriptionError(error, set);
+        return sendError(error, set);
       }
-    });
+    })
+    .get(
+      "/rulesets/:id/referencing-subscriptions",
+      ({ params, currentUser }: Omit<Ctx, "body">) => {
+        return service.listReferencingRuleset(currentUser.id, params.id!);
+      }
+    );
 };

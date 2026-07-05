@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProxyParser — 订阅工作台 · 节点</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .transform-bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 10px 14px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); margin-bottom: 12px;
+  }
+  .transform-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 2px 8px; border-radius: 4px; font-size: 12px;
+    background: var(--surface-2); border: 1px solid var(--border-strong);
+  }
+  .transform-chip .x { color: var(--text-faint); cursor: pointer; }
+  .issue { display: flex; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .issue:last-child { border-bottom: none; }
+</style>
+</head>
+<body data-screen-label="03 订阅工作台 · 节点">
+
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">P</span>ProxyParser</div>
+  <nav class="nav">
+    <a href="01-工作台.html">工作台</a>
+    <a href="02-订阅列表.html" aria-current="page">订阅</a>
+    <a href="#">订阅源</a>
+    <a href="#">规则库</a>
+    <a href="#">模板</a>
+    <a href="#">设置</a>
+  </nav>
+  <div class="topbar-right"><div class="avatar">李</div></div>
+</header>
+
+<div class="sub-head">
+  <a class="btn btn-sm btn-ghost" href="02-订阅列表.html">←</a>
+  <h1><span class="dot dot-ok"></span>日常主力</h1>
+  <span class="badge mono">当前 v14</span>
+  <span class="badge badge-warn">有未发布修改</span>
+  <span class="spacer"></span>
+  <button class="btn">复制链接</button>
+  <button class="btn btn-primary">预览并发布</button>
+</div>
+
+<div class="workspace">
+  <nav class="ws-nav">
+    <a href="#">概览</a>
+    <a href="03-订阅工作台.html" aria-current="page">节点</a>
+    <a href="#">代理组</a>
+    <a href="05-规则编辑器.html">规则</a>
+    <a href="#">配置</a>
+    <a href="06-版本历史.html">版本</a>
+    <a href="#">访问</a>
+    <a href="#">问题 <span class="count">2</span></a>
+  </nav>
+
+  <main class="ws-main">
+    <div class="page-head" style="margin-bottom: 12px;">
+      <div>
+        <h2 class="page-title" style="font-size: 15px;">节点</h2>
+        <p class="page-desc">45 个原生节点（白云机场）+ 1 个自建节点。默认原样展示，只有你主动添加的转换会生效。</p>
+      </div>
+      <div class="actions">
+        <button class="btn">批量清洗…</button>
+        <button class="btn">新增自建节点</button>
+      </div>
+    </div>
+
+    <div class="transform-bar">
+      <span class="faint" style="font-size: 12px;">持续转换（自动作用于未来新节点）：</span>
+      <span class="transform-chip">去 emoji <span class="x">×</span></span>
+      <span class="transform-chip">去倍率标签 <span class="x">×</span></span>
+      <span class="transform-chip mono" style="font-size:11px;">替换 香港→HK <span class="x">×</span></span>
+      <button class="btn btn-sm btn-ghost">+ 添加转换</button>
+    </div>
+
+    <div class="card" style="padding: 0;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>显示名称</th><th>来源</th><th>协议</th><th>地区</th><th>被引用</th><th style="width:90px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="mono">HK-01</span></td>
+            <td class="muted">白云机场</td>
+            <td><span class="badge mono">ss</span></td>
+            <td><span class="badge badge-infer">HK · 推断</span></td>
+            <td class="muted">3 个组</td>
+            <td><button class="btn btn-sm btn-ghost">编辑</button></td>
+          </tr>
+          <tr>
+            <td><span class="mono">HK-02</span> <span class="badge" style="font-size:10.5px;">已改名</span></td>
+            <td class="muted">白云机场</td>
+            <td><span class="badge mono">ss</span></td>
+            <td><span class="badge badge-infer">HK · 推断</span></td>
+            <td class="muted">3 个组</td>
+            <td><button class="btn btn-sm btn-ghost">编辑</button></td>
+          </tr>
+          <tr>
+            <td><span class="mono">US-04</span> <span class="badge badge-ok" style="font-size:10.5px;">新</span></td>
+            <td class="muted">白云机场</td>
+            <td><span class="badge mono">hysteria2</span></td>
+            <td><span class="badge badge-infer">US · 推断</span></td>
+            <td class="muted">2 个组</td>
+            <td><button class="btn btn-sm btn-ghost">编辑</button></td>
+          </tr>
+          <tr>
+            <td><span class="mono">SG-01</span></td>
+            <td class="muted">白云机场</td>
+            <td><span class="badge mono">vmess</span></td>
+            <td><span class="badge">SG · 已确认</span></td>
+            <td class="muted">2 个组</td>
+            <td><button class="btn btn-sm btn-ghost">编辑</button></td>
+          </tr>
+          <tr>
+            <td><span class="mono">Home VPS</span> <span class="badge badge-accent" style="font-size:10.5px;">自建</span></td>
+            <td class="muted">我</td>
+            <td><span class="badge mono">trojan</span></td>
+            <td><span class="badge">US · 已确认</span></td>
+            <td class="muted">4 个组</td>
+            <td><button class="btn btn-sm btn-ghost">编辑</button></td>
+          </tr>
+          <tr style="opacity: 0.55;">
+            <td><span class="mono" style="text-decoration: line-through;">JP-07</span> <span class="badge" style="font-size:10.5px;">已禁用</span></td>
+            <td class="muted">白云机场</td>
+            <td><span class="badge mono">ss</span></td>
+            <td><span class="badge badge-infer">JP · 推断</span></td>
+            <td class="muted">—</td>
+            <td><button class="btn btn-sm btn-ghost">启用</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="faint" style="margin-top: 10px; font-size: 11.5px;">
+      虚线徽章为系统推断（仅用于生成地区组），不会修改你的数据；点击可确认为标签。节点以稳定 ID 追踪，改名不影响引用。
+    </p>
+  </main>
+
+  <aside class="ws-rail">
+    <div class="rail-tabs" role="tablist">
+      <button role="tab" aria-selected="false">预览</button>
+      <button role="tab" aria-selected="true">与 v14 差异</button>
+      <button role="tab" aria-selected="false">问题</button>
+    </div>
+
+    <div class="card-title">草稿 与 已发布 v14 <span class="hint">发布前你会再次确认</span></div>
+    <div class="diff-summary" style="margin-bottom: 12px;">
+      <span class="diff-chip">节点 <span class="plus">+1</span></span>
+      <span class="diff-chip">改名 <span class="plus">2</span></span>
+      <span class="diff-chip">组成员变化 <span class="plus">1</span></span>
+      <span class="diff-chip">规则 ±0</span>
+    </div>
+    <div class="diff-lines">
+      <div class="ln ctx">proxy-groups:</div>
+      <div class="ln ctx">  - name: AI</div>
+      <div class="ln del">-   - HK-01</div>
+      <div class="ln add">+   - Home VPS</div>
+      <div class="ln add">+   - HK-01</div>
+      <div class="ln ctx">    - Proxies</div>
+    </div>
+
+    <hr class="divider">
+    <div class="card-title">待处理问题 <span class="badge badge-warn">2</span></div>
+    <div class="issue">
+      <span class="dot dot-warn" style="margin-top: 5px;"></span>
+      <div>
+        代理组 <code class="inline">AI</code> 引用的节点 <code class="inline">HK-03</code> 已被上游移除。
+        <div style="margin-top: 6px;"><button class="btn btn-sm">从组中移除</button> <button class="btn btn-sm btn-ghost">改用地区组</button></div>
+      </div>
+    </div>
+    <div class="issue">
+      <span class="dot dot-warn" style="margin-top: 5px;"></span>
+      <div>
+        3 个新节点未归入任何地区组（当前策略：放入 <code class="inline">Others</code>）。
+        <div style="margin-top: 6px;"><button class="btn btn-sm">确认归入 Others</button> <button class="btn btn-sm btn-ghost">手动指定</button></div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+</body>
+</html>

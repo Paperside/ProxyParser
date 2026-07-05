@@ -1,0 +1,90 @@
+mixed-port: 7890
+mode: rule
+log-level: info
+unified-delay: true
+proxies:
+  - name: HK-Prime
+    type: ss
+    server: hk1.example.com
+    port: 443
+    password: p1
+  - name: 香港 02
+    type: ss
+    server: hk2.example.com
+    port: 443
+    password: p2
+  - name: 美国 01
+    type: vmess
+    server: us1.example.com
+    port: 443
+    uuid: u1
+  - name: 神秘节点
+    type: trojan
+    server: x.example.com
+    port: 443
+    password: p3
+  - name: Home VPS
+    type: trojan
+    server: home.example.com
+    port: 443
+    password: home-secret
+    skip-cert-verify: true
+proxy-groups:
+  - name: Proxies
+    type: select
+    proxies:
+      - HK
+      - US
+      - Others
+      - Auto
+      - HK-Prime
+      - 香港 02
+      - 美国 01
+      - 神秘节点
+      - Home VPS
+      - DIRECT
+  - name: AI
+    type: select
+    proxies:
+      - Home VPS
+      - 美国 01
+      - Proxies
+      - DIRECT
+  - name: HK
+    type: select
+    proxies:
+      - HK-Prime
+      - 香港 02
+  - name: US
+    type: select
+    proxies:
+      - 美国 01
+      - Home VPS
+  - name: Others
+    type: select
+    proxies:
+      - 神秘节点
+  - name: Auto
+    type: url-test
+    interval: 300
+    url: https://www.gstatic.com/generate_204
+    proxies:
+      - HK-Prime
+      - 香港 02
+      - 美国 01
+      - 神秘节点
+      - Home VPS
+rule-providers:
+  geosite-openai:
+    type: http
+    behavior: domain
+    format: yaml
+    url: https://pp.example.com/rs/hash_openai.yaml
+    path: ./rule-providers/geosite-openai.yaml
+rules:
+  - PROCESS-NAME,clash,DIRECT
+  - RULE-SET,geosite-openai,AI
+  - DOMAIN-SUFFIX,example.ai,AI
+  - DOMAIN-SUFFIX,cn,DIRECT
+  - DOMAIN,baidu.com,DIRECT
+  - MATCH,Proxies

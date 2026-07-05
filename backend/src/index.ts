@@ -6,124 +6,125 @@ import { getDatabaseHealth, initializeDatabase } from "./lib/db";
 import { logger } from "./lib/logging/logger";
 import { getRuntimeConfig } from "./lib/runtime-config";
 import { InMemoryRateLimiter } from "./lib/security/rate-limiter";
+import { loadOrCreateSecretBox } from "./lib/security/secret-box";
+import { Scheduler } from "./lib/scheduler/scheduler";
+import { isMihomoAvailable } from "./lib/validate/mihomo-gate";
 import { AuditLogRepository } from "./modules/audit/audit-log.repository";
 import { AuditLogService } from "./modules/audit/audit-log.service";
 import { AuthService } from "./modules/auth/auth.service";
 import { createAuthRoutes } from "./modules/auth/routes";
-import { ManagedSubscriptionRepository } from "./modules/subscriptions/managed-subscription.repository";
-import {
-  createManagedSubscriptionRoutes,
-  createPublicSubscriptionRoutes
-} from "./modules/subscriptions/routes";
-import { ManagedSubscriptionService } from "./modules/subscriptions/managed-subscription.service";
-import { SubscriptionAccessRepository } from "./modules/subscriptions/subscription-access.repository";
-import { GeneratedSubscriptionDraftRepository } from "./modules/generated-subscription-drafts/generated-subscription-draft.repository";
-import { createGeneratedSubscriptionDraftRoutes } from "./modules/generated-subscription-drafts/routes";
-import { GeneratedSubscriptionDraftService } from "./modules/generated-subscription-drafts/generated-subscription-draft.service";
-import { MarketplaceRepository } from "./modules/marketplace/marketplace.repository";
-import { RulesetCatalogService } from "./modules/marketplace/ruleset-catalog.service";
-import { createMarketplaceRoutes, createRulesetCatalogRoutes } from "./modules/marketplace/routes";
-import { RulesetSyncService } from "./modules/marketplace/ruleset-sync.service";
-import { createSettingsRoutes } from "./modules/settings/routes";
-import { SettingsService } from "./modules/settings/settings.service";
+import { EventRepository } from "./modules/events/event.repository";
+import { RulesetRepository } from "./modules/rulesets/ruleset.repository";
+import { RulesetService } from "./modules/rulesets/ruleset.service";
+import { createRulesetRoutes } from "./modules/rulesets/routes";
+import { SecretStore } from "./modules/subscriptions/secret-store";
+import { SubscriptionRepository } from "./modules/subscriptions/subscription.repository";
+import { SubscriptionService } from "./modules/subscriptions/subscription.service";
+import { createSubscriptionRoutes } from "./modules/subscriptions/routes";
+import { createDeliveryRoutes } from "./modules/subscriptions/delivery-routes";
 import { TemplateRepository } from "./modules/templates/template.repository";
 import { createTemplateRoutes } from "./modules/templates/routes";
-import { TemplateService } from "./modules/templates/template.service";
-import { UserRepository } from "./modules/users/user.repository";
 import { UpstreamSourceRepository } from "./modules/upstream-sources/upstream-source.repository";
-import { createUpstreamSourceRoutes } from "./modules/upstream-sources/routes";
 import { UpstreamSourceService } from "./modules/upstream-sources/upstream-source.service";
+import { createUpstreamSourceRoutes } from "./modules/upstream-sources/routes";
 
 const main = async () => {
   const runtimeConfig = getRuntimeConfig();
   const dbContext = initializeDatabase();
-  const auditLogService = new AuditLogService(new AuditLogRepository(dbContext.db));
+  const db = dbContext.db;
+
   const rateLimiter = new InMemoryRateLimiter();
-  const authService = new AuthService(dbContext.db, runtimeConfig);
-  const upstreamSourceRepository = new UpstreamSourceRepository(dbContext.db);
-  const templateRepository = new TemplateRepository(dbContext.db);
-  const subscriptionAccessRepository = new SubscriptionAccessRepository(dbContext.db);
-  const upstreamSourceService = new UpstreamSourceService(upstreamSourceRepository);
-  const templateService = new TemplateService(templateRepository);
-  const marketplaceRepository = new MarketplaceRepository(dbContext.db);
-  const generatedSubscriptionDraftRepository = new GeneratedSubscriptionDraftRepository(dbContext.db);
-  const generatedSubscriptionDraftService = new GeneratedSubscriptionDraftService(
-    generatedSubscriptionDraftRepository,
-    upstreamSourceRepository,
-    upstreamSourceService,
-    marketplaceRepository,
-    templateRepository
-  );
-  const rulesetSyncService = new RulesetSyncService(marketplaceRepository);
-  const rulesetCatalogService = new RulesetCatalogService(
-    marketplaceRepository,
-    rulesetSyncService
-  );
-  const settingsService = new SettingsService(
-    new UserRepository(dbContext.db),
-    subscriptionAccessRepository
-  );
-  const managedSubscriptionService = new ManagedSubscriptionService(
-    new ManagedSubscriptionRepository(dbContext.db),
-    upstreamSourceRepository,
-    upstreamSourceService,
+  const auditLogService = new AuditLogService(new AuditLogRepository(db));
+  const authService = new AuthService(db, runtimeConfig);
+  const events = new EventRepository(db);
+
+  const secretBox = loadOrCreateSecretBox({
+    secretKeyHex: runtimeConfig.secretKey,
+    dataDir: runtimeConfig.dataDir
+  });
+  const secretStore = new SecretStore(db, secretBox);
+
+  const sourceRepository = new UpstreamSourceRepository(db);
+  const sourceService = new UpstreamSourceService(sourceRepository, events);
+
+  const rulesetRepository = new RulesetRepository(db);
+  const rulesetService = new RulesetService(rulesetRepository, events);
+
+  const templateRepository = new TemplateRepository(db);
+  const subscriptionRepository = new SubscriptionRepository(db);
+  const subscriptionService = new SubscriptionService(
+    subscriptionRepository,
+    sourceRepository,
+    rulesetRepository,
     templateRepository,
-    subscriptionAccessRepository,
-    generatedSubscriptionDraftService
+    events,
+    secretStore,
+    secretBox,
+    {
+      publicBaseUrl: runtimeConfig.publicBaseUrl,
+      mihomo: {
+        mihomoPath: runtimeConfig.mihomoPath,
+        dataDir: runtimeConfig.dataDir,
+        assetsDir: runtimeConfig.assetsDir
+      }
+    }
   );
 
+  // 同步流 → 构建流：上游同步成功后吸收变化（技术方案 §6.2）
+  sourceService.registerOnSynced((source, report) =>
+    subscriptionService.onSourceSynced(source, report)
+  );
+
+  const scheduler = new Scheduler(sourceService, rulesetService, {
+    rulesetCheckIntervalMinutes: runtimeConfig.rulesetCheckIntervalMinutes
+  });
+
+  const mihomoAvailable = isMihomoAvailable({
+    mihomoPath: runtimeConfig.mihomoPath,
+    dataDir: runtimeConfig.dataDir,
+    assetsDir: runtimeConfig.assetsDir
+  });
+
   const app = new Elysia()
-    .use(
-      cors({
-        origin: true
-      })
-    )
+    .use(cors({ origin: true }))
     .use(
       swagger({
         documentation: {
-          info: {
-            title: "ProxyParser API",
-            version: "1.0.0"
-          }
+          info: { title: "ProxyParser API", version: "2.0.0" }
         }
       })
     )
     .use(createAuthRoutes(authService, auditLogService, rateLimiter))
-    .use(createUpstreamSourceRoutes(authService, upstreamSourceService))
-    .use(createTemplateRoutes(authService, templateService))
+    .use(createUpstreamSourceRoutes(authService, sourceService))
+    .use(createRulesetRoutes(authService, rulesetService))
+    .use(createSubscriptionRoutes(authService, subscriptionService, secretStore))
     .use(
-      createGeneratedSubscriptionDraftRoutes(
+      createTemplateRoutes(
         authService,
-        generatedSubscriptionDraftService,
-        managedSubscriptionService,
-        auditLogService
+        templateRepository,
+        subscriptionRepository,
+        subscriptionService
       )
     )
-    .use(createManagedSubscriptionRoutes(authService, managedSubscriptionService, auditLogService))
-    .use(createRulesetCatalogRoutes(authService, rulesetCatalogService))
-    .use(createMarketplaceRoutes(marketplaceRepository))
-    .use(createSettingsRoutes(authService, settingsService, auditLogService))
-    .use(createPublicSubscriptionRoutes(managedSubscriptionService, rateLimiter))
+    .use(createDeliveryRoutes(subscriptionService, rulesetService, rateLimiter))
+    .get("/api/events", ({ headers, query }) => {
+      const user = authService.authenticate(headers.authorization);
+      const limit = Math.min(Number(query.limit) || 50, 200);
+      return events.listByOwner(user.id, limit);
+    })
+    .get("/api/instance/health", ({ headers }) => {
+      authService.authenticate(headers.authorization);
+      return {
+        database: getDatabaseHealth(),
+        scheduler: { lastTickAt: scheduler.lastTickAt },
+        mihomoGate: { available: mihomoAvailable },
+        publicBaseUrl: runtimeConfig.publicBaseUrl
+      };
+    })
     .get("/", () => ({
       name: "ProxyParser backend",
       status: "ok",
-      docs: "/swagger",
-      endpoints: {
-        register: "/api/auth/register",
-        login: "/api/auth/login",
-        refreshToken: "/api/auth/refresh",
-        logout: "/api/auth/logout",
-        currentUser: "/api/me",
-        upstreamSources: "/api/upstream-sources",
-        templates: "/api/templates",
-        generatedSubscriptionDrafts: "/api/generated-subscription-drafts",
-        subscriptions: "/api/subscriptions",
-        marketplaceTemplates: "/api/marketplace/templates",
-        marketplaceRulesets: "/api/marketplace/rulesets",
-        settings: "/api/settings",
-        subscribe: "/subscribe/:id?token=<secret>",
-        health: "/api/health"
-      }
+      docs: "/swagger"
     }))
     .get("/api/health", () => ({
       status: "ok",
@@ -136,12 +137,7 @@ const main = async () => {
       reusePort: false
     });
 
-  void rulesetSyncService.syncDueRulesets("startup");
-
-  const builtinRulesetSyncTimer = setInterval(() => {
-    void rulesetSyncService.syncDueRulesets("scheduled");
-  }, 60 * 60 * 1000);
-  builtinRulesetSyncTimer.unref?.();
+  scheduler.start();
 
   logger.info({
     event: "backend.startup",
@@ -150,9 +146,17 @@ const main = async () => {
     databasePath: dbContext.config.databasePath,
     appliedMigrationCount: dbContext.appliedMigrations.length,
     builtinRulesetSeedCount: dbContext.builtinRulesetSeedCount,
-    builtinTemplateSeedCount: dbContext.builtinTemplateSeedCount
+    builtinTemplateSeedCount: dbContext.builtinTemplateSeedCount,
+    mihomoGateAvailable: mihomoAvailable
   });
 
+  if (!mihomoAvailable) {
+    logger.warn({
+      event: "mihomo.gate.unavailable",
+      message:
+        "未找到 mihomo 二进制，发布门禁降级为仅结构校验。运行 bun scripts/fetch-mihomo.ts 可启用内核校验。"
+    });
+  }
   if (runtimeConfig.jwtSecret === "dev-insecure-change-me") {
     logger.warn({
       event: "security.jwt_secret.fallback",
@@ -162,9 +166,6 @@ const main = async () => {
 };
 
 main().catch((error) => {
-  logger.error({
-    event: "backend.startup.failed",
-    error
-  });
+  logger.error({ event: "backend.startup.failed", error });
   process.exit(1);
 });

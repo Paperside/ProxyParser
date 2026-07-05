@@ -1,0 +1,72 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "index": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-07-04T10:09:16.183Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "01-工作台": {
+      "versions": [
+        {
+          "path": "01-工作台.html",
+          "createdAt": "2026-07-04T10:09:16.213Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "02-订阅列表": {
+      "versions": [
+        {
+          "path": "02-订阅列表.html",
+          "createdAt": "2026-07-04T10:09:16.238Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "03-订阅工作台": {
+      "versions": [
+        {
+          "path": "03-订阅工作台.html",
+          "createdAt": "2026-07-04T10:09:16.264Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "04-创建向导": {
+      "versions": [
+        {
+          "path": "04-创建向导.html",
+          "createdAt": "2026-07-04T10:09:16.290Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "05-规则编辑器": {
+      "versions": [
+        {
+          "path": "05-规则编辑器.html",
+          "createdAt": "2026-07-04T10:09:16.316Z",
+          "status": "needs-review"
+        }
+      ]
+    },
+    "06-版本历史": {
+      "versions": [
+        {
+          "path": "06-版本历史.html",
+          "createdAt": "2026-07-04T10:09:16.342Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-07-04T10:09:16.185Z",
+  "updatedAt": "2026-07-04T10:09:16.343Z"
+}
