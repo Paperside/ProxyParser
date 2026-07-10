@@ -183,6 +183,18 @@ export const createSubscriptionRoutes = (
       }
     })
 
+    // ── 当前订阅规则快照同步 ────────────────────────────────────
+    .post(
+      "/subscriptions/:id/rulesets/sync-latest",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          return service.syncRulesetsToLatest(currentUser.id, params.id!);
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
+
     // ── 问题 ──────────────────────────────────────────────────
     .get("/subscriptions/:id/issues", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       try {

@@ -291,6 +291,22 @@ export interface RulesetDiff {
   toEntryCount: number;
 }
 
+export interface SyncLatestRulesetsResult {
+  changes: Array<{
+    catalogId: string;
+    slug: string;
+    fromHashes: string[];
+    toHash: string;
+    updatedReferenceCount: number;
+  }>;
+  unchangedCount: number;
+  skipped: Array<{
+    catalogId: string;
+    slug: string;
+    reason: string;
+  }>;
+}
+
 export interface PasteParseReportDto {
   entries: Array<{ type: string; value: string; extra?: string }>;
   totalLines: number;

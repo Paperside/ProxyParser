@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { RuleEntry, RuleItem } from "../../lib/build-config-types";
@@ -241,14 +241,34 @@ const itemSummary = (item: RuleItem) =>
     ? `${item.slug} @${item.hash.slice(0, 8)} · ${item.emit === "provider" ? "provider" : "内联"}`
     : `${item.entries.length} 条手动规则`;
 
+const SYNC_SKIP_REASON: Record<string, string> = {
+  "catalog-not-visible": "规则集不存在或不可见",
+  "latest-snapshot-unavailable": "规则库尚无最新快照",
+  "latest-snapshot-missing": "最新快照内容缺失"
+};
+
 export const RulesTab = () => {
-  const { config, update, knownGroupNames } = useWorkspace();
+  const {
+    config,
+    update,
+    knownGroupNames,
+    saving,
+    syncingRulesets,
+    syncLatestRulesets
+  } = useWorkspace();
   const [importFor, setImportFor] = useState<string | null>(null);
   const [pasteFor, setPasteFor] = useState<string | null>(null);
   const [showAddBlock, setShowAddBlock] = useState(false);
   const [manualFor, setManualFor] = useState<string | null>(null);
   const [manualType, setManualType] = useState<string>("DOMAIN-SUFFIX");
   const [manualValue, setManualValue] = useState("");
+  const referencedCatalogCount = new Set(
+    config.rules.targets.flatMap((block) =>
+      block.items
+        .filter((item) => item.kind === "snapshot")
+        .map((item) => item.catalogId)
+    )
+  ).size;
 
   const orderedTargets = [
     ...config.rules.order.filter((target) => config.rules.targets.some((block) => block.target === target)),
@@ -296,12 +316,64 @@ export const RulesTab = () => {
     setManualFor(null);
   };
 
+  const handleSyncLatestRulesets = async () => {
+    if (saving || syncingRulesets) return;
+    try {
+      const result = await syncLatestRulesets();
+      if (result.changes.length > 0) {
+        toast.success(`已同步 ${result.changes.length} 个规则集到最新快照`, {
+          description: `变更已写入草稿；${result.unchangedCount} 个无需更新。请预览后发布。`
+        });
+      } else if (result.skipped.length === 0) {
+        toast.info("当前引用的规则集已是最新快照", {
+          description: `${result.unchangedCount} 个规则集无需更新。`
+        });
+      }
+      if (result.skipped.length > 0) {
+        const sample = result.skipped
+          .slice(0, 2)
+          .map((item) => `${item.slug}：${SYNC_SKIP_REASON[item.reason] ?? item.reason}`)
+          .join("；");
+        toast.warning(`${result.skipped.length} 个规则集未能同步`, {
+          description: `${sample}${result.skipped.length > 2 ? "；其余请稍后重试" : ""}`
+        });
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "同步规则快照失败");
+    }
+  };
+
   return (
     <div className="max-w-3xl">
       <SectionTitle
         title="规则"
-        desc="按目标组织。块顺序决定匹配优先级；规则源以钉版本快照引用，更新永远需要你确认。"
-        actions={<Button size="sm" onClick={() => setShowAddBlock(true)}>新增规则块</Button>}
+        desc="按目标组织，块顺序决定匹配优先级。同步规则库当前最新快照只写入草稿，不自动发布；发布后客户端才生效。"
+        actions={
+          <>
+            <span
+              title={
+                referencedCatalogCount === 0
+                  ? "当前订阅尚未引用规则库快照"
+                  : saving
+                    ? "请先等待本地修改保存完成"
+                    : "同步规则库当前 latest；只写草稿，不自动发布"
+              }
+            >
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={saving || syncingRulesets || referencedCatalogCount === 0}
+                onClick={() => void handleSyncLatestRulesets()}
+              >
+                <RefreshCw
+                  className={`size-3 ${syncingRulesets ? "animate-spin" : ""}`}
+                />
+                {syncingRulesets ? "同步中…" : "同步规则库最新快照"}
+              </Button>
+            </span>
+            <Button size="sm" onClick={() => setShowAddBlock(true)}>新增规则块</Button>
+          </>
+        }
       />
 
       <SortableList

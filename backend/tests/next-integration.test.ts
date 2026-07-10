@@ -8,7 +8,8 @@ import yaml from "js-yaml";
 
 import {
   loadBuiltinRulesetManifest,
-  seedBuiltinRulesetCatalog
+  seedBuiltinRulesetCatalog,
+  sha256Hex
 } from "../src/lib/db/seed-ruleset-catalog";
 import {
   RECOMMENDED_TEMPLATE_ID,
@@ -425,25 +426,35 @@ describe("规则库", () => {
     expect(snapshot?.content).toContain("openai");
   });
 
-  test("内置规则后处理补齐 ChinaMax GEOIP 与 Anthropic 官网 CDN", () => {
+  test("内置规则后处理补齐 ChinaMax GEOIP 与 Anthropic 官方域名", () => {
     const ctx = createTestContext();
     const manifest = loadBuiltinRulesetManifest();
     const payloadBySlug = new Map<string, string[]>();
-    const expectedBySlug = new Map([
-      ["chinamax", "GEOIP,CN,no-resolve"],
-      ["anthropic", "DOMAIN,servd-anthropic-website.b-cdn.net"]
+    const expectedBySlug = new Map<string, string[]>([
+      ["chinamax", ["GEOIP,CN,no-resolve"]],
+      [
+        "anthropic",
+        [
+          "DOMAIN-SUFFIX,claude.com",
+          "DOMAIN,servd-anthropic-website.b-cdn.net"
+        ]
+      ]
     ]);
 
-    for (const [slug, expectedRule] of expectedBySlug) {
+    for (const [slug, expectedRules] of expectedBySlug) {
       const manifestEntry = manifest.find((entry) => entry.slug === slug);
-      expect(manifestEntry?.extraRules).toContain(expectedRule);
+      for (const expectedRule of expectedRules) {
+        expect(manifestEntry?.extraRules).toContain(expectedRule);
+      }
 
       const catalog = ctx.rulesetService.list(ctx.userId).find((entry) => entry.slug === slug);
       expect(catalog?.latestSnapshotHash).toBeTruthy();
       const snapshot = ctx.rulesetService.getPublicSnapshot(catalog!.latestSnapshotHash!);
       const parsed = yaml.load(snapshot!.content) as { payload: string[] };
       payloadBySlug.set(slug, parsed.payload);
-      expect(parsed.payload).toContain(expectedRule);
+      for (const expectedRule of expectedRules) {
+        expect(parsed.payload.filter((rule) => rule === expectedRule)).toHaveLength(1);
+      }
     }
 
     const chinaMaxManifest = manifest.find((entry) => entry.slug === "chinamax")!;
@@ -499,6 +510,277 @@ describe("规则库", () => {
     expect(release.renderedYaml).toContain(result.newHash!);
   });
 
+  test("当前订阅一键同步到规则库 latest 只更新草稿且按 catalog 去重", () => {
+    const ctx = createTestContext();
+    const { subscription, token } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "日常",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const activeRelease = ctx.subscriptionService.publish(ctx.userId, subscription.id, {
+      trigger: "manual"
+    });
+    const deliveredBefore = ctx.subscriptionService.deliver(
+      subscription.id,
+      token.token,
+      "token",
+      null,
+      null
+    ).yamlText;
+
+    const openai = ctx.rulesetService
+      .list(ctx.userId)
+      .find((entry) => entry.slug === "openai")!;
+    const oldHash = openai.latestSnapshotHash!;
+    const draft = structuredClone(
+      ctx.subscriptionRepository.findById(subscription.id)!.buildConfig!
+    );
+    const openaiBlock = draft.rules.targets.find((block) => block.target === "OpenAI")!;
+    const openaiItem = openaiBlock.items.find(
+      (item) => item.kind === "snapshot" && item.catalogId === openai.id
+    )!;
+    const duplicateOpenAiItem = structuredClone(openaiItem);
+    duplicateOpenAiItem.hash = "hash_other_openai_snapshot";
+    openaiBlock.items.push(duplicateOpenAiItem);
+    draft.config.structured.logLevel = "debug";
+    ctx.subscriptionRepository.saveDraft(subscription.id, draft);
+
+    const newContent = [
+      "payload:",
+      "  - DOMAIN-SUFFIX,openai.com",
+      "  - DOMAIN-SUFFIX,chatgpt.com",
+      "  - DOMAIN-SUFFIX,new-ai.example",
+      ""
+    ].join("\n");
+    const newHash = sha256Hex(newContent);
+    ctx.rulesetRepository.insertSnapshot({
+      hash: newHash,
+      catalogId: openai.id,
+      content: newContent,
+      behavior: openai.behavior,
+      entryCount: 3,
+      isPublic: true,
+      fetchedAt: new Date().toISOString()
+    });
+    ctx.rulesetRepository.setLatestSnapshot(openai.id, newHash, true);
+
+    const uniqueCatalogCount = new Set(
+      draft.rules.targets.flatMap((block) =>
+        block.items
+          .filter((item) => item.kind === "snapshot")
+          .map((item) => item.catalogId)
+      )
+    ).size;
+    const synced = ctx.subscriptionService.syncRulesetsToLatest(ctx.userId, subscription.id);
+
+    expect(synced).toEqual({
+      changes: [
+        {
+          catalogId: openai.id,
+          slug: openai.slug,
+          fromHashes: [oldHash, "hash_other_openai_snapshot"],
+          toHash: newHash,
+          updatedReferenceCount: 2
+        }
+      ],
+      unchangedCount: uniqueCatalogCount - 1,
+      skipped: []
+    });
+
+    const afterSync = ctx.subscriptionRepository.findById(subscription.id)!;
+    const syncedOpenAiItems = afterSync.draftBuildConfig!.rules.targets
+      .flatMap((block) => block.items)
+      .filter((item) => item.kind === "snapshot" && item.catalogId === openai.id);
+    expect(syncedOpenAiItems).toHaveLength(2);
+    expect(syncedOpenAiItems.every((item) => item.hash === newHash)).toBe(true);
+    expect(afterSync.draftBuildConfig!.config.structured.logLevel).toBe("debug");
+    expect(afterSync.publishPolicy).toBe("auto");
+    expect(ctx.rulesetRepository.findById(openai.id)?.updateAvailable).toBe(true);
+    expect(
+      afterSync.buildConfig!.rules.targets
+        .flatMap((block) => block.items)
+        .find((item) => item.kind === "snapshot" && item.catalogId === openai.id)?.hash
+    ).toBe(oldHash);
+
+    const unchanged = ctx.subscriptionService.syncRulesetsToLatest(ctx.userId, subscription.id);
+    expect(unchanged).toEqual({
+      changes: [],
+      unchangedCount: uniqueCatalogCount,
+      skipped: []
+    });
+
+    const afterSecondSync = ctx.subscriptionRepository.findById(subscription.id)!;
+    expect(afterSecondSync.activeReleaseId).toBe(activeRelease.id);
+    expect(ctx.subscriptionRepository.listReleases(subscription.id)).toHaveLength(1);
+    expect(
+      ctx.subscriptionService.deliver(subscription.id, token.token, "token", null, null).yamlText
+    ).toBe(deliveredBefore);
+    expect(deliveredBefore).toContain(oldHash);
+    expect(deliveredBefore).not.toContain(newHash);
+  });
+
+  test("当前订阅规则同步校验 owner、catalog 可见性与 latest snapshot", () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "日常",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const otherUserId = createUser(ctx.db, "bob");
+    const invisible = ctx.rulesetRepository.createUserCatalog({
+      id: "rsc_invisible",
+      ownerUserId: otherUserId,
+      slug: "invisible",
+      name: "不可见规则",
+      description: null,
+      sourceUrl: "https://example.invalid/invisible.yaml",
+      behavior: "classical",
+      recommendedTarget: null
+    });
+    const noLatest = ctx.rulesetRepository.createUserCatalog({
+      id: "rsc_no_latest",
+      ownerUserId: ctx.userId,
+      slug: "no-latest",
+      name: "尚无快照",
+      description: null,
+      sourceUrl: "https://example.invalid/no-latest.yaml",
+      behavior: "classical",
+      recommendedTarget: null
+    });
+    const missingSnapshot = ctx.rulesetRepository.createUserCatalog({
+      id: "rsc_missing_snapshot",
+      ownerUserId: ctx.userId,
+      slug: "missing-snapshot",
+      name: "缺失快照",
+      description: null,
+      sourceUrl: "https://example.invalid/missing.yaml",
+      behavior: "classical",
+      recommendedTarget: null
+    });
+    ctx.rulesetRepository.setLatestSnapshot(missingSnapshot.id, "hash_does_not_exist", true);
+
+    const sharedHashCatalog = ctx.rulesetRepository.createUserCatalog({
+      id: "rsc_shared_hash",
+      ownerUserId: ctx.userId,
+      slug: "shared-hash",
+      name: "共享内容快照",
+      description: null,
+      sourceUrl: "https://example.invalid/shared.yaml",
+      behavior: "classical",
+      recommendedTarget: null
+    });
+    const openai = ctx.rulesetService
+      .list(ctx.userId)
+      .find((entry) => entry.slug === "openai")!;
+    ctx.rulesetRepository.setLatestSnapshot(
+      sharedHashCatalog.id,
+      openai.latestSnapshotHash!,
+      true
+    );
+
+    const draft = structuredClone(
+      ctx.subscriptionRepository.findById(subscription.id)!.draftBuildConfig!
+    );
+    const originalCatalogCount = new Set(
+      draft.rules.targets.flatMap((block) =>
+        block.items
+          .filter((item) => item.kind === "snapshot")
+          .map((item) => item.catalogId)
+      )
+    ).size;
+    const openaiBlock = draft.rules.targets.find((block) => block.target === "OpenAI")!;
+    openaiBlock.items.push(
+      {
+        kind: "snapshot",
+        catalogId: invisible.id,
+        slug: invisible.slug,
+        hash: "hash_invisible_current",
+        emit: "provider"
+      },
+      {
+        kind: "snapshot",
+        catalogId: noLatest.id,
+        slug: noLatest.slug,
+        hash: "hash_no_latest_current",
+        emit: "provider"
+      },
+      {
+        kind: "snapshot",
+        catalogId: missingSnapshot.id,
+        slug: missingSnapshot.slug,
+        hash: "hash_missing_current",
+        emit: "provider"
+      },
+      {
+        kind: "snapshot",
+        catalogId: sharedHashCatalog.id,
+        slug: sharedHashCatalog.slug,
+        hash: "hash_shared_current",
+        emit: "provider"
+      }
+    );
+    ctx.subscriptionRepository.saveDraft(subscription.id, draft);
+
+    const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    globalThis.fetch = (async () => {
+      fetchCalls += 1;
+      throw new Error("sync latest 不应抓取远端");
+    }) as typeof fetch;
+    let result: ReturnType<typeof ctx.subscriptionService.syncRulesetsToLatest>;
+    try {
+      result = ctx.subscriptionService.syncRulesetsToLatest(ctx.userId, subscription.id);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(result).toEqual({
+      changes: [
+        {
+          catalogId: sharedHashCatalog.id,
+          slug: sharedHashCatalog.slug,
+          fromHashes: ["hash_shared_current"],
+          toHash: openai.latestSnapshotHash,
+          updatedReferenceCount: 1
+        }
+      ],
+      unchangedCount: originalCatalogCount,
+      skipped: [
+        {
+          catalogId: invisible.id,
+          slug: invisible.slug,
+          reason: "catalog-not-visible"
+        },
+        {
+          catalogId: noLatest.id,
+          slug: noLatest.slug,
+          reason: "latest-snapshot-unavailable"
+        },
+        {
+          catalogId: missingSnapshot.id,
+          slug: missingSnapshot.slug,
+          reason: "latest-snapshot-missing"
+        }
+      ]
+    });
+    expect(fetchCalls).toBe(0);
+    const syncedSharedItem = ctx.subscriptionRepository
+      .findById(subscription.id)!
+      .draftBuildConfig!.rules.targets.flatMap((block) => block.items)
+      .find(
+        (item) => item.kind === "snapshot" && item.catalogId === sharedHashCatalog.id
+      );
+    expect(syncedSharedItem?.hash).toBe(openai.latestSnapshotHash);
+
+    try {
+      ctx.subscriptionService.syncRulesetsToLatest(otherUserId, subscription.id);
+      throw new Error("expected owner validation to fail");
+    } catch (error) {
+      expect(error).toBeInstanceOf(SubscriptionError);
+      expect((error as SubscriptionError).status).toBe(404);
+    }
+  });
+
   test("粘贴规则解析：去重、剥离目标、拒绝非法类型", () => {
     const ctx = createTestContext();
     const report = ctx.rulesetService.parsePaste(
@@ -545,6 +827,15 @@ describe("规则追踪器", () => {
     );
     expect(anthropicCdn.verdict).toBe("hit");
     expect(anthropicCdn.target).toBe("Anthropic");
+
+    const claudePlatform = ctx.subscriptionService.trace(
+      ctx.userId,
+      subscription.id,
+      "platform.claude.com",
+      false
+    );
+    expect(claudePlatform.verdict).toBe("hit");
+    expect(claudePlatform.target).toBe("Anthropic");
 
     // router.asus.com 命中 Lan 规则组，直连
     const direct = ctx.subscriptionService.trace(

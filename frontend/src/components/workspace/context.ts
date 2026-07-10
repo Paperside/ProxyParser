@@ -2,7 +2,11 @@ import { createContext, useContext } from "react";
 
 import type { BuildConfig } from "../../lib/build-config-types";
 import { REGION_CODES } from "../../lib/regions";
-import type { PreviewResult, SubscriptionDetail } from "../../lib/types";
+import type {
+  PreviewResult,
+  SubscriptionDetail,
+  SyncLatestRulesetsResult
+} from "../../lib/types";
 
 // 订阅工作台上下文：
 // config 是当前编辑中的 BuildConfig（草稿 ?? 已发布），
@@ -13,6 +17,8 @@ export interface WorkspaceContextValue {
   config: BuildConfig;
   update: (mutator: (draft: BuildConfig) => void) => void;
   saving: boolean;
+  syncingRulesets: boolean;
+  syncLatestRulesets: () => Promise<SyncLatestRulesetsResult>;
   preview: PreviewResult | null;
   previewLoading: boolean;
   refreshPreview: () => void;

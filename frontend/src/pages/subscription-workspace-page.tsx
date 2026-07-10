@@ -135,6 +135,7 @@ export const SubscriptionWorkspacePage = () => {
   // 本地编辑副本 + 防抖保存
   const [config, setConfig] = useState<BuildConfig | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [syncingRulesets, setSyncingRulesets] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedFor = useRef<string | null>(null);
 
@@ -150,6 +151,7 @@ export const SubscriptionWorkspacePage = () => {
   }, [detail.data, subscriptionId]);
 
   const update = (mutator: (draft: BuildConfig) => void) => {
+    if (syncingRulesets) return;
     setConfig((current) => {
       if (!current) return current;
       const next = JSON.parse(JSON.stringify(current)) as BuildConfig;
@@ -166,6 +168,31 @@ export const SubscriptionWorkspacePage = () => {
       }, 600);
       return next;
     });
+  };
+
+  const syncLatestRulesets = async () => {
+    if (dirty || mutations.saveDraft.isPending) {
+      throw new Error("请先等待当前草稿保存完成。");
+    }
+    setSyncingRulesets(true);
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    try {
+      const result = await mutations.syncLatestRulesets.mutateAsync();
+      setDirty(false);
+      const refreshed = await detail.refetch();
+      const serverConfig = refreshed.data?.draftBuildConfig ?? refreshed.data?.buildConfig;
+      if (!serverConfig) {
+        throw new Error("规则快照已同步，但重新载入草稿失败，请刷新页面。");
+      }
+      setConfig(JSON.parse(JSON.stringify(serverConfig)) as BuildConfig);
+      loadedFor.current = subscriptionId;
+      return result;
+    } finally {
+      setSyncingRulesets(false);
+    }
   };
 
   const preview = usePreview(subscriptionId, config !== null && !dirty);
@@ -185,6 +212,8 @@ export const SubscriptionWorkspacePage = () => {
     config,
     update,
     saving: dirty || mutations.saveDraft.isPending,
+    syncingRulesets,
+    syncLatestRulesets,
     preview: preview.data ?? null,
     previewLoading: preview.isFetching,
     refreshPreview: () => void preview.refetch(),
@@ -211,12 +240,17 @@ export const SubscriptionWorkspacePage = () => {
           <Badge variant="warn">未发布</Badge>
         )}
         {detail.data.hasDraft || dirty ? <Badge variant="warn">有未发布修改</Badge> : null}
-        {value.saving ? <span className="text-[11px] text-faint">保存中…</span> : null}
+        {syncingRulesets ? (
+          <span className="text-[11px] text-faint">同步规则快照…</span>
+        ) : value.saving ? (
+          <span className="text-[11px] text-faint">保存中…</span>
+        ) : null}
         <div className="ml-auto flex items-center gap-2">
           {detail.data.hasDraft && detail.data.buildConfig ? (
             <Button
               size="sm"
               variant="ghost"
+              disabled={syncingRulesets}
               onClick={() => {
                 if (confirm("放弃全部未发布修改，回到已发布配置？")) {
                   void mutations.discardDraft.mutateAsync().then(() => {
@@ -229,7 +263,11 @@ export const SubscriptionWorkspacePage = () => {
               放弃修改
             </Button>
           ) : null}
-          <Button variant="primary" onClick={() => setShowPublish(true)}>
+          <Button
+            variant="primary"
+            disabled={syncingRulesets}
+            onClick={() => setShowPublish(true)}
+          >
             预览并发布
           </Button>
         </div>
@@ -261,7 +299,13 @@ export const SubscriptionWorkspacePage = () => {
           ))}
         </nav>
 
-        <main className="min-w-0 px-6 py-5">
+        <main
+          aria-busy={syncingRulesets}
+          className={cn(
+            "min-w-0 px-6 py-5 transition-opacity",
+            syncingRulesets && "pointer-events-none opacity-60"
+          )}
+        >
           {tab === "overview" ? <OverviewTab /> : null}
           {tab === "nodes" ? <NodesTab /> : null}
           {tab === "groups" ? <GroupsTab /> : null}

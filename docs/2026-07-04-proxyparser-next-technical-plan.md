@@ -164,6 +164,8 @@ URL 源同步成功后生成节点增删、改名和凭据变化报告，并回�
 3. 新 hash 只创建新快照并置 `update_available`，不修改订阅。
 4. 用户查看快照 diff 并确认后，批量替换所选订阅草稿中的 hash，再走正常发布流程。
 
+订阅工作台规则区还提供 `POST /api/subscriptions/:id/rulesets/sync-latest` 一键入口：服务端按唯一 catalog 将当前配置已有的 snapshot 引用对齐到规则库的 `latest_snapshot_hash`，保留目标、顺序、emit 方式及其他草稿修改。该操作不抓取远端、不新增规则、不清更新徽章且不发布；同步期间工作台锁定编辑，完成后重新载入服务端草稿，仍需用户预览并显式发布。
+
 公开快照可由 `/rs/*` 托管；私有快照只能 inline，避免内容泄露。粘贴规则接口只解析、去重和报告，不直接落库，前端确认后才写 BuildConfig。
 
 更新仓库内全部离线副本使用 `bun backend/scripts/fetch-rulesets.ts`；也可追加 slug（例如 `chinamax anthropic`）只更新指定规则集。该脚本根据 manifest 合并 domain/classical 来源及 `extraRules`，再生成规范化 YAML。
@@ -230,7 +232,7 @@ mihomo -t -f <config> -d <temp-dir>
 |---|---|
 | 认证 | `/api/auth/*`, `/api/me`：注册、登录、刷新、退出、资料 |
 | 订阅源 | `/api/sources/*`：URL/上传源 CRUD、同步、同步报告 |
-| 订阅 | `/api/subscriptions/*`：CRUD、草稿、预览、发布、回滚、版本、追踪、问题、访问 |
+| 订阅 | `/api/subscriptions/*`：CRUD、草稿、规则快照同步、预览、发布、回滚、版本、追踪、问题、访问 |
 | 自建节点 secrets | `/api/secrets/*`：按协议拆分/加密字段、owner 校验后的编辑回显 |
 | 规则库 | `/api/rulesets/*`：目录、导入、快照、更新、diff、解析、应用更新 |
 | 模板 | `/api/templates/*`：列表、提炼预览、保存、实例化、元数据、删除 |
@@ -241,7 +243,7 @@ API 的精确请求体和响应体以各模块 `routes.ts` 及 Swagger `/swagger
 
 ## 16. 验证与变更检查
 
-当前自动化基线为 57 个后端测试，覆盖稳定 ID、BuildConfig 校验、确定性/golden 渲染、发布与回滚、断网交付、上游自动/确认吸收、规则更新与后处理、追踪、模板往返、token 生命周期、secrets 拆分、规则更新工具及运行时持久化路径。
+当前自动化基线为 59 个后端测试，覆盖稳定 ID、BuildConfig 校验、确定性/golden 渲染、发布与回滚、断网交付、上游自动/确认吸收、规则更新与后处理、订阅级 latest 快照同步、追踪、模板往返、token 生命周期、secrets 拆分、规则更新工具及运行时持久化路径。
 
 提交前至少运行：
 

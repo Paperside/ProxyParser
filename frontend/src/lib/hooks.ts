@@ -18,6 +18,7 @@ import type {
   SourceSummary,
   SubscriptionDetail,
   SubscriptionSummary,
+  SyncLatestRulesetsResult,
   SyncReport,
   TemplateDetail,
   TemplateSummary,
@@ -168,6 +169,22 @@ export const useSubscriptionMutations = (id?: string) => {
           method: "POST"
         }),
       onSuccess: invalidate
+    }),
+    syncLatestRulesets: useMutation({
+      mutationFn: () => {
+        if (!id) throw new Error("缺少订阅 ID");
+        return authorizedRequest<SyncLatestRulesetsResult>(
+          `/api/subscriptions/${id}/rulesets/sync-latest`,
+          { method: "POST" }
+        );
+      },
+      onSuccess: async () => {
+        if (!id) return;
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: keys.subscriptions, exact: true }),
+          qc.invalidateQueries({ queryKey: keys.subscription(id) })
+        ]);
+      }
     }),
     rollback: useMutation({
       mutationFn: (releaseId: string) =>

@@ -58,6 +58,22 @@ export interface SubscriptionServiceOptions {
   tempTokenTtlSeconds?: number;
 }
 
+export interface SyncLatestRulesetsResult {
+  changes: Array<{
+    catalogId: string;
+    slug: string;
+    fromHashes: string[];
+    toHash: string;
+    updatedReferenceCount: number;
+  }>;
+  unchangedCount: number;
+  skipped: Array<{
+    catalogId: string;
+    slug: string;
+    reason: string;
+  }>;
+}
+
 const sha256Hex = (input: string) => createHash("sha256").update(input).digest("hex");
 
 const blankBuildConfig = (sourceIds: string[], mode: "rebuild" | "patch"): BuildConfig => ({
@@ -779,6 +795,88 @@ export class SubscriptionService {
   }
 
   // ── 规则源更新应用（技术方案 §8） ─────────────────────────────
+
+  syncRulesetsToLatest(ownerUserId: string, id: string): SyncLatestRulesetsResult {
+    const record = this.requireOwned(ownerUserId, id);
+    const sourceConfig = record.draftBuildConfig ?? record.buildConfig;
+    if (!sourceConfig) {
+      throw new SubscriptionError("尚无构建配置，无法同步规则。", 409);
+    }
+
+    const config = structuredClone(sourceConfig);
+    const itemsByCatalog = new Map<
+      string,
+      Array<Extract<BuildConfig["rules"]["targets"][number]["items"][number], { kind: "snapshot" }>>
+    >();
+    for (const block of config.rules.targets) {
+      for (const item of block.items) {
+        if (item.kind !== "snapshot") continue;
+        const items = itemsByCatalog.get(item.catalogId) ?? [];
+        items.push(item);
+        itemsByCatalog.set(item.catalogId, items);
+      }
+    }
+
+    const result: SyncLatestRulesetsResult = {
+      changes: [],
+      unchangedCount: 0,
+      skipped: []
+    };
+
+    for (const [catalogId, items] of itemsByCatalog) {
+      const referencedSlug = items[0]!.slug;
+      const catalog = this.rulesetRepository.findById(catalogId);
+      if (!catalog || (catalog.ownerUserId !== null && catalog.ownerUserId !== ownerUserId)) {
+        result.skipped.push({
+          catalogId,
+          slug: referencedSlug,
+          reason: "catalog-not-visible"
+        });
+        continue;
+      }
+
+      const toHash = catalog.latestSnapshotHash;
+      if (!toHash) {
+        result.skipped.push({
+          catalogId,
+          slug: catalog.slug,
+          reason: "latest-snapshot-unavailable"
+        });
+        continue;
+      }
+      const latestSnapshot = this.rulesetRepository.findSnapshot(toHash);
+      if (!latestSnapshot) {
+        result.skipped.push({
+          catalogId,
+          slug: catalog.slug,
+          reason: "latest-snapshot-missing"
+        });
+        continue;
+      }
+
+      const changedItems = items.filter((item) => item.hash !== toHash);
+      if (changedItems.length === 0) {
+        result.unchangedCount += 1;
+        continue;
+      }
+
+      result.changes.push({
+        catalogId,
+        slug: catalog.slug,
+        fromHashes: [...new Set(changedItems.map((item) => item.hash))],
+        toHash,
+        updatedReferenceCount: changedItems.length
+      });
+      for (const item of items) {
+        item.hash = toHash;
+      }
+    }
+
+    if (result.changes.length > 0) {
+      this.saveDraft(ownerUserId, id, config);
+    }
+    return result;
+  }
 
   applyRulesetUpdate(
     ownerUserId: string,
