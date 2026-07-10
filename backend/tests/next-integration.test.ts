@@ -6,7 +6,10 @@ import { resolve } from "node:path";
 
 import yaml from "js-yaml";
 
-import { seedBuiltinRulesetCatalog } from "../src/lib/db/seed-ruleset-catalog";
+import {
+  loadBuiltinRulesetManifest,
+  seedBuiltinRulesetCatalog
+} from "../src/lib/db/seed-ruleset-catalog";
 import {
   RECOMMENDED_TEMPLATE_ID,
   seedBuiltinTemplates
@@ -167,6 +170,8 @@ describe("发布管线", () => {
     expect(Object.values(providers).every((p) => p.url.startsWith("https://pp.test/rs/"))).toBe(
       true
     );
+    expect(doc.rules).toContain("RULE-SET,anthropic,Anthropic");
+    expect(doc.rules).toContain("RULE-SET,chinamax,ChinaMax");
     // 发布后健康转绿
     expect(ctx.subscriptionRepository.findById(subscription.id)!.health).toBe("ok");
   });
@@ -420,6 +425,39 @@ describe("规则库", () => {
     expect(snapshot?.content).toContain("openai");
   });
 
+  test("内置规则后处理补齐 ChinaMax GEOIP 与 Anthropic 官网 CDN", () => {
+    const ctx = createTestContext();
+    const manifest = loadBuiltinRulesetManifest();
+    const payloadBySlug = new Map<string, string[]>();
+    const expectedBySlug = new Map([
+      ["chinamax", "GEOIP,CN,no-resolve"],
+      ["anthropic", "DOMAIN,servd-anthropic-website.b-cdn.net"]
+    ]);
+
+    for (const [slug, expectedRule] of expectedBySlug) {
+      const manifestEntry = manifest.find((entry) => entry.slug === slug);
+      expect(manifestEntry?.extraRules).toContain(expectedRule);
+
+      const catalog = ctx.rulesetService.list(ctx.userId).find((entry) => entry.slug === slug);
+      expect(catalog?.latestSnapshotHash).toBeTruthy();
+      const snapshot = ctx.rulesetService.getPublicSnapshot(catalog!.latestSnapshotHash!);
+      const parsed = yaml.load(snapshot!.content) as { payload: string[] };
+      payloadBySlug.set(slug, parsed.payload);
+      expect(parsed.payload).toContain(expectedRule);
+    }
+
+    const chinaMaxManifest = manifest.find((entry) => entry.slug === "chinamax")!;
+    expect(chinaMaxManifest.sources).toEqual([
+      {
+        kind: "classical",
+        url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMax/ChinaMax_Classical_No_Resolve.yaml"
+      }
+    ]);
+    const chinaMaxPayload = payloadBySlug.get("chinamax")!;
+    expect(chinaMaxPayload.some((rule) => rule.startsWith("IP-CIDR,") && rule.endsWith(",no-resolve"))).toBe(true);
+    expect(chinaMaxPayload.some((rule) => rule.startsWith("IP-CIDR6,") && rule.endsWith(",no-resolve"))).toBe(true);
+  });
+
   test("规则源更新：新快照 + 徽章 + 应用到订阅草稿", async () => {
     const ctx = createTestContext();
     const { subscription } = ctx.subscriptionService.create(ctx.userId, {
@@ -499,6 +537,15 @@ describe("规则追踪器", () => {
     expect(hit.target).toBe("OpenAI");
     expect(hit.matched?.ruleText).toContain("RULE-SET,openai");
 
+    const anthropicCdn = ctx.subscriptionService.trace(
+      ctx.userId,
+      subscription.id,
+      "servd-anthropic-website.b-cdn.net",
+      false
+    );
+    expect(anthropicCdn.verdict).toBe("hit");
+    expect(anthropicCdn.target).toBe("Anthropic");
+
     // router.asus.com 命中 Lan 规则组，直连
     const direct = ctx.subscriptionService.trace(
       ctx.userId,
@@ -513,6 +560,9 @@ describe("规则追踪器", () => {
     const fallback = ctx.subscriptionService.trace(ctx.userId, subscription.id, "8.8.8.8", false);
     expect(fallback.verdict).toBe("final");
     expect(fallback.target).toBe("Proxies");
+    expect(fallback.maybeNotes.some((note) => note.includes("GEOIP,CN,no-resolve"))).toBe(
+      true
+    );
   });
 });
 

@@ -166,7 +166,7 @@ URL 源同步成功后生成节点增删、改名和凭据变化报告，并回�
 
 公开快照可由 `/rs/*` 托管；私有快照只能 inline，避免内容泄露。粘贴规则接口只解析、去重和报告，不直接落库，前端确认后才写 BuildConfig。
 
-更新仓库内离线副本使用 `bun backend/scripts/fetch-rulesets.ts`。该脚本根据 manifest 合并 domain/classical 来源及 `extraRules`，再生成规范化 YAML。
+更新仓库内全部离线副本使用 `bun backend/scripts/fetch-rulesets.ts`；也可追加 slug（例如 `chinamax anthropic`）只更新指定规则集。该脚本根据 manifest 合并 domain/classical 来源及 `extraRules`，再生成规范化 YAML。
 
 ## 9. 后台调度与事件
 
@@ -181,7 +181,7 @@ URL 源同步成功后生成节点增删、改名和凭据变化报告，并回�
 
 ## 10. 规则追踪器
 
-`POST /api/subscriptions/:id/trace` 可针对草稿或已发布 BuildConfig 求值后逐条追踪域名/IP。当前精确处理 DOMAIN、DOMAIN-SUFFIX、DOMAIN-KEYWORD、IPv4 CIDR、RULE-SET 与 MATCH；IPv6 CIDR 不做精确匹配，GEOSITE/GEOIP 返回 `maybe` 并说明结果取决于客户端 geodata。
+`POST /api/subscriptions/:id/trace` 可针对草稿或已发布 BuildConfig 求值后逐条追踪域名/IP。当前精确处理 DOMAIN、DOMAIN-SUFFIX、DOMAIN-KEYWORD、IPv4 CIDR、RULE-SET 与 MATCH；IPv6 CIDR 不做精确匹配，GEOSITE/GEOIP/IP-ASN 返回 `maybe` 说明并继续匹配后续规则。
 
 响应包含命中规则、RULE-SET 内部命中项、目标、代理组第一成员链和保守判断说明。
 
@@ -241,7 +241,7 @@ API 的精确请求体和响应体以各模块 `routes.ts` 及 Swagger `/swagger
 
 ## 16. 验证与变更检查
 
-当前自动化基线为 54 个后端测试，覆盖稳定 ID、BuildConfig 校验、确定性/golden 渲染、发布与回滚、断网交付、上游自动/确认吸收、规则更新、追踪、模板往返、token 生命周期、secrets 拆分及运行时持久化路径。
+当前自动化基线为 57 个后端测试，覆盖稳定 ID、BuildConfig 校验、确定性/golden 渲染、发布与回滚、断网交付、上游自动/确认吸收、规则更新与后处理、追踪、模板往返、token 生命周期、secrets 拆分、规则更新工具及运行时持久化路径。
 
 提交前至少运行：
 
