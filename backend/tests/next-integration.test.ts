@@ -22,7 +22,10 @@ import { EventRepository } from "../src/modules/events/event.repository";
 import { RulesetRepository } from "../src/modules/rulesets/ruleset.repository";
 import { RulesetService } from "../src/modules/rulesets/ruleset.service";
 import { SecretStore } from "../src/modules/subscriptions/secret-store";
-import { SubscriptionRepository } from "../src/modules/subscriptions/subscription.repository";
+import {
+  DraftRevisionConflictError,
+  SubscriptionRepository
+} from "../src/modules/subscriptions/subscription.repository";
 import {
   SubscriptionError,
   SubscriptionService
@@ -225,6 +228,161 @@ describe("发布管线", () => {
     expect(ctx.subscriptionRepository.findById(subscription.id)!.health).not.toBe("ok");
   });
 
+  test("草稿 revision 拒绝过期的整份配置覆盖", () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "并发保护",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const initial = ctx.subscriptionService.getDetail(ctx.userId, subscription.id);
+    const acceptedDraft = structuredClone(initial.draftBuildConfig!);
+    acceptedDraft.config.structured.logLevel = "debug";
+    const accepted = ctx.subscriptionService.saveDraft(
+      ctx.userId,
+      subscription.id,
+      acceptedDraft,
+      initial.draftRevision
+    );
+    expect(accepted.draftRevision).toBe(initial.draftRevision + 1);
+
+    const staleDraft = structuredClone(initial.draftBuildConfig!);
+    staleDraft.config.structured.logLevel = "error";
+    expect(() =>
+      ctx.subscriptionService.saveDraft(
+        ctx.userId,
+        subscription.id,
+        staleDraft,
+        initial.draftRevision
+      )
+    ).toThrow("草稿已在其他页面或操作中更新");
+
+    const current = ctx.subscriptionService.getDetail(ctx.userId, subscription.id);
+    expect(current.draftRevision).toBe(accepted.draftRevision);
+    expect(current.draftBuildConfig?.config.structured.logLevel).toBe("debug");
+
+    expect(() =>
+      ctx.subscriptionService.publish(ctx.userId, subscription.id, {
+        trigger: "manual",
+        expectedDraftRevision: initial.draftRevision
+      })
+    ).toThrow("请重新预览");
+
+    expect(() =>
+      ctx.subscriptionService.discardDraft(
+        ctx.userId,
+        subscription.id,
+        initial.draftRevision
+      )
+    ).toThrow("无法放弃较新的内容");
+    const discarded = ctx.subscriptionService.discardDraft(
+      ctx.userId,
+      subscription.id,
+      current.draftRevision
+    );
+    expect(discarded.draftRevision).toBe(current.draftRevision + 1);
+    expect(discarded.draftBuildConfig).toBeNull();
+  });
+
+  test("草稿期间同时跟踪已发布与草稿订阅源", () => {
+    const ctx = createTestContext();
+    const sourceB = ctx.sourceService.createFromUpload(ctx.userId, {
+      displayName: "备用机场",
+      yamlContent: sourceYaml(defaultNodes)
+    });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "索引一致性",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    ctx.subscriptionService.publish(ctx.userId, subscription.id, { trigger: "manual" });
+
+    const published = ctx.subscriptionService.getDetail(ctx.userId, subscription.id);
+    const draftForB = structuredClone(published.buildConfig!);
+    draftForB.sources = [{ sourceId: sourceB.id, enabled: true }];
+    const savedForB = ctx.subscriptionService.saveDraft(
+      ctx.userId,
+      subscription.id,
+      draftForB,
+      published.draftRevision
+    );
+    expect(
+      ctx.subscriptionRepository.listBySource(ctx.source.id).some((item) => item.id === subscription.id)
+    ).toBe(true);
+    expect(
+      ctx.subscriptionRepository.listBySource(sourceB.id).some((item) => item.id === subscription.id)
+    ).toBe(true);
+
+    const discarded = ctx.subscriptionService.discardDraft(
+      ctx.userId,
+      subscription.id,
+      savedForB.draftRevision
+    );
+    expect(discarded.draftBuildConfig).toBeNull();
+    expect(
+      ctx.subscriptionRepository.listBySource(ctx.source.id).some((item) => item.id === subscription.id)
+    ).toBe(true);
+    expect(
+      ctx.subscriptionRepository.listBySource(sourceB.id).some((item) => item.id === subscription.id)
+    ).toBe(false);
+
+    const savedForBAgain = ctx.subscriptionService.saveDraft(
+      ctx.userId,
+      subscription.id,
+      draftForB,
+      discarded.draftRevision
+    );
+    const returnedToPublished = ctx.subscriptionService.saveDraft(
+      ctx.userId,
+      subscription.id,
+      structuredClone(published.buildConfig!),
+      savedForBAgain.draftRevision
+    );
+    expect(returnedToPublished.draftBuildConfig).toBeNull();
+    expect(
+      ctx.subscriptionRepository.listBySource(ctx.source.id).some((item) => item.id === subscription.id)
+    ).toBe(true);
+    expect(
+      ctx.subscriptionRepository.listBySource(sourceB.id).some((item) => item.id === subscription.id)
+    ).toBe(false);
+  });
+
+  test("发布激活在数据库内 CAS，过期 revision 不留下孤立 release", () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "发布 CAS",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const v1 = ctx.subscriptionService.publish(ctx.userId, subscription.id, {
+      trigger: "manual"
+    });
+    const v1Detail = ctx.subscriptionRepository.findReleaseById(v1.id)!;
+    const expectedDraftRevision = ctx.subscriptionRepository.findById(subscription.id)!.draftRevision;
+    const releaseInput = {
+      subscriptionId: subscription.id,
+      buildConfig: v1Detail.buildConfig,
+      sourceSnapshotIds: v1Detail.sourceSnapshotIds,
+      renderedYaml: v1Detail.renderedYaml,
+      renderedHash: v1Detail.renderedHash,
+      diffSummary: {},
+      trigger: "manual" as const,
+      triggerDetail: "CAS test",
+      validation: v1Detail.validation,
+      createdBy: ctx.userId,
+      expectedDraftRevision
+    };
+
+    const v2 = ctx.subscriptionRepository.createRelease(releaseInput);
+    expect(v2.seq).toBe(2);
+    expect(() => ctx.subscriptionRepository.createRelease(releaseInput)).toThrow(
+      DraftRevisionConflictError
+    );
+    const releases = ctx.subscriptionRepository.listReleases(subscription.id);
+    expect(releases.map((release) => release.seq)).toEqual([2, 1]);
+    expect(ctx.subscriptionRepository.findById(subscription.id)!.activeReleaseId).toBe(v2.id);
+  });
+
   test("回滚生成新版本且内容与目标版本一致", () => {
     const ctx = createTestContext();
     const { subscription } = ctx.subscriptionService.create(ctx.userId, {
@@ -243,7 +401,40 @@ describe("发布管线", () => {
     expect(v2.seq).toBe(2);
     expect(v2.renderedHash).not.toBe(v1.renderedHash);
 
-    const v3 = ctx.subscriptionService.rollback(ctx.userId, subscription.id, v1.id);
+    const beforeRollback = ctx.subscriptionService.getDetail(ctx.userId, subscription.id);
+    const rollbackDraft = structuredClone(beforeRollback.buildConfig!);
+    rollbackDraft.config.structured.logLevel = "warning";
+    const savedRollbackDraft = ctx.subscriptionService.saveDraft(
+      ctx.userId,
+      subscription.id,
+      rollbackDraft,
+      beforeRollback.draftRevision
+    );
+    expect(() =>
+      ctx.subscriptionService.rollback(
+        ctx.userId,
+        subscription.id,
+        v1.id,
+        savedRollbackDraft.draftRevision
+      )
+    ).toThrow("请先发布或放弃草稿");
+    const afterBlockedRollback = ctx.subscriptionService.getDetail(
+      ctx.userId,
+      subscription.id
+    );
+    expect(afterBlockedRollback.draftBuildConfig?.config.structured.logLevel).toBe("warning");
+
+    const discardedRollbackDraft = ctx.subscriptionService.discardDraft(
+      ctx.userId,
+      subscription.id,
+      afterBlockedRollback.draftRevision
+    );
+    const v3 = ctx.subscriptionService.rollback(
+      ctx.userId,
+      subscription.id,
+      v1.id,
+      discardedRollbackDraft.draftRevision
+    );
     expect(v3.seq).toBe(3);
     expect(v3.renderedHash).toBe(v1.renderedHash);
     expect(ctx.subscriptionRepository.findById(subscription.id)!.activeReleaseId).toBe(v3.id);
@@ -411,6 +602,102 @@ describe("上游吸收", () => {
     expect(record.pendingUpstreamChange).toBe(true);
     expect(ctx.subscriptionRepository.listReleases(subscription.id).length).toBe(1);
   });
+
+  test("预览后上游快照变化时拒绝发布未确认的渲染结果", async () => {
+    const ctx = createTestContext();
+    let servedNodes = defaultNodes;
+    globalThis.fetch = (async () =>
+      new Response(sourceYaml(servedNodes), { status: 200 })) as unknown as typeof fetch;
+
+    const urlSource = await ctx.sourceService.create(ctx.userId, {
+      displayName: "预览门禁源",
+      sourceUrl: "https://preview-gate.test/sub"
+    });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "预览门禁",
+      sourceIds: [urlSource.id],
+      start: { kind: "recommended" }
+    });
+    ctx.subscriptionService.publish(ctx.userId, subscription.id, { trigger: "manual" });
+    ctx.subscriptionService.updateMeta(ctx.userId, subscription.id, { publishPolicy: "confirm" });
+
+    const preview = ctx.subscriptionService.preview(ctx.userId, subscription.id);
+    servedNodes = [
+      ...defaultNodes,
+      {
+        name: "JP-Preview",
+        type: "ss",
+        server: "jp-preview.test",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "preview"
+      }
+    ];
+    await ctx.sourceService.sync(urlSource.id);
+
+    expect(() =>
+      ctx.subscriptionService.publish(ctx.userId, subscription.id, {
+        trigger: "manual",
+        expectedDraftRevision: preview.draftRevision,
+        expectedRenderedHash: preview.renderedHash
+      })
+    ).toThrow("请重新预览");
+    expect(ctx.subscriptionRepository.listReleases(subscription.id)).toHaveLength(1);
+
+    const refreshedPreview = ctx.subscriptionService.preview(ctx.userId, subscription.id);
+    const release = ctx.subscriptionService.publish(ctx.userId, subscription.id, {
+      trigger: "manual",
+      expectedDraftRevision: refreshedPreview.draftRevision,
+      expectedRenderedHash: refreshedPreview.renderedHash
+    });
+    expect(release.renderedYaml).toContain("JP-Preview");
+  });
+
+  test("auto 策略遇到未发布草稿时只标记变化，不夹带草稿发布", async () => {
+    const ctx = createTestContext();
+    let servedNodes = defaultNodes;
+    globalThis.fetch = (async () =>
+      new Response(sourceYaml(servedNodes), { status: 200 })) as unknown as typeof fetch;
+
+    const urlSource = await ctx.sourceService.create(ctx.userId, {
+      displayName: "草稿保护源",
+      sourceUrl: "https://draft-guard.test/sub"
+    });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "草稿保护",
+      sourceIds: [urlSource.id],
+      start: { kind: "recommended" }
+    });
+    ctx.subscriptionService.publish(ctx.userId, subscription.id, { trigger: "manual" });
+    const beforeDraft = ctx.subscriptionService.getDetail(ctx.userId, subscription.id);
+    const draft = structuredClone(beforeDraft.buildConfig!);
+    draft.config.structured.logLevel = "debug";
+    ctx.subscriptionService.saveDraft(
+      ctx.userId,
+      subscription.id,
+      draft,
+      beforeDraft.draftRevision
+    );
+
+    servedNodes = [
+      ...defaultNodes,
+      {
+        name: "SG-Draft",
+        type: "ss",
+        server: "sg-draft.test",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "draft"
+      }
+    ];
+    await ctx.sourceService.sync(urlSource.id);
+
+    const afterSync = ctx.subscriptionRepository.findById(subscription.id)!;
+    expect(ctx.subscriptionRepository.listReleases(subscription.id)).toHaveLength(1);
+    expect(afterSync.pendingUpstreamChange).toBe(true);
+    expect(afterSync.draftBuildConfig?.config.structured.logLevel).toBe("debug");
+    expect(afterSync.buildConfig?.config.structured.logLevel).not.toBe("debug");
+  });
 });
 
 // ── 规则库 ───────────────────────────────────────────────────
@@ -569,7 +856,12 @@ describe("规则库", () => {
     const applied = ctx.subscriptionService.applyRulesetUpdate(ctx.userId, {
       catalogId: openai.id,
       toHash: result.newHash!,
-      subscriptionIds: [subscription.id]
+      subscriptions: [
+        {
+          id: subscription.id,
+          expectedDraftRevision: ctx.subscriptionRepository.findById(subscription.id)!.draftRevision
+        }
+      ]
     });
     expect(applied[0]!.changed).toBe(true);
     const release = ctx.subscriptionService.publish(ctx.userId, subscription.id, {
@@ -601,6 +893,7 @@ describe("规则库", () => {
       .list(ctx.userId)
       .find((entry) => entry.slug === "openai")!;
     const oldHash = openai.latestSnapshotHash!;
+    const revisionBeforeDraft = ctx.subscriptionRepository.findById(subscription.id)!.draftRevision;
     const draft = structuredClone(
       ctx.subscriptionRepository.findById(subscription.id)!.buildConfig!
     );
@@ -633,6 +926,14 @@ describe("规则库", () => {
     });
     ctx.rulesetRepository.setLatestSnapshot(openai.id, newHash, true);
 
+    expect(() =>
+      ctx.subscriptionService.syncRulesetsToLatest(
+        ctx.userId,
+        subscription.id,
+        revisionBeforeDraft
+      )
+    ).toThrow("请重新载入后再同步规则");
+
     const uniqueCatalogCount = new Set(
       draft.rules.targets.flatMap((block) =>
         block.items
@@ -640,9 +941,18 @@ describe("规则库", () => {
           .map((item) => item.catalogId)
       )
     ).size;
-    const synced = ctx.subscriptionService.syncRulesetsToLatest(ctx.userId, subscription.id);
+    const synced = ctx.subscriptionService.syncRulesetsToLatest(
+      ctx.userId,
+      subscription.id,
+      ctx.subscriptionRepository.findById(subscription.id)!.draftRevision
+    );
+    const {
+      buildConfig: syncedBuildConfig,
+      draftRevision: syncedDraftRevision,
+      ...syncedSummary
+    } = synced;
 
-    expect(synced).toEqual({
+    expect(syncedSummary).toEqual({
       changes: [
         {
           catalogId: openai.id,
@@ -657,6 +967,8 @@ describe("规则库", () => {
     });
 
     const afterSync = ctx.subscriptionRepository.findById(subscription.id)!;
+    expect(syncedBuildConfig).toEqual(afterSync.draftBuildConfig);
+    expect(syncedDraftRevision).toBe(afterSync.draftRevision);
     const syncedOpenAiItems = afterSync.draftBuildConfig!.rules.targets
       .flatMap((block) => block.items)
       .filter((item) => item.kind === "snapshot" && item.catalogId === openai.id);
@@ -671,12 +983,23 @@ describe("规则库", () => {
         .find((item) => item.kind === "snapshot" && item.catalogId === openai.id)?.hash
     ).toBe(oldHash);
 
-    const unchanged = ctx.subscriptionService.syncRulesetsToLatest(ctx.userId, subscription.id);
-    expect(unchanged).toEqual({
+    const unchanged = ctx.subscriptionService.syncRulesetsToLatest(
+      ctx.userId,
+      subscription.id,
+      afterSync.draftRevision
+    );
+    const {
+      buildConfig: unchangedBuildConfig,
+      draftRevision: unchangedDraftRevision,
+      ...unchangedSummary
+    } = unchanged;
+    expect(unchangedSummary).toEqual({
       changes: [],
       unchangedCount: uniqueCatalogCount,
       skipped: []
     });
+    expect(unchangedBuildConfig).toEqual(afterSync.draftBuildConfig);
+    expect(unchangedDraftRevision).toBe(afterSync.draftRevision);
 
     const afterSecondSync = ctx.subscriptionRepository.findById(subscription.id)!;
     expect(afterSecondSync.activeReleaseId).toBe(activeRelease.id);
@@ -798,12 +1121,21 @@ describe("规则库", () => {
     }) as typeof fetch;
     let result: ReturnType<typeof ctx.subscriptionService.syncRulesetsToLatest>;
     try {
-      result = ctx.subscriptionService.syncRulesetsToLatest(ctx.userId, subscription.id);
+      result = ctx.subscriptionService.syncRulesetsToLatest(
+        ctx.userId,
+        subscription.id,
+        ctx.subscriptionRepository.findById(subscription.id)!.draftRevision
+      );
     } finally {
       globalThis.fetch = originalFetch;
     }
 
-    expect(result).toEqual({
+    const {
+      buildConfig: syncedBuildConfig,
+      draftRevision: syncedDraftRevision,
+      ...resultSummary
+    } = result;
+    expect(resultSummary).toEqual({
       changes: [
         {
           catalogId: sharedHashCatalog.id,
@@ -840,9 +1172,15 @@ describe("规则库", () => {
         (item) => item.kind === "snapshot" && item.catalogId === sharedHashCatalog.id
       );
     expect(syncedSharedItem?.hash).toBe(openai.latestSnapshotHash);
+    expect(syncedBuildConfig).toEqual(
+      ctx.subscriptionRepository.findById(subscription.id)!.draftBuildConfig
+    );
+    expect(syncedDraftRevision).toBe(
+      ctx.subscriptionRepository.findById(subscription.id)!.draftRevision
+    );
 
     try {
-      ctx.subscriptionService.syncRulesetsToLatest(otherUserId, subscription.id);
+      ctx.subscriptionService.syncRulesetsToLatest(otherUserId, subscription.id, 0);
       throw new Error("expected owner validation to fail");
     } catch (error) {
       expect(error).toBeInstanceOf(SubscriptionError);
@@ -984,6 +1322,43 @@ describe("模板 v2", () => {
 // ── 自建节点字段拆分（用户只填一张表单，敏感字段加密下沉后端） ───
 
 describe("SecretStore.upsertSplit", () => {
+  test("草稿与历史脏配置都不得引用他人 secretRef", () => {
+    const ctx = createTestContext();
+    const otherUserId = createUser(ctx.db, "secret-owner-bob");
+    const foreignSecret = ctx.secretStore.create(otherUserId, { password: "foreign" });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "敏感字段越权门禁",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const record = ctx.subscriptionRepository.findById(subscription.id)!;
+    const maliciousDraft = structuredClone(record.draftBuildConfig!);
+    maliciousDraft.nodes.custom.push({
+      id: "cn_foreign",
+      name: "Foreign Secret",
+      type: "trojan",
+      server: "foreign.test",
+      port: 443,
+      secretRef: foreignSecret,
+      extra: {}
+    });
+
+    expect(() =>
+      ctx.subscriptionService.saveDraft(
+        ctx.userId,
+        subscription.id,
+        maliciousDraft,
+        record.draftRevision
+      )
+    ).toThrow("无权访问的敏感字段");
+
+    // 模拟新门禁上线前已落库的脏数据；预览也必须 fail closed。
+    ctx.subscriptionRepository.saveDraft(subscription.id, maliciousDraft);
+    expect(() => ctx.subscriptionService.preview(ctx.userId, subscription.id)).toThrow(
+      "无权访问的敏感字段"
+    );
+  });
+
   test("新建：有敏感字段时创建加密记录，extra 只含非敏感字段", () => {
     const ctx = createTestContext();
     const result = ctx.secretStore.upsertSplit(
@@ -1006,7 +1381,7 @@ describe("SecretStore.upsertSplit", () => {
     expect(result.extra).toEqual({ headers: { "X-Foo": "bar" } });
   });
 
-  test("编辑：已有 secretRef 时原地更新加密内容", () => {
+  test("编辑：已有 secretRef 时 copy-on-write 保留历史密文", () => {
     const ctx = createTestContext();
     const created = ctx.secretStore.upsertSplit(ctx.userId, "trojan", { password: "old-pass" }, null);
     const updated = ctx.secretStore.upsertSplit(
@@ -1015,18 +1390,23 @@ describe("SecretStore.upsertSplit", () => {
       { password: "new-pass", sni: "home.test" },
       created.secretRef
     );
-    expect(updated.secretRef).toBe(created.secretRef!);
+    expect(updated.secretRef).not.toBe(created.secretRef!);
     expect(ctx.secretStore.resolveForOwner(ctx.userId, updated.secretRef!)).toEqual({
       password: "new-pass"
     });
+    expect(ctx.secretStore.resolveForOwner(ctx.userId, created.secretRef!)).toEqual({
+      password: "old-pass"
+    });
   });
 
-  test("编辑：敏感字段被清空后删除孤儿记录，secretRef 归 null", () => {
+  test("编辑：敏感字段被清空后 secretRef 归 null 但保留历史密文", () => {
     const ctx = createTestContext();
     const created = ctx.secretStore.upsertSplit(ctx.userId, "trojan", { password: "old-pass" }, null);
     const cleared = ctx.secretStore.upsertSplit(ctx.userId, "trojan", { sni: "home.test" }, created.secretRef);
     expect(cleared.secretRef).toBeNull();
-    expect(ctx.secretStore.resolveForOwner(ctx.userId, created.secretRef!)).toBeNull();
+    expect(ctx.secretStore.resolveForOwner(ctx.userId, created.secretRef!)).toEqual({
+      password: "old-pass"
+    });
   });
 
   test("resolveForOwner 对非本人记录返回 null", () => {

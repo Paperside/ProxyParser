@@ -16,7 +16,7 @@ Usage:
   scripts/deploy-images.sh <user@host> <tag>
 
 Deployment target can also be set in deploy/deploy.env:
-  PROXYPARSER_DEPLOY_TARGET=user@example.com
+  PROXYPARSER_DEPLOY_TARGET=root@example.com
 
 Options:
   --target <user@host>    SSH target for upload and remote compose commands.
@@ -75,6 +75,9 @@ while IFS='=' read -r key value; do
   esac
 done <<< "$DEPLOY_CONFIG"
 
+validate_image_tag "$TAG"
+validate_remote_root "$REMOTE_ROOT"
+
 REMOTE_IMAGE_DIR="$REMOTE_ROOT/images"
 REMOTE_DEPLOY_DIR="$REMOTE_ROOT/deploy"
 
@@ -94,9 +97,18 @@ EOF
   exit 1
 fi
 
-ssh "$TARGET" "mkdir -p '$REMOTE_IMAGE_DIR' '$REMOTE_DEPLOY_DIR' /var/lib/proxyparser"
+if ! ssh "$TARGET" 'test "$(id -u)" -eq 0'; then
+  echo "ProxyParser archive deployment currently requires a root SSH target so host data ownership remains consistent with the root-running backend container." >&2
+  exit 2
+fi
+
+ssh "$TARGET" "mkdir -p '$REMOTE_IMAGE_DIR' '$REMOTE_DEPLOY_DIR'"
 scp "$BACKEND_ARCHIVE" "$FRONTEND_ARCHIVE" "$TARGET:$REMOTE_IMAGE_DIR/"
-scp "$ROOT_DIR/deploy/docker-compose.yml" "$ROOT_DIR/deploy/.env.example" "$TARGET:$REMOTE_DEPLOY_DIR/"
+scp \
+  "$ROOT_DIR/deploy/docker-compose.yml" \
+  "$ROOT_DIR/deploy/.env.example" \
+  "$ROOT_DIR/scripts/lib/deploy-config.sh" \
+  "$TARGET:$REMOTE_DEPLOY_DIR/"
 
 NGINX_CONFIG_UPLOADED=0
 if [[ -f "$ROOT_DIR/deploy/nginx-proxyparser.conf" ]]; then
@@ -111,6 +123,10 @@ fi
 
 ssh "$TARGET" "TAG='$TAG' REMOTE_ROOT='$REMOTE_ROOT' bash -s" <<'REMOTE_SCRIPT'
 set -euo pipefail
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "Remote deployment must run as root." >&2
+  exit 2
+fi
 cd "$REMOTE_ROOT"
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -127,19 +143,75 @@ else
   exit 1
 fi
 
+cd deploy
+source ./deploy-config.sh
+validate_image_tag "$TAG"
+validate_remote_root "$REMOTE_ROOT"
+clear_compose_runtime_overrides
+
+if [[ ! -f .env ]]; then
+  create_runtime_env_file .env.example .env
+fi
+secure_runtime_env_file .env
+validate_runtime_env_file .env
+validate_runtime_env_configuration .env
+
+PUBLIC_BASE_URL_VALUE="$(read_env_assignment .env PUBLIC_BASE_URL)"
+validate_public_base_url "$PUBLIC_BASE_URL_VALUE" "$PWD/.env"
+
+PERSISTENT_DATA_DIR="$(read_env_assignment .env PROXYPARSER_DATA_DIR)"
+PERSISTENT_DATA_DIR="${PERSISTENT_DATA_DIR:-/var/lib/proxyparser}"
+assert_container_data_mount proxyparser-backend "$PERSISTENT_DATA_DIR"
+assert_no_versioned_database_artifacts "$PERSISTENT_DATA_DIR"
+ensure_secure_data_dir "$PERSISTENT_DATA_DIR"
+
+PP_SECRET_KEY_VALUE="$(read_env_assignment .env PP_SECRET_KEY)"
+migrate_legacy_container_secret_key \
+  proxyparser-backend \
+  "$PERSISTENT_DATA_DIR" \
+  "$PP_SECRET_KEY_VALUE"
+
+# Pin the effective persisted key into the protected .env before replacement.
+# This keeps rollback to images that still read /app/backend/data/.secret-key safe.
+if PERSISTED_SECRET_KEY="$(read_secret_key_file "$PERSISTENT_DATA_DIR/.secret-key" 2>/dev/null)"; then
+  set_env_assignment_atomically .env PP_SECRET_KEY "$PERSISTED_SECRET_KEY"
+fi
+validate_runtime_env_configuration .env
+
+cd "$REMOTE_ROOT"
 gunzip -c "images/proxyparser-backend-$TAG.tar.gz" | docker load
 gunzip -c "images/proxyparser-frontend-$TAG.tar.gz" | docker load
 
 cd deploy
-if [[ ! -f .env ]]; then
-  cp .env.example .env
-  SECRET="$(openssl rand -hex 32 2>/dev/null || tr -dc A-Za-z0-9 </dev/urandom | head -c 64)"
-  sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$SECRET/" .env
+PREVIOUS_IMAGE_TAG="$(read_env_assignment .env IMAGE_TAG)"
+set_env_assignment_atomically .env IMAGE_TAG "$TAG"
+validate_runtime_env_configuration .env
+if ! "${COMPOSE[@]}" up -d; then
+  set_env_assignment_atomically .env IMAGE_TAG "$PREVIOUS_IMAGE_TAG"
+  echo "Compose failed to apply tag $TAG; restored IMAGE_TAG in .env to its previous value." >&2
+  exit 2
 fi
-sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=$TAG/" .env
-
-"${COMPOSE[@]}" up -d
 "${COMPOSE[@]}" ps
+
+# A brand-new deployment with no explicit key creates /data/.secret-key during
+# backend startup. Pin it for future rollback once it appears.
+if [[ -z "$(read_env_assignment .env PP_SECRET_KEY)" ]]; then
+  for ((attempt = 0; attempt < 40; attempt += 1)); do
+    if PERSISTED_SECRET_KEY="$(read_secret_key_file "$PERSISTENT_DATA_DIR/.secret-key" 2>/dev/null)"; then
+      set_env_assignment_atomically .env PP_SECRET_KEY "$PERSISTED_SECRET_KEY"
+      break
+    fi
+    sleep 0.25
+  done
+  if [[ -z "$(read_env_assignment .env PP_SECRET_KEY)" ]]; then
+    echo "Backend did not create a persistent encryption key; refusing to declare deployment complete." >&2
+    exit 2
+  fi
+fi
+ensure_secure_data_dir "$PERSISTENT_DATA_DIR"
+secure_runtime_env_file .env
+wait_for_http_health proxyparser-backend http://127.0.0.1:3001/api/health Backend
+wait_for_http_health proxyparser-backend http://frontend/ Frontend
 REMOTE_SCRIPT
 
 cat <<EOF

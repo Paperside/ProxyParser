@@ -15,9 +15,12 @@ import type {
 export interface WorkspaceContextValue {
   detail: SubscriptionDetail;
   config: BuildConfig;
-  update: (mutator: (draft: BuildConfig) => void) => void;
+  update: (mutator: (draft: BuildConfig) => void) => boolean;
+  editingLocked: boolean;
   saving: boolean;
   syncingRulesets: boolean;
+  discardingDraft: boolean;
+  draftRevision: number;
   syncLatestRulesets: () => Promise<SyncLatestRulesetsResult>;
   preview: PreviewResult | null;
   previewLoading: boolean;

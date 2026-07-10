@@ -9,6 +9,7 @@ services:
       DATABASE_PATH: /data/proxyparser.sqlite
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?PUBLIC_BASE_URL is required}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      PP_SECRET_KEY: ${PP_SECRET_KEY:-}
       JWT_ISSUER: ${JWT_ISSUER:-proxyparser}
       DEFAULT_LOCALE: ${DEFAULT_LOCALE:-zh-CN}
       JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-900}

@@ -23,7 +23,7 @@ const TRANSFORM_LABEL: Record<string, string> = {
 const CLEAR_REGION_SENTINEL = "__auto__";
 
 const RenameDialog = ({ node, onClose }: { node: NodeIndexEntry; onClose: () => void }) => {
-  const { update } = useWorkspace();
+  const { update, editingLocked } = useWorkspace();
   const [name, setName] = useState(node.renderedName);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -35,13 +35,14 @@ const RenameDialog = ({ node, onClose }: { node: NodeIndexEntry; onClose: () => 
           <Button variant="ghost" onClick={onClose}>取消</Button>
           <Button
             variant="primary"
+            disabled={editingLocked}
             onClick={() => {
-              update((draft) => {
+              const accepted = update((draft) => {
                 const existing = draft.nodes.overrides.find((o) => o.nodeId === node.id);
                 if (existing) existing.rename = name;
                 else draft.nodes.overrides.push({ nodeId: node.id, rename: name });
               });
-              onClose();
+              if (accepted) onClose();
             }}
           >
             保存

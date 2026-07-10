@@ -31,10 +31,10 @@ const RULE_TYPES = [
 const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () => void }) => {
   const rulesets = useRulesets();
   const mutations = useRulesetMutations();
-  const { update } = useWorkspace();
+  const { update, editingLocked } = useWorkspace();
   const [busy, setBusy] = useState<string | null>(null);
 
-  const pushToBlock = (catalogId: string, slug: string, hash: string, emit: "inline" | "provider") => {
+  const pushToBlock = (catalogId: string, slug: string, hash: string, emit: "inline" | "provider") =>
     update((draft) => {
       let block = draft.rules.targets.find((candidate) => candidate.target === target);
       if (!block) {
@@ -44,13 +44,18 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
       }
       block.items.push({ kind: "snapshot", catalogId, slug, hash, emit });
     });
-  };
 
   const importOne = async (catalogId: string, slug: string) => {
+    if (editingLocked) {
+      toast.error("草稿已锁定，请先重新载入最新草稿。");
+      return;
+    }
     setBusy(catalogId);
     try {
       const snapshot = await mutations.ensureSnapshot.mutateAsync(catalogId);
-      pushToBlock(catalogId, slug, snapshot.hash, snapshot.entryCount < 50 ? "inline" : "provider");
+      if (!pushToBlock(catalogId, slug, snapshot.hash, snapshot.entryCount < 50 ? "inline" : "provider")) {
+        throw new Error("草稿在导入期间被锁定。请重新载入后再试。");
+      }
       toast.success(`已导入 ${slug}（钉住 @${snapshot.hash.slice(0, 8)}）`);
       onClose();
     } catch (error) {
@@ -63,6 +68,10 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
   // 从扩展目录导入：先落库为自定义规则源，再直接钉版本写入当前块（一步到位）。
   // 目录条目大小未知，统一走 provider 引用，不做内联。
   const importFromDirectory = async (entry: RulesetDirectoryEntry) => {
+    if (editingLocked) {
+      toast.error("草稿已锁定，请先重新载入最新草稿。");
+      return;
+    }
     setBusy(entry.slug);
     try {
       const created = await mutations.importFromUrl.mutateAsync({
@@ -73,7 +82,9 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
       if (!created.latestSnapshotHash) {
         throw new Error("导入后没有可用快照。");
       }
-      pushToBlock(created.id, created.slug, created.latestSnapshotHash, "provider");
+      if (!pushToBlock(created.id, created.slug, created.latestSnapshotHash, "provider")) {
+        throw new Error("草稿在导入期间被锁定。请重新载入后再试。");
+      }
       toast.success(`已导入「${entry.name}」并加入「${target}」`);
       onClose();
     } catch (error) {
@@ -97,7 +108,7 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
               <Button
                 size="sm"
                 className="ml-auto"
-                disabled={busy !== null}
+                disabled={busy !== null || editingLocked}
                 onClick={() => void importOne(entry.id, entry.slug)}
               >
                 {busy === entry.id ? "钉版本中…" : "导入"}
@@ -107,7 +118,10 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
         </div>
         <div className="mt-3 border-t border-line pt-3">
           <p className="mb-2 text-[11px] font-medium text-muted">从扩展目录发现更多规则组</p>
-          <RulesetDirectoryBrowser onImport={(entry) => void importFromDirectory(entry)} busySlug={busy} />
+          <RulesetDirectoryBrowser
+            onImport={(entry) => void importFromDirectory(entry)}
+            busySlug={editingLocked ? "__locked__" : busy}
+          />
         </div>
       </DialogContent>
     </Dialog>
@@ -117,7 +131,7 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
 // 粘贴规则：解析 → 规范化报告确认 → 保存（v0.2 §8.5）
 const PasteDialog = ({ target, onClose }: { target: string; onClose: () => void }) => {
   const mutations = useRulesetMutations();
-  const { update } = useWorkspace();
+  const { update, editingLocked } = useWorkspace();
   const [text, setText] = useState("");
   const [report, setReport] = useState<PasteParseReportDto | null>(null);
 
@@ -130,7 +144,7 @@ const PasteDialog = ({ target, onClose }: { target: string; onClose: () => void 
 
   const confirm = () => {
     if (!report) return;
-    update((draft) => {
+    const accepted = update((draft) => {
       let block = draft.rules.targets.find((candidate) => candidate.target === target);
       if (!block) {
         block = { target, items: [] };
@@ -139,6 +153,10 @@ const PasteDialog = ({ target, onClose }: { target: string; onClose: () => void 
       }
       block.items.push({ kind: "manual", entries: report.entries as RuleEntry[] });
     });
+    if (!accepted) {
+      toast.error("草稿已锁定，请先重新载入最新草稿。");
+      return;
+    }
     toast.success(`${report.entries.length} 条规则已加入「${target}」`);
     onClose();
   };
@@ -182,7 +200,11 @@ const PasteDialog = ({ target, onClose }: { target: string; onClose: () => void 
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setReport(null)}>返回修改</Button>
-              <Button variant="primary" disabled={report.entries.length === 0} onClick={confirm}>
+              <Button
+                variant="primary"
+                disabled={report.entries.length === 0 || editingLocked}
+                onClick={confirm}
+              >
                 确认保存规范化结果
               </Button>
             </DialogFooter>
@@ -194,7 +216,7 @@ const PasteDialog = ({ target, onClose }: { target: string; onClose: () => void 
 };
 
 const AddBlockDialog = ({ onClose }: { onClose: () => void }) => {
-  const { config, update, knownGroupNames } = useWorkspace();
+  const { config, update, knownGroupNames, editingLocked } = useWorkspace();
   const existing = new Set(config.rules.targets.map((block) => block.target));
   const candidates = [
     ...knownGroupNames.filter((name) => !existing.has(name)),
@@ -219,13 +241,13 @@ const AddBlockDialog = ({ onClose }: { onClose: () => void }) => {
           <Button variant="ghost" onClick={onClose}>取消</Button>
           <Button
             variant="primary"
-            disabled={!target}
+            disabled={!target || editingLocked}
             onClick={() => {
-              update((draft) => {
+              const accepted = update((draft) => {
                 draft.rules.targets.push({ target, items: [] });
                 draft.rules.order.push(target);
               });
-              onClose();
+              if (accepted) onClose();
             }}
           >
             创建

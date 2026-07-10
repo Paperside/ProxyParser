@@ -17,7 +17,7 @@ import { useWorkspace } from "./context";
 
 // 提炼模板：先看报告，确认后保存（对应产品文档 §9.5）
 const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
-  const { detail } = useWorkspace();
+  const { detail, editingLocked } = useWorkspace();
   const navigate = useNavigate();
   const preview = useTemplateExtractPreview(detail.id);
   const mutations = useTemplateMutations();
@@ -27,11 +27,12 @@ const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
   const normalizedName = name.trim();
 
   const submit = async () => {
-    if (!report || !normalizedName) return;
+    if (!report || !normalizedName || !preview.data || editingLocked) return;
     setSaveError(null);
     try {
       const created = await mutations.create.mutateAsync({
         subscriptionId: detail.id,
+        expectedDraftRevision: preview.data.draftRevision,
         displayName: normalizedName
       });
       toast.success(`模板「${created.displayName}」已保存`);
@@ -99,7 +100,13 @@ const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
           </Button>
           <Button
             variant="primary"
-            disabled={!report || !normalizedName || preview.isFetching || mutations.create.isPending}
+            disabled={
+              !report ||
+              !normalizedName ||
+              preview.isFetching ||
+              mutations.create.isPending ||
+              editingLocked
+            }
             onClick={() => void submit()}
           >
             {mutations.create.isPending ? "保存中…" : "确认保存模板"}

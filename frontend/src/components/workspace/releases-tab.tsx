@@ -31,10 +31,18 @@ const YamlDialog = ({
 };
 
 export const ReleasesTab = () => {
-  const { detail } = useWorkspace();
+  const {
+    detail,
+    saving,
+    syncingRulesets,
+    discardingDraft,
+    draftRevision
+  } = useWorkspace();
   const releases = useReleases(detail.id);
   const mutations = useSubscriptionMutations(detail.id);
   const [viewingYaml, setViewingYaml] = useState<string | null>(null);
+  const rollbackBlocked =
+    detail.hasDraft || saving || syncingRulesets || discardingDraft;
 
   return (
     <div className="max-w-3xl">
@@ -76,6 +84,12 @@ export const ReleasesTab = () => {
         </div>
       </Card>
 
+      {rollbackBlocked ? (
+        <p className="mb-3 rounded-md bg-warn-bg px-3 py-2 text-xs text-warn">
+          当前不能回滚：请等待保存、同步或放弃操作完成，并先发布或放弃未发布草稿。
+        </p>
+      ) : null}
+
       <div className="flex flex-col">
         {(releases.data ?? []).map((release) => (
           <div key={release.id} className="flex gap-3.5 border-b border-line py-3.5 last:border-b-0">
@@ -103,10 +117,24 @@ export const ReleasesTab = () => {
                   {!release.isActive ? (
                     <Button
                       size="sm"
+                      disabled={rollbackBlocked || mutations.rollback.isPending}
+                      title={
+                        rollbackBlocked
+                          ? "请先发布或放弃当前草稿，再回滚历史版本。"
+                          : undefined
+                      }
                       onClick={() => {
+                        if (rollbackBlocked) {
+                          toast.error("请先发布或放弃当前草稿，再回滚历史版本。");
+                          return;
+                        }
                         if (confirm(`回滚到 v${release.seq}？将生成一个内容与 v${release.seq} 一致的新版本。`)) {
                           mutations.rollback
-                            .mutateAsync(release.id)
+                            .mutateAsync({
+                              subscriptionId: detail.id,
+                              releaseId: release.id,
+                              expectedDraftRevision: draftRevision
+                            })
                             .then((next) => toast.success(`已回滚：v${next.seq} 现在与 v${release.seq} 一致`))
                             .catch((error: unknown) =>
                               toast.error(error instanceof Error ? error.message : "回滚失败")
@@ -114,7 +142,7 @@ export const ReleasesTab = () => {
                         }
                       }}
                     >
-                      回滚到此版本
+                      {mutations.rollback.isPending ? "回滚中…" : "回滚到此版本"}
                     </Button>
                   ) : null}
                 </span>

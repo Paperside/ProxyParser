@@ -18,6 +18,16 @@ interface CountRow {
   count: number;
 }
 
+interface TableNameRow {
+  name: string;
+}
+
+export interface EncryptedSecretRecord {
+  kind: "custom_node_secret" | "subscription_token";
+  id: string;
+  ciphertext: Uint8Array;
+}
+
 interface AppliedMigrationRow {
   id: string;
 }
@@ -52,6 +62,52 @@ const ensureMigrationsTable = (db: Database) => {
       applied_at TEXT NOT NULL
     );
   `);
+};
+
+export const assertKnownDatabaseBeforeMigrations = (
+  db: Database,
+  databasePath: string
+) => {
+  const userTables = db
+    .query<TableNameRow>(
+      `SELECT name
+       FROM sqlite_master
+       WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+       ORDER BY name ASC`
+    )
+    .all()
+    .map((row) => row.name);
+
+  if (userTables.length === 0) {
+    return;
+  }
+
+  if (userTables.includes(MIGRATIONS_TABLE)) {
+    const nonMarkerTables = userTables.filter((name) => name !== MIGRATIONS_TABLE);
+    if (nonMarkerTables.length === 0) return;
+    const initialMigration = db
+      .query<AppliedMigrationRow>(
+        `SELECT id FROM ${MIGRATIONS_TABLE} WHERE id = '0001_schema.sql' LIMIT 1`
+      )
+      .get();
+    if (initialMigration) return;
+
+    throw new Error(
+      [
+        `数据库 ${databasePath} 包含迁移标记和业务表，但没有已应用的 0001_schema.sql。`,
+        "它可能是中断迁移、旧版或伪装成 Next 的未知 schema；ProxyParser 已停止启动。",
+        "请恢复同一备份集或完成显式迁移，不要让程序自动混合 schema。"
+      ].join(" ")
+    );
+  }
+
+  throw new Error(
+    [
+      `数据库 ${databasePath} 已包含表，但缺少 ${MIGRATIONS_TABLE} 迁移标记。`,
+      "它可能是旧版或未知 schema；为避免把 Next 表和迁移混入原库，ProxyParser 已停止启动。",
+      "请先备份完整数据库文件组，再按迁移文档确认或转换数据库；程序不会自动接管未知 schema。"
+    ].join(" ")
+  );
 };
 
 const listMigrationFiles = (migrationsDir: string): MigrationFile[] => {
@@ -121,23 +177,28 @@ export const initializeDatabase = (): DatabaseContext => {
   const db = new Database(config.databasePath, {
     create: true
   });
+  try {
+    assertKnownDatabaseBeforeMigrations(db, config.databasePath);
+    configureDatabase(db);
+    ensureMigrationsTable(db);
 
-  configureDatabase(db);
-  ensureMigrationsTable(db);
+    const appliedMigrations = applyMigrations(db, config.migrationsDir);
+    const builtinRulesetSeedCount = seedBuiltinRulesetCatalog(db);
+    const builtinTemplateSeedCount = seedBuiltinTemplates(db);
 
-  const appliedMigrations = applyMigrations(db, config.migrationsDir);
-  const builtinRulesetSeedCount = seedBuiltinRulesetCatalog(db);
-  const builtinTemplateSeedCount = seedBuiltinTemplates(db);
+    databaseContext = {
+      db,
+      config,
+      appliedMigrations,
+      builtinRulesetSeedCount,
+      builtinTemplateSeedCount
+    };
 
-  databaseContext = {
-    db,
-    config,
-    appliedMigrations,
-    builtinRulesetSeedCount,
-    builtinTemplateSeedCount
-  };
-
-  return databaseContext;
+    return databaseContext;
+  } catch (error) {
+    db.close();
+    throw error;
+  }
 };
 
 export const getDatabase = () => {
@@ -157,6 +218,21 @@ export const getDatabaseHealth = (): DatabaseHealth => {
     rulesetCatalogCount: countByQuery(db, "SELECT COUNT(*) AS count FROM ruleset_catalog")
   };
 };
+
+// 单条查询取得所有依赖 SecretBox 的密文，避免“先 count、后 sample”间的观察窗口，
+// 并让启动门禁覆盖自建节点与长期订阅 token 的每一条记录。
+export const listEncryptedSecretRecords = (db: Database): EncryptedSecretRecord[] =>
+  db
+    .query<EncryptedSecretRecord>(`
+      SELECT 'custom_node_secret' AS kind, id, ciphertext
+      FROM custom_node_secrets
+      UNION ALL
+      SELECT 'subscription_token' AS kind, id, token_ciphertext AS ciphertext
+      FROM subscription_tokens
+      WHERE token_ciphertext IS NOT NULL
+      ORDER BY kind ASC, id ASC
+    `)
+    .all();
 
 export const getBackendDataDir = () => {
   return dirname(getRuntimeConfig().databasePath);

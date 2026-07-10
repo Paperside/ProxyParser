@@ -10,6 +10,7 @@ import type {
   PasteParseReportDto,
   PreviewResult,
   ReleaseDetail,
+  ReleaseMutationResult,
   ReleaseSummary,
   RevealedToken,
   RulesetCatalogEntry,
@@ -149,33 +150,69 @@ export const useSubscriptionMutations = (id?: string) => {
       onSuccess: invalidate
     }),
     saveDraft: useMutation({
-      mutationFn: (config: BuildConfig) =>
-        authorizedRequest<SubscriptionDetail>(`/api/subscriptions/${id}/draft`, {
+      mutationFn: ({
+        subscriptionId,
+        buildConfig,
+        expectedDraftRevision
+      }: {
+        subscriptionId: string;
+        buildConfig: BuildConfig;
+        expectedDraftRevision: number;
+      }) =>
+        authorizedRequest<SubscriptionDetail>(`/api/subscriptions/${subscriptionId}/draft`, {
           method: "PUT",
-          body: JSON.stringify(config)
+          body: JSON.stringify({ buildConfig, expectedDraftRevision })
         }),
-      onSuccess: invalidate
+      onSuccess: (_detail, { subscriptionId }) => {
+        void qc.invalidateQueries({ queryKey: keys.subscriptions });
+        void qc.invalidateQueries({ queryKey: keys.subscription(subscriptionId) });
+        void qc.invalidateQueries({ queryKey: keys.releases(subscriptionId) });
+      }
     }),
     discardDraft: useMutation({
-      mutationFn: () =>
-        authorizedRequest<SubscriptionDetail>(`/api/subscriptions/${id}/draft`, {
-          method: "DELETE"
+      mutationFn: ({
+        subscriptionId,
+        expectedDraftRevision
+      }: {
+        subscriptionId: string;
+        expectedDraftRevision: number;
+      }) =>
+        authorizedRequest<SubscriptionDetail>(`/api/subscriptions/${subscriptionId}/draft`, {
+          method: "DELETE",
+          body: JSON.stringify({ expectedDraftRevision })
         }),
-      onSuccess: invalidate
+      onSuccess: (_detail, { subscriptionId }) => {
+        void qc.invalidateQueries({ queryKey: keys.subscriptions });
+        void qc.invalidateQueries({ queryKey: keys.subscription(subscriptionId) });
+        void qc.invalidateQueries({ queryKey: keys.releases(subscriptionId) });
+      }
     }),
     publish: useMutation({
-      mutationFn: () =>
-        authorizedRequest<ReleaseSummary>(`/api/subscriptions/${id}/publish`, {
-          method: "POST"
+      mutationFn: ({
+        subscriptionId,
+        expectedDraftRevision,
+        expectedRenderedHash
+      }: {
+        subscriptionId: string;
+        expectedDraftRevision: number;
+        expectedRenderedHash: string;
+      }) =>
+        authorizedRequest<ReleaseMutationResult>(`/api/subscriptions/${subscriptionId}/publish`, {
+          method: "POST",
+          body: JSON.stringify({ expectedDraftRevision, expectedRenderedHash })
         }),
-      onSuccess: invalidate
+      onSuccess: (_release, { subscriptionId }) => {
+        void qc.invalidateQueries({ queryKey: keys.subscriptions });
+        void qc.invalidateQueries({ queryKey: keys.subscription(subscriptionId) });
+        void qc.invalidateQueries({ queryKey: keys.releases(subscriptionId) });
+      }
     }),
     syncLatestRulesets: useMutation({
-      mutationFn: () => {
+      mutationFn: (expectedDraftRevision: number) => {
         if (!id) throw new Error("缺少订阅 ID");
         return authorizedRequest<SyncLatestRulesetsResult>(
           `/api/subscriptions/${id}/rulesets/sync-latest`,
-          { method: "POST" }
+          { method: "POST", body: JSON.stringify({ expectedDraftRevision }) }
         );
       },
       onSuccess: async () => {
@@ -187,12 +224,24 @@ export const useSubscriptionMutations = (id?: string) => {
       }
     }),
     rollback: useMutation({
-      mutationFn: (releaseId: string) =>
-        authorizedRequest<ReleaseSummary>(`/api/subscriptions/${id}/rollback`, {
+      mutationFn: ({
+        subscriptionId,
+        releaseId,
+        expectedDraftRevision
+      }: {
+        subscriptionId: string;
+        releaseId: string;
+        expectedDraftRevision: number;
+      }) =>
+        authorizedRequest<ReleaseMutationResult>(`/api/subscriptions/${subscriptionId}/rollback`, {
           method: "POST",
-          body: JSON.stringify({ releaseId })
+          body: JSON.stringify({ releaseId, expectedDraftRevision })
         }),
-      onSuccess: invalidate
+      onSuccess: (_release, { subscriptionId }) => {
+        void qc.invalidateQueries({ queryKey: keys.subscriptions });
+        void qc.invalidateQueries({ queryKey: keys.subscription(subscriptionId) });
+        void qc.invalidateQueries({ queryKey: keys.releases(subscriptionId) });
+      }
     }),
     remove: useMutation({
       mutationFn: (subscriptionId: string) =>
@@ -379,8 +428,12 @@ export const useRulesetMutations = () => {
         })
     }),
     applyUpdate: useMutation({
-      mutationFn: (body: { catalogId: string; toHash: string; subscriptionIds: string[] }) =>
-        authorizedRequest<Array<{ subscriptionId: string; changed: boolean }>>(
+      mutationFn: (body: {
+        catalogId: string;
+        toHash: string;
+        subscriptions: Array<{ id: string; expectedDraftRevision: number }>;
+      }) =>
+        authorizedRequest<Array<{ subscriptionId: string; changed: boolean; conflict?: boolean }>>(
           "/api/rulesets/apply-update",
           { method: "POST", body: JSON.stringify(body) }
         ),
@@ -409,7 +462,7 @@ export const useReferencingSubscriptions = (catalogId: string | null) => {
   return useQuery({
     queryKey: ["rulesets", catalogId, "referencing"],
     queryFn: () =>
-      authorizedRequest<Array<{ id: string; displayName: string }>>(
+      authorizedRequest<Array<{ id: string; displayName: string; draftRevision: number }>>(
         `/api/rulesets/${catalogId}/referencing-subscriptions`
       ),
     enabled: catalogId !== null
@@ -438,7 +491,11 @@ export const useTemplateExtractPreview = (subscriptionId: string) => {
   return useQuery({
     queryKey: keys.templateExtractPreview(subscriptionId),
     queryFn: () =>
-      authorizedRequest<{ payload: unknown; report: TemplateExtractionReport }>(
+      authorizedRequest<{
+        payload: unknown;
+        report: TemplateExtractionReport;
+        draftRevision: number;
+      }>(
         "/api/templates/extract-preview",
         { method: "POST", body: JSON.stringify({ subscriptionId }) }
       ),
@@ -457,6 +514,7 @@ export const useTemplateMutations = () => {
     create: useMutation({
       mutationFn: (body: {
         subscriptionId: string;
+        expectedDraftRevision: number;
         displayName: string;
         description?: string;
         visibility?: string;

@@ -121,6 +121,7 @@ export interface Issue {
 export interface SubscriptionDetail extends SubscriptionSummary {
   buildConfig: BuildConfig | null;
   draftBuildConfig: BuildConfig | null;
+  draftRevision: number;
   activeRelease: { id: string; seq: number; createdAt: string; trigger: string } | null;
   issues: Issue[];
 }
@@ -163,6 +164,8 @@ export interface GroupIndexEntry {
 }
 
 export interface PreviewResult {
+  draftRevision: number;
+  renderedHash: string;
   yamlText: string;
   issues: EvaluateIssueDto[];
   stats: { nodeCount: number; groupCount: number; ruleCount: number; providerCount: number };
@@ -190,6 +193,14 @@ export interface ReleaseSummary {
   createdBy: string | null;
   createdAt: string;
   isActive: boolean;
+}
+
+export interface ReleaseMutationResult {
+  id: string;
+  seq: number;
+  createdAt: string;
+  diffSummary?: DiffSummary | Record<string, never>;
+  validation?: { structuralErrors: number; mihomo: MihomoValidationDto | null };
 }
 
 export interface ReleaseDetail extends Omit<ReleaseSummary, "isActive"> {
@@ -292,6 +303,8 @@ export interface RulesetDiff {
 }
 
 export interface SyncLatestRulesetsResult {
+  buildConfig: BuildConfig;
+  draftRevision: number;
   changes: Array<{
     catalogId: string;
     slug: string;

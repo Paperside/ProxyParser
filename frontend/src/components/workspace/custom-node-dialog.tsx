@@ -377,7 +377,7 @@ const FieldControl = ({
 // ── 主弹窗：新增 / 编辑复用同一组件 ──────────────────────────
 
 export const CustomNodeDialog = ({ node, onClose }: { node?: CustomNode; onClose: () => void }) => {
-  const { update } = useWorkspace();
+  const { update, editingLocked } = useWorkspace();
   const secrets = useSecretMutations();
 
   const [name, setName] = useState(node?.name ?? "");
@@ -446,6 +446,10 @@ export const CustomNodeDialog = ({ node, onClose }: { node?: CustomNode; onClose
   };
 
   const submit = async () => {
+    if (editingLocked) {
+      toast.error("草稿已锁定，请先重新载入最新草稿。");
+      return;
+    }
     let finalName = name;
     let finalType = type;
     let finalServer = server;
@@ -477,7 +481,7 @@ export const CustomNodeDialog = ({ node, onClose }: { node?: CustomNode; onClose
         fields: finalFields,
         secretRef: node?.secretRef ?? null
       });
-      update((draft) => {
+      const accepted = update((draft) => {
         const existing = node ? draft.nodes.custom.find((n) => n.id === node.id) : undefined;
         if (existing) {
           existing.name = finalName;
@@ -498,10 +502,13 @@ export const CustomNodeDialog = ({ node, onClose }: { node?: CustomNode; onClose
           });
         }
       });
+      if (!accepted) {
+        throw new Error("草稿在保存节点期间被锁定。请重新载入后再试。");
+      }
       toast.success(node ? "节点已更新" : "自建节点已加入草稿");
       onClose();
-    } catch {
-      toast.error("保存失败，请检查字段");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "保存失败，请检查字段");
     }
   };
 
@@ -571,7 +578,11 @@ export const CustomNodeDialog = ({ node, onClose }: { node?: CustomNode; onClose
           <Button variant="ghost" onClick={onClose}>
             取消
           </Button>
-          <Button variant="primary" onClick={() => void submit()}>
+          <Button
+            variant="primary"
+            disabled={editingLocked || secrets.split.isPending}
+            onClick={() => void submit()}
+          >
             {node ? "保存修改" : "加入草稿"}
           </Button>
         </DialogFooter>

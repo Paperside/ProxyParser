@@ -27,7 +27,8 @@ ProxyParser Next 面向 Clash/Mihomo，核心模型是“订阅源快照 + 声�
 - 默认数据库：`backend/data/proxyparser.sqlite`；生产 Compose 映射为 `/data/proxyparser.sqlite`。
 - 密钥文件：数据库所在目录的 `.secret-key`；生产环境即 `/data/.secret-key`。设置 `PP_SECRET_KEY` 时不生成文件。
 - 数据库启动参数：WAL、foreign keys、5 秒 busy timeout。
-- 迁移：`backend/migrations/*.sql` 按文件名排序、逐个事务执行，并记录到 `_schema_migrations`。当前为 `0001_schema.sql` 与 `0002_token_ciphertext.sql`。
+- 迁移：`backend/migrations/*.sql` 按文件名排序、逐个事务执行，并记录到 `_schema_migrations`。当前为 `0001_schema.sql`、`0002_token_ciphertext.sql` 与 `0003_subscription_draft_revision.sql`。
+- 已有用户表但缺少 `_schema_migrations` 的数据库视为 legacy/未知 schema，必须在写入任何 Next 表或迁移标记前 fail-fast；空库才允许自动初始化。
 
 主要环境变量：
 
@@ -83,6 +84,9 @@ Next schema 直接定义当前最终表结构：
 
 `subscription_share_grants` 已在 schema 中预留，但当前公开产品链路使用按订阅长期 token 与短期分享 token，尚无指定用户授权 API/UI。
 
+整份草稿写入以 `draft_revision` 做乐观并发控制；`subscription_sources` 物化索引始终覆盖「已发布 BuildConfig ∪ 草稿 BuildConfig」的源，避免编辑草稿时丢失对线上源的变化跟踪。草稿行与该索引在同一事务更新；发布时 Release 插入、revision CAS、active 切换与源索引更新也属于同一事务。手动发布还需同时校验预览返回的 `renderedHash`，防止预览后上游快照变化导致发布未经确认的产物。
+手动发布使用“本次预览”返回的 revision；回滚只允许在没有未发布草稿时执行，并同样以 revision CAS 防止旧标签页清掉较新的状态。
+
 ## 4. BuildConfig 与稳定引用
 
 权威类型位于 `backend/src/lib/build-config/types.ts`，通过 `bun run sync-types` 同步到前端。当前 `BuildConfig.version` 为 `1`，包括：
@@ -127,7 +131,7 @@ draft_build_config ?? build_config
   → error issues 阻断并落 subscription_issues / event
   → mihomo 可用时执行内核校验
   → 与 active Release 计算结构化 diff
-  → 事务创建 seq+1 Release，切换 active_release_id，清空草稿
+  → 事务创建 seq+1 Release，以预览时 draft revision 做 CAS，切换 active_release_id，清空草稿
   → 刷新健康状态
 ```
 
@@ -203,6 +207,7 @@ mihomo -t -f <config> -d <temp-dir>
 
 - `.secret-key` 或 `PP_SECRET_KEY` 同时保护自建节点 secrets 与长期 token 明文密文；丢失后已有密文无法恢复。
 - 密钥不进入 SQLite，也不得提交 Git；备份必须同时包含 `proxyparser.sqlite` 与匹配的 `.secret-key`，或外部保存的 `PP_SECRET_KEY`。
+- 自建节点密文采用 copy-on-write：编辑会创建新 `secretRef`，不原地覆盖或删除可能被已发布/历史 BuildConfig 引用的密文。
 - 公开交付和规则快照端点有独立的内存限流；认证注册、登录与刷新也有限流。
 - 公开 `/rs/*` 只读取 `is_public=1` 的快照。
 - `backend/data/mock-subscriptions/` 可能包含真实节点，禁止提交或在日志/测试输出中打印。

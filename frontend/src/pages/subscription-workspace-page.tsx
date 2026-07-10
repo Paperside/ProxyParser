@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -57,8 +57,10 @@ const PublishDialog = ({
         title="预览并发布"
         description="确认这次要发布的变化。客户端在发布后拉取到的就是这份内容。"
       >
-        {preview.isLoading ? (
+        {preview.isFetching ? (
           <p className="text-xs text-muted">正在渲染与校验…</p>
+        ) : preview.isError ? (
+          <p className="text-xs text-err">预览失败：{preview.error.message}</p>
         ) : preview.data ? (
           <div className="flex flex-col gap-4">
             <div>
@@ -93,19 +95,27 @@ const PublishDialog = ({
               </pre>
             ) : null}
           </div>
-        ) : (
-          <p className="text-xs text-err">预览失败：{preview.error?.message}</p>
-        )}
+        ) : null}
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
             取消
           </Button>
           <Button
             variant="primary"
-            disabled={preview.isLoading || errors.length > 0 || mutations.publish.isPending}
+            disabled={
+              preview.isFetching ||
+              !preview.isSuccess ||
+              !preview.data ||
+              errors.length > 0 ||
+              mutations.publish.isPending
+            }
             onClick={() =>
               mutations.publish
-                .mutateAsync()
+                .mutateAsync({
+                  subscriptionId,
+                  expectedDraftRevision: preview.data!.draftRevision,
+                  expectedRenderedHash: preview.data!.renderedHash
+                })
                 .then((release) => {
                   toast.success(`v${release.seq} 已发布`);
                   onClose();
@@ -123,10 +133,29 @@ const PublishDialog = ({
   );
 };
 
-export const SubscriptionWorkspacePage = () => {
-  const params = useParams({ strict: false }) as { subscriptionId: string; tab?: string };
-  const subscriptionId = params.subscriptionId;
-  const tab: TabId = (TABS.some((t) => t.id === params.tab) ? params.tab : "overview") as TabId;
+interface PendingDraftSave {
+  buildConfig: BuildConfig;
+  editRevision: number;
+}
+
+interface DraftSaveFailure {
+  kind: "retryable" | "conflict" | "discard";
+  message: string;
+}
+
+const cloneBuildConfig = (config: BuildConfig) =>
+  JSON.parse(JSON.stringify(config)) as BuildConfig;
+
+const buildConfigsEqual = (left: BuildConfig | null, right: BuildConfig) =>
+  left !== null && JSON.stringify(left) === JSON.stringify(right);
+
+const SubscriptionWorkspace = ({
+  subscriptionId,
+  tab
+}: {
+  subscriptionId: string;
+  tab: TabId;
+}) => {
   const navigate = useNavigate();
 
   const detail = useSubscription(subscriptionId);
@@ -135,63 +164,363 @@ export const SubscriptionWorkspacePage = () => {
   // 本地编辑副本 + 防抖保存
   const [config, setConfig] = useState<BuildConfig | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [saveFailure, setSaveFailure] = useState<DraftSaveFailure | null>(null);
   const [syncingRulesets, setSyncingRulesets] = useState(false);
+  const [discardingDraft, setDiscardingDraft] = useState(false);
+  const configRef = useRef<BuildConfig | null>(null);
+  const editRevision = useRef(0);
+  const savedRevision = useRef(0);
+  const draftRevision = useRef<number | null>(null);
+  const dirtyRef = useRef(false);
+  const pendingSaveCount = useRef(0);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDebouncedSave = useRef<PendingDraftSave | null>(null);
+  const syncingRulesetsRef = useRef(false);
+  const discardingDraftRef = useRef(false);
+  const saveConflictRef = useRef(false);
+  const mountedSubscriptionId = useRef<string | null>(subscriptionId);
   const loadedFor = useRef<string | null>(null);
 
   useEffect(() => {
     if (!detail.data) return;
+    if (
+      draftRevision.current !== null &&
+      detail.data.draftRevision < draftRevision.current
+    ) {
+      return;
+    }
     const serverConfig = detail.data.draftBuildConfig ?? detail.data.buildConfig;
     // 首次载入，或服务端配置变化且本地无未保存修改时同步
-    if (loadedFor.current !== subscriptionId || (!dirty && serverConfig)) {
-      setConfig(serverConfig ? (JSON.parse(JSON.stringify(serverConfig)) as BuildConfig) : null);
+    if (loadedFor.current !== subscriptionId || (!dirtyRef.current && serverConfig)) {
+      const nextConfig = serverConfig ? cloneBuildConfig(serverConfig) : null;
+      configRef.current = nextConfig;
+      setConfig(nextConfig);
+      savedRevision.current = editRevision.current;
+      draftRevision.current = detail.data.draftRevision;
+      dirtyRef.current = false;
+      setDirty(false);
+      saveConflictRef.current = false;
+      setSaveFailure(null);
       loadedFor.current = subscriptionId;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail.data, subscriptionId]);
 
-  const update = (mutator: (draft: BuildConfig) => void) => {
-    if (syncingRulesets) return;
-    setConfig((current) => {
-      if (!current) return current;
-      const next = JSON.parse(JSON.stringify(current)) as BuildConfig;
-      mutator(next);
-      setDirty(true);
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        mutations.saveDraft
-          .mutateAsync(next)
-          .then(() => setDirty(false))
-          .catch((error: unknown) =>
-            toast.error(error instanceof Error ? error.message : "草稿保存失败")
+  const enqueueDraftSave = (pending: PendingDraftSave) => {
+    pendingSaveCount.current += 1;
+    if (mountedSubscriptionId.current === subscriptionId) {
+      setSavingDraft(true);
+    }
+
+    const save = async () => {
+      let expectedDraftRevision: number | null = null;
+      try {
+        if (saveConflictRef.current || discardingDraftRef.current) return;
+        expectedDraftRevision = draftRevision.current;
+        if (expectedDraftRevision === null) {
+          throw new Error("草稿版本尚未载入，请刷新页面后重试。");
+        }
+        const saved = await mutations.saveDraft.mutateAsync({
+          subscriptionId,
+          buildConfig: pending.buildConfig,
+          expectedDraftRevision
+        });
+        draftRevision.current = saved.draftRevision;
+        if (mountedSubscriptionId.current === subscriptionId) {
+          savedRevision.current = Math.max(
+            savedRevision.current,
+            pending.editRevision
           );
-      }, 600);
-      return next;
-    });
+          const stillDirty = savedRevision.current < editRevision.current;
+          dirtyRef.current = stillDirty;
+          setDirty(stillDirty);
+          saveConflictRef.current = false;
+          setSaveFailure(null);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "草稿保存失败";
+        let refreshed: Awaited<ReturnType<typeof detail.refetch>> | null = null;
+        try {
+          refreshed = await detail.refetch();
+        } catch {
+          // refetch 的失败会沿用原始保存错误，保留可重试路径。
+        }
+
+        if (refreshed?.isSuccess && refreshed.data) {
+          const serverConfig =
+            refreshed.data.draftBuildConfig ?? refreshed.data.buildConfig;
+
+          // 请求可能已经写入，只是在响应返回前断线。服务端已是目标配置时，
+          // 认领它的 revision，让队列里的下一次编辑可以继续安全保存。
+          if (buildConfigsEqual(serverConfig, pending.buildConfig)) {
+            draftRevision.current = refreshed.data.draftRevision;
+            savedRevision.current = Math.max(
+              savedRevision.current,
+              pending.editRevision
+            );
+            if (mountedSubscriptionId.current === subscriptionId) {
+              const stillDirty = savedRevision.current < editRevision.current;
+              dirtyRef.current = stillDirty;
+              setDirty(stillDirty);
+              saveConflictRef.current = false;
+              setSaveFailure(null);
+            }
+            return;
+          }
+
+          if (
+            expectedDraftRevision !== null &&
+            refreshed.data.draftRevision > expectedDraftRevision
+          ) {
+            saveConflictRef.current = true;
+            if (mountedSubscriptionId.current === subscriptionId) {
+              const conflictMessage =
+                "服务端草稿已被其他操作更新。请重新载入最新草稿后再编辑。";
+              setSaveFailure({ kind: "conflict", message: conflictMessage });
+              toast.error(conflictMessage);
+            }
+            return;
+          }
+        }
+
+        saveConflictRef.current = false;
+        if (mountedSubscriptionId.current === subscriptionId) {
+          setSaveFailure({ kind: "retryable", message });
+          toast.error(message);
+        }
+      } finally {
+        pendingSaveCount.current -= 1;
+        if (
+          pendingSaveCount.current === 0 &&
+          mountedSubscriptionId.current === subscriptionId
+        ) {
+          setSavingDraft(false);
+        }
+      }
+    };
+
+    // 无论上一轮成功或失败，下一轮都只在它落定后开始，避免较旧的 PUT 后到并覆盖新草稿。
+    saveQueue.current = saveQueue.current.then(save, save);
   };
 
-  const syncLatestRulesets = async () => {
-    if (dirty || mutations.saveDraft.isPending) {
-      throw new Error("请先等待当前草稿保存完成。");
-    }
-    setSyncingRulesets(true);
+  const flushDebouncedSave = () => {
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
-    try {
-      const result = await mutations.syncLatestRulesets.mutateAsync();
-      setDirty(false);
-      const refreshed = await detail.refetch();
-      const serverConfig = refreshed.data?.draftBuildConfig ?? refreshed.data?.buildConfig;
-      if (!serverConfig) {
-        throw new Error("规则快照已同步，但重新载入草稿失败，请刷新页面。");
+    const pending = pendingDebouncedSave.current;
+    pendingDebouncedSave.current = null;
+    if (pending) {
+      enqueueDraftSave(pending);
+    }
+  };
+
+  useEffect(() => {
+    mountedSubscriptionId.current = subscriptionId;
+    return () => {
+      mountedSubscriptionId.current = null;
+      // 路由切走时不丢掉最后 600ms 内的编辑；保存继续执行，但不再更新旧 UI。
+      flushDebouncedSave();
+    };
+  }, []);
+
+  const hasPendingLocalDraft = () =>
+    dirtyRef.current || saveTimer.current !== null || pendingSaveCount.current > 0;
+
+  useBlocker({
+    shouldBlockFn: ({ next }) => {
+      if (!hasPendingLocalDraft()) return false;
+      const workspaceBase = `/subscriptions/${subscriptionId}`;
+      if (
+        next.pathname === workspaceBase ||
+        next.pathname.startsWith(`${workspaceBase}/`)
+      ) {
+        return false;
       }
-      setConfig(JSON.parse(JSON.stringify(serverConfig)) as BuildConfig);
+      return !confirm("草稿仍有本地修改或保存尚未完成，确定要离开吗？");
+    },
+    enableBeforeUnload: hasPendingLocalDraft
+  });
+
+  const update = (mutator: (draft: BuildConfig) => void) => {
+    if (
+      syncingRulesetsRef.current ||
+      discardingDraftRef.current ||
+      saveConflictRef.current
+    ) {
+      return false;
+    }
+    const current = configRef.current;
+    if (!current) return false;
+
+    const next = cloneBuildConfig(current);
+    mutator(next);
+    const revision = editRevision.current + 1;
+    editRevision.current = revision;
+    dirtyRef.current = true;
+    configRef.current = next;
+    setConfig(next);
+    setDirty(true);
+    setSaveFailure(null);
+
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    pendingDebouncedSave.current = { buildConfig: next, editRevision: revision };
+    saveTimer.current = setTimeout(() => {
+      saveTimer.current = null;
+      const pending = pendingDebouncedSave.current;
+      pendingDebouncedSave.current = null;
+      if (pending) enqueueDraftSave(pending);
+    }, 600);
+    return true;
+  };
+
+  const retryDraftSave = () => {
+    if (
+      pendingSaveCount.current > 0 ||
+      saveTimer.current !== null ||
+      syncingRulesetsRef.current ||
+      discardingDraftRef.current ||
+      saveConflictRef.current
+    ) {
+      return;
+    }
+    const current = configRef.current;
+    if (!current) return;
+    setSaveFailure(null);
+    enqueueDraftSave({
+      buildConfig: cloneBuildConfig(current),
+      editRevision: editRevision.current
+    });
+  };
+
+  const reloadServerDraft = async () => {
+    if (
+      pendingSaveCount.current > 0 ||
+      saveTimer.current !== null ||
+      syncingRulesetsRef.current ||
+      discardingDraftRef.current
+    ) {
+      return;
+    }
+    if (!confirm("重新载入会放弃当前浏览器中尚未保存的修改，继续吗？")) {
+      return;
+    }
+    try {
+      const refreshed = await detail.refetch();
+      if (!refreshed.isSuccess || !refreshed.data) {
+        throw new Error("重新载入服务端草稿失败，请检查网络后重试。");
+      }
+      const serverConfig = refreshed.data.draftBuildConfig ?? refreshed.data.buildConfig;
+      const nextConfig = serverConfig ? cloneBuildConfig(serverConfig) : null;
+      configRef.current = nextConfig;
+      setConfig(nextConfig);
+      draftRevision.current = refreshed.data.draftRevision;
+      savedRevision.current = editRevision.current;
+      dirtyRef.current = false;
+      setDirty(false);
+      saveConflictRef.current = false;
+      setSaveFailure(null);
+      loadedFor.current = subscriptionId;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "重新载入草稿失败");
+    }
+  };
+
+  const syncLatestRulesets = async () => {
+    if (
+      dirtyRef.current ||
+      pendingSaveCount.current > 0 ||
+      saveTimer.current !== null ||
+      discardingDraftRef.current ||
+      saveConflictRef.current
+    ) {
+      throw new Error("请先等待当前草稿保存完成。");
+    }
+    if (syncingRulesetsRef.current) {
+      throw new Error("规则快照正在同步，请稍候。");
+    }
+    syncingRulesetsRef.current = true;
+    setSyncingRulesets(true);
+    const targetSubscriptionId = subscriptionId;
+    try {
+      const expectedDraftRevision = draftRevision.current;
+      if (expectedDraftRevision === null) {
+        throw new Error("草稿版本尚未载入，请刷新页面后重试。");
+      }
+      const result = await mutations.syncLatestRulesets.mutateAsync(expectedDraftRevision);
+      if (mountedSubscriptionId.current !== targetSubscriptionId) {
+        return result;
+      }
+      const nextConfig = cloneBuildConfig(result.buildConfig);
+      configRef.current = nextConfig;
+      setConfig(nextConfig);
+      draftRevision.current = result.draftRevision;
+      savedRevision.current = editRevision.current;
+      dirtyRef.current = false;
+      setDirty(false);
+      saveConflictRef.current = false;
+      setSaveFailure(null);
       loadedFor.current = subscriptionId;
       return result;
     } finally {
-      setSyncingRulesets(false);
+      syncingRulesetsRef.current = false;
+      if (mountedSubscriptionId.current === targetSubscriptionId) {
+        setSyncingRulesets(false);
+      }
+    }
+  };
+
+  const discardDraft = async () => {
+    if (
+      pendingSaveCount.current > 0 ||
+      syncingRulesetsRef.current ||
+      discardingDraftRef.current ||
+      mutations.discardDraft.isPending
+    ) {
+      return;
+    }
+    discardingDraftRef.current = true;
+    setDiscardingDraft(true);
+    setSaveFailure(null);
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    pendingDebouncedSave.current = null;
+
+    try {
+      const expectedDraftRevision = draftRevision.current;
+      if (expectedDraftRevision === null) {
+        throw new Error("草稿版本尚未载入，请刷新页面后重试。");
+      }
+      const discarded = await mutations.discardDraft.mutateAsync({
+        subscriptionId,
+        expectedDraftRevision
+      });
+      if (mountedSubscriptionId.current !== subscriptionId) return;
+      const serverConfig = discarded.draftBuildConfig ?? discarded.buildConfig;
+      const nextConfig = serverConfig ? cloneBuildConfig(serverConfig) : null;
+      configRef.current = nextConfig;
+      setConfig(nextConfig);
+      draftRevision.current = discarded.draftRevision;
+      savedRevision.current = editRevision.current;
+      dirtyRef.current = false;
+      setDirty(false);
+      saveConflictRef.current = false;
+      setSaveFailure(null);
+      loadedFor.current = subscriptionId;
+    } catch (error) {
+      if (mountedSubscriptionId.current === subscriptionId) {
+        const message = error instanceof Error ? error.message : "放弃草稿失败";
+        setSaveFailure({ kind: "discard", message });
+        toast.error(message);
+      }
+    } finally {
+      discardingDraftRef.current = false;
+      if (mountedSubscriptionId.current === subscriptionId) {
+        setDiscardingDraft(false);
+      }
     }
   };
 
@@ -207,12 +536,18 @@ export const SubscriptionWorkspacePage = () => {
     return <div className="p-8 text-sm text-muted">该订阅尚无构建配置。</div>;
   }
 
+  const saveConflict = saveFailure?.kind === "conflict";
+  const workspaceLocked = syncingRulesets || discardingDraft || saveConflict;
+
   const value: WorkspaceContextValue = {
     detail: detail.data,
     config,
     update,
-    saving: dirty || mutations.saveDraft.isPending,
+    editingLocked: workspaceLocked,
+    saving: dirty || savingDraft,
     syncingRulesets,
+    discardingDraft,
+    draftRevision: draftRevision.current ?? detail.data.draftRevision,
     syncLatestRulesets,
     preview: preview.data ?? null,
     previewLoading: preview.isFetching,
@@ -240,38 +575,91 @@ export const SubscriptionWorkspacePage = () => {
           <Badge variant="warn">未发布</Badge>
         )}
         {detail.data.hasDraft || dirty ? <Badge variant="warn">有未发布修改</Badge> : null}
-        {syncingRulesets ? (
+        {discardingDraft ? (
+          <span className="text-[11px] text-faint">放弃草稿…</span>
+        ) : syncingRulesets ? (
           <span className="text-[11px] text-faint">同步规则快照…</span>
+        ) : saveFailure ? (
+          <span className="text-[11px] text-err">
+            {saveConflict
+              ? "草稿冲突"
+              : saveFailure.kind === "discard"
+                ? "放弃失败"
+                : "保存失败"}
+          </span>
         ) : value.saving ? (
           <span className="text-[11px] text-faint">保存中…</span>
         ) : null}
         <div className="ml-auto flex items-center gap-2">
-          {detail.data.hasDraft && detail.data.buildConfig ? (
+          {(detail.data.hasDraft || dirty) && detail.data.buildConfig ? (
             <Button
               size="sm"
               variant="ghost"
-              disabled={syncingRulesets}
+              disabled={
+                savingDraft ||
+                syncingRulesets ||
+                discardingDraft ||
+                saveConflict ||
+                mutations.discardDraft.isPending
+              }
               onClick={() => {
                 if (confirm("放弃全部未发布修改，回到已发布配置？")) {
-                  void mutations.discardDraft.mutateAsync().then(() => {
-                    loadedFor.current = null;
-                    setDirty(false);
-                  });
+                  void discardDraft();
                 }
               }}
             >
-              放弃修改
+              {discardingDraft ? "放弃中…" : "放弃修改"}
             </Button>
           ) : null}
           <Button
             variant="primary"
-            disabled={syncingRulesets}
+            disabled={value.saving || syncingRulesets || discardingDraft || saveConflict}
             onClick={() => setShowPublish(true)}
           >
             预览并发布
           </Button>
         </div>
       </div>
+
+      {saveFailure ? (
+        <div className="flex items-center gap-3 border-b border-err/30 bg-err-bg px-6 py-2 text-xs text-err">
+          <span className="min-w-0 flex-1 truncate">
+            {saveConflict
+              ? saveFailure.message
+              : saveFailure.kind === "discard"
+                ? `放弃草稿失败：${saveFailure.message}`
+                : `草稿保存失败：${saveFailure.message}`}
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={savingDraft || syncingRulesets || discardingDraft}
+            onClick={() => void reloadServerDraft()}
+          >
+            重新载入
+          </Button>
+          {saveFailure.kind === "retryable" ? (
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={savingDraft || syncingRulesets || discardingDraft}
+              onClick={retryDraftSave}
+            >
+              重试保存
+            </Button>
+          ) : null}
+          {saveFailure.kind === "discard" ? (
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={savingDraft || syncingRulesets || discardingDraft}
+              onClick={() => void discardDraft()}
+            >
+              重试放弃
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="grid min-h-[calc(100vh-105px)] grid-cols-[168px_minmax(0,1fr)] xl:grid-cols-[168px_minmax(0,1fr)_340px]">
         <nav className="border-r border-line px-2 py-4">
@@ -300,10 +688,11 @@ export const SubscriptionWorkspacePage = () => {
         </nav>
 
         <main
-          aria-busy={syncingRulesets}
+          aria-busy={syncingRulesets || discardingDraft}
+          inert={workspaceLocked ? true : undefined}
           className={cn(
             "min-w-0 px-6 py-5 transition-opacity",
-            syncingRulesets && "pointer-events-none opacity-60"
+            workspaceLocked && "opacity-60"
           )}
         >
           {tab === "overview" ? <OverviewTab /> : null}
@@ -334,8 +723,27 @@ export const SubscriptionWorkspacePage = () => {
       </div>
 
       {showPublish ? (
-        <PublishDialog subscriptionId={subscriptionId} onClose={() => setShowPublish(false)} />
+        <PublishDialog
+          subscriptionId={subscriptionId}
+          onClose={() => setShowPublish(false)}
+        />
       ) : null}
     </WorkspaceContext.Provider>
+  );
+};
+
+export const SubscriptionWorkspacePage = () => {
+  const params = useParams({ strict: false }) as { subscriptionId: string; tab?: string };
+  const subscriptionId = params.subscriptionId;
+  const tab: TabId = (
+    TABS.some((item) => item.id === params.tab) ? params.tab : "overview"
+  ) as TabId;
+
+  return (
+    <SubscriptionWorkspace
+      key={subscriptionId}
+      subscriptionId={subscriptionId}
+      tab={tab}
+    />
   );
 };

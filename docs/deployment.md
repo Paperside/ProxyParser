@@ -35,6 +35,9 @@ The images are stateless. Runtime state is in the host-mounted SQLite data direc
 - Local developer machine may be macOS arm64 with Docker running through Colima.
 - Always build production images with `--platform linux/amd64`.
 - Do not build or typecheck on the production server.
+- The archive deployment helper currently requires a `root@host` SSH target. The backend
+  container runs as root, and using one ownership model prevents later deployments from
+  losing access to the host-mounted database or encryption key.
 
 ## Local build prerequisites
 
@@ -80,7 +83,7 @@ scripts/build-images.sh 2026-06-11-1
 ## Upload and start on the server
 
 ```bash
-scripts/deploy-images.sh --target deploy@example.com --tag <tag>
+scripts/deploy-images.sh --target root@example.com --tag <tag>
 ```
 
 The target can also be stored in a local ignored env file:
@@ -94,15 +97,26 @@ scripts/deploy-images.sh --tag <tag>
 The script:
 
 1. uploads image archives to `/opt/proxyparser/images`,
-2. uploads Compose deployment files to `/opt/proxyparser/deploy`,
-3. runs `docker load`,
-4. creates `/opt/proxyparser/deploy/.env` from `.env.example` if missing,
-5. sets `IMAGE_TAG=<tag>`,
-6. runs `docker compose up -d`.
+2. uploads Compose deployment files and the environment validator to `/opt/proxyparser/deploy`,
+3. atomically creates `/opt/proxyparser/deploy/.env` with mode `0600` and a strong random `JWT_SECRET` if missing,
+4. validates a canonical `PUBLIC_BASE_URL`, the JWT secret, literal Compose values, and the image tag before loading images,
+5. verifies the existing `/data` mount, proves the target is a dedicated ProxyParser data directory, locks it to `0700`, preserves the effective encryption key, and pins it in the protected `.env` for rollback compatibility,
+6. runs `docker load`, sets `IMAGE_TAG=<tag>`, and runs `docker compose up -d`.
 
 If `deploy/nginx-proxyparser.conf` exists locally, the script also uploads it to the remote deploy directory. That file is ignored by git because it may contain real domains and certificate paths. Keep only `deploy/nginx-proxyparser.conf.example` tracked.
 
-The generated `.env` includes a random `JWT_SECRET` on first deploy. Keep it stable after users exist, because changing it invalidates tokens.
+The generated `.env` includes a random `JWT_SECRET` on first deploy. Keep it stable after users exist, because changing it invalidates tokens. `PUBLIC_BASE_URL` is intentionally empty in the template: the first deploy stops safely until the real externally reachable URL has been configured on the server.
+
+Use one literal `KEY=value` assignment per line. Inline comments, variable interpolation, duplicate keys, and shell overrides are rejected/cleared so deployment preflight and Compose cannot resolve different values. `PUBLIC_BASE_URL` must be a canonical origin such as `https://proxy.example.com`—no trailing slash, path, query, or fragment.
+
+```bash
+ssh -t root@example.com '${EDITOR:-vi} /opt/proxyparser/deploy/.env'
+scripts/deploy-images.sh --target root@example.com --tag <tag>
+```
+
+`PP_SECRET_KEY` is optional. Leave it empty to use `/var/lib/proxyparser/.secret-key`; when upgrading an older image that kept this key inside the container, the deployment script copies the effective old key into the persistent data directory with mode `0600` before replacing the backend. It then records that same key in the mode-`0600` `.env`, so an older rollback image that still expects the environment key cannot silently generate a different one. If the old key cannot be recovered reliably, or configured/persisted/container keys disagree, deployment stops without replacing the container.
+
+If a non-empty SQLite database already exists but both the persistent key and old container are missing, deployment also stops. Restore the database and key from the same backup set (or supply the original `PP_SECRET_KEY`); never let an existing database start with a newly generated key.
 
 ## Server bootstrap
 
@@ -119,7 +133,7 @@ grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fs
 Create the persistent data directory:
 
 ```bash
-mkdir -p /var/lib/proxyparser
+install -d -m 700 /var/lib/proxyparser
 ```
 
 ## Nginx
@@ -161,28 +175,39 @@ After deploy:
 ```bash
 curl -I https://proxyparser.example.com
 curl https://proxyparser.example.com/api/health
-ssh deploy@example.com 'cd /opt/proxyparser/deploy && docker compose ps'
-ssh deploy@example.com 'docker logs --tail=100 proxyparser-backend'
+ssh root@example.com 'cd /opt/proxyparser/deploy && docker compose ps'
+ssh root@example.com 'docker logs --tail=100 proxyparser-backend'
 ```
 
 Expected API health response includes `status: "ok"` and database health fields.
 
 ## Rollback
 
-Keep older image archives under `/opt/proxyparser/images`. To roll back:
+Keep older image archives both in the local `dist/images` output directory and under
+`/opt/proxyparser/images`. The normal rollback command validates the matching local archives
+before upload, then revalidates permissions, environment values, and encryption-key
+compatibility before replacing the container:
 
 ```bash
-cd /opt/proxyparser/deploy
-sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=<old-tag>/' .env
-docker compose up -d
+scripts/deploy-images.sh --target root@example.com --tag <old-tag>
 ```
 
-If the old images are not loaded anymore:
+Do not switch `IMAGE_TAG` and run Compose directly across the key-storage cutover. Images predating persistent `/data/.secret-key` read `/app/backend/data/.secret-key`; without the pinned `PP_SECRET_KEY`, a direct rollback can generate a new key and create mixed ciphertext. The deployment script handles this boundary and loads the archived images automatically.
+
+If an emergency server-local rollback is unavoidable, first verify that `.env` is mode `0600`, that `PP_SECRET_KEY` exactly matches `/var/lib/proxyparser/.secret-key`, and only then load the old archives and restart Compose:
 
 ```bash
+set -euo pipefail
+cd /opt/proxyparser/deploy
+source ./deploy-config.sh
+test "$(stat -c '%a' .env)" = 600
+ENV_KEY="$(read_env_assignment .env PP_SECRET_KEY)"
+FILE_KEY="$(read_secret_key_file /var/lib/proxyparser/.secret-key)"
+validate_secret_key_value "$ENV_KEY"
+test "$(normalize_secret_key_value "$ENV_KEY")" = "$FILE_KEY"
 gunzip -c /opt/proxyparser/images/proxyparser-backend-<old-tag>.tar.gz | docker load
 gunzip -c /opt/proxyparser/images/proxyparser-frontend-<old-tag>.tar.gz | docker load
-cd /opt/proxyparser/deploy
+sed -i 's/^IMAGE_TAG=.*/IMAGE_TAG=<old-tag>/' .env
 docker compose up -d
 ```
 
@@ -201,10 +226,12 @@ The SQLite file and `.secret-key` are one recovery unit. Losing or replacing the
 The safest filesystem backup briefly stops the backend so the SQLite WAL is fully closed:
 
 ```bash
-mkdir -p /var/backups/proxyparser
+umask 077
+install -d -m 700 /var/backups/proxyparser
 cd /opt/proxyparser/deploy
 docker compose stop backend
 tar -C /var/lib -czf /var/backups/proxyparser/proxyparser-$(date +%Y%m%d-%H%M%S).tar.gz proxyparser
+chmod 600 /var/backups/proxyparser/proxyparser-*.tar.gz
 docker compose start backend
 ```
 

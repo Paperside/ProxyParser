@@ -2,7 +2,7 @@
 
 日期：2026-07-04
 状态：Next 产品设计基线（核心方案已落地）
-上一版：`docs/2026-06-14-proxyparser-product-blueprint-v0.2.md`
+历史方案：早期产品蓝图已从工作树移除，需要考古时查看 Git 历史。
 实现说明：`docs/2026-07-04-proxyparser-next-technical-plan.md`
 设计原型：`designs/proxyparser-next/`
 
