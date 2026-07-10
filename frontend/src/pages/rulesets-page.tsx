@@ -43,10 +43,22 @@ const UpdateDialog = ({
       const results = await mutations.applyUpdate.mutateAsync({
         catalogId: entry.id,
         toHash: entry.latestSnapshotHash,
-        subscriptionIds: [...selected]
+        subscriptions: (referencing.data ?? [])
+          .filter((subscription) => selected.has(subscription.id))
+          .map((subscription) => ({
+            id: subscription.id,
+            expectedDraftRevision: subscription.draftRevision
+          }))
       });
       const changed = results.filter((result) => result.changed).length;
-      toast.success(`已更新 ${changed} 个订阅的草稿。到各订阅工作台预览并发布即可生效。`);
+      const conflicts = results.filter((result) => result.conflict).length;
+      if (conflicts > 0) {
+        toast.warning(
+          `已更新 ${changed} 个订阅，${conflicts} 个因草稿同时变化而跳过。请刷新后重试。`
+        );
+      } else {
+        toast.success(`已更新 ${changed} 个订阅的草稿。到各订阅工作台预览并发布即可生效。`);
+      }
       onClose();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "应用失败");

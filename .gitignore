@@ -4,11 +4,11 @@ frontend/node_modules
 frontend/dist
 backend/dist
 backend/data
-backend/config.ts
-backend/config.js
-config.js
 package-lock.json
 test_subscription_url
+.DS_Store
+coverage/
+*.log
 
 # Local scratch files. Keep real subscription URLs and ad-hoc test inputs here.
 tmp/*

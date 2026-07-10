@@ -70,7 +70,7 @@ const matchPayloadEntry = (
   isIp: boolean,
   behavior: string,
   entry: string
-): boolean => {
+): boolean | "maybe" => {
   if (behavior === "domain") {
     if (isIp) return false;
     if (entry.startsWith("+.")) return domainMatch.suffix(query, entry.slice(2));
@@ -83,7 +83,7 @@ const matchPayloadEntry = (
   // classical：entry 形如 TYPE,value
   const [type, value] = entry.split(",");
   if (!type || !value) return false;
-  return matchSimpleRule(query, isIp, type.trim(), value.trim()) === true;
+  return matchSimpleRule(query, isIp, type.trim(), value.trim());
 };
 
 // 返回 true=命中，false=未命中，"maybe"=取决于 geodata
@@ -107,6 +107,8 @@ const matchSimpleRule = (
     case "GEOSITE":
       return isIp ? false : "maybe";
     case "GEOIP":
+      return isIp ? "maybe" : false;
+    case "IP-ASN":
       return isIp ? "maybe" : false;
     default:
       return false;
@@ -157,7 +159,8 @@ export const traceQuery = (input: TraceQueryInput): TraceResult => {
       if (!snapshot) continue;
       const entries = parsePayload(snapshot.content);
       for (const entry of entries) {
-        if (matchPayloadEntry(query, isIp, snapshot.behavior, entry)) {
+        const outcome = matchPayloadEntry(query, isIp, snapshot.behavior, entry);
+        if (outcome === true) {
           return {
             verdict: "hit",
             matched: { ruleText, index, via: entry },
@@ -165,6 +168,11 @@ export const traceQuery = (input: TraceQueryInput): TraceResult => {
             groupChain: target ? buildGroupChain(input.document, target) : [],
             maybeNotes
           };
+        }
+        if (outcome === "maybe") {
+          maybeNotes.push(
+            `规则 ${ruleText} 内的 ${entry} 命中取决于客户端 geodata，已跳过继续匹配。`
+          );
         }
       }
       continue;

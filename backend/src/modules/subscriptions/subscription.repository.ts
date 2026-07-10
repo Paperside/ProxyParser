@@ -18,6 +18,7 @@ export interface SubscriptionRecord {
   isEnabled: boolean;
   buildConfig: BuildConfig | null;
   draftBuildConfig: BuildConfig | null;
+  draftRevision: number;
   activeReleaseId: string | null;
   publishPolicy: PublishPolicy;
   pendingUpstreamChange: boolean;
@@ -71,6 +72,12 @@ export interface IssueRecord {
   resolvedAt: string | null;
 }
 
+export class DraftRevisionConflictError extends Error {
+  constructor() {
+    super("subscription draft revision conflict");
+  }
+}
+
 interface SubscriptionRow {
   id: string;
   owner_user_id: string;
@@ -78,6 +85,7 @@ interface SubscriptionRow {
   is_enabled: number;
   build_config: string | null;
   draft_build_config: string | null;
+  draft_revision: number;
   active_release_id: string | null;
   publish_policy: string;
   pending_upstream_change: number;
@@ -121,6 +129,7 @@ const mapSubscription = (row: SubscriptionRow): SubscriptionRecord => ({
   isEnabled: row.is_enabled === 1,
   buildConfig: parseJson<BuildConfig | null>(row.build_config, null),
   draftBuildConfig: parseJson<BuildConfig | null>(row.draft_build_config, null),
+  draftRevision: row.draft_revision,
   activeReleaseId: row.active_release_id,
   publishPolicy: row.publish_policy as PublishPolicy,
   pendingUpstreamChange: row.pending_upstream_change === 1,
@@ -178,7 +187,7 @@ export class SubscriptionRepository {
         now,
         now
       );
-    this.syncSourceIndex(input.id, input.draftBuildConfig);
+    this.syncSourceIndex(input.id, [input.draftBuildConfig]);
     return this.findById(input.id)!;
   }
 
@@ -231,12 +240,41 @@ export class SubscriptionRepository {
       );
   }
 
-  saveDraft(id: string, draft: BuildConfig | null) {
-    this.db
-      .query("UPDATE subscriptions SET draft_build_config = ?, updated_at = ? WHERE id = ?")
-      .run(draft ? JSON.stringify(draft) : null, new Date().toISOString(), id);
-    if (draft) {
-      this.syncSourceIndex(id, draft);
+  saveDraft(id: string, draft: BuildConfig | null, expectedRevision?: number): boolean {
+    const serializedDraft = draft ? JSON.stringify(draft) : null;
+    const now = new Date().toISOString();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = expectedRevision === undefined
+        ? this.db
+            .query(
+              `UPDATE subscriptions
+               SET draft_build_config = ?, draft_revision = draft_revision + 1, updated_at = ?
+               WHERE id = ?`
+            )
+            .run(serializedDraft, now, id)
+        : this.db
+            .query(
+              `UPDATE subscriptions
+               SET draft_build_config = ?, draft_revision = draft_revision + 1, updated_at = ?
+               WHERE id = ? AND draft_revision = ?`
+            )
+            .run(serializedDraft, now, id, expectedRevision);
+      if (result.changes === 0) {
+        this.db.exec("ROLLBACK");
+        return false;
+      }
+
+      const updated = this.findById(id);
+      this.syncSourceIndex(id, [
+        updated?.buildConfig ?? null,
+        updated?.draftBuildConfig ?? null
+      ]);
+      this.db.exec("COMMIT");
+      return true;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
     }
   }
 
@@ -264,14 +302,18 @@ export class SubscriptionRepository {
     this.db.query("DELETE FROM subscriptions WHERE id = ?").run(id);
   }
 
-  // BuildConfig.sources → subscription_sources 物化索引
-  syncSourceIndex(id: string, config: BuildConfig) {
+  // 已发布配置与草稿的 sources 并集 → subscription_sources 物化索引。
+  // 两者都需跟踪：草稿不应让已发布配置丢失上游变化通知。
+  syncSourceIndex(id: string, configs: Array<BuildConfig | null>) {
     this.db.query("DELETE FROM subscription_sources WHERE subscription_id = ?").run(id);
     const insert = this.db.query(
       "INSERT OR IGNORE INTO subscription_sources (subscription_id, source_id) VALUES (?, ?)"
     );
-    for (const source of config.sources) {
-      insert.run(id, source.sourceId);
+    for (const config of configs) {
+      if (!config) continue;
+      for (const source of config.sources) {
+        insert.run(id, source.sourceId);
+      }
     }
   }
 
@@ -288,29 +330,24 @@ export class SubscriptionRepository {
     triggerDetail: string | null;
     validation: ReleaseRecord["validation"];
     createdBy: string | null;
+    expectedDraftRevision: number;
   }): ReleaseRecord {
     const id = createId("rel");
     const now = new Date().toISOString();
-    const seq =
-      (this.db
-        .query<{ max_seq: number | null }>(
-          "SELECT MAX(seq) AS max_seq FROM releases WHERE subscription_id = ?"
-        )
-        .get(input.subscriptionId)?.max_seq ?? 0) + 1;
-
     const insertRelease = this.db.query(
       `INSERT INTO releases (
          id, subscription_id, seq, build_config, source_snapshot_ids, rendered_yaml,
          rendered_hash, diff_summary, trigger, trigger_detail, validation, created_by, created_at
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
-    const activate = this.db.query(
-      `UPDATE subscriptions SET build_config = ?, draft_build_config = NULL,
-         active_release_id = ?, pending_upstream_change = 0, updated_at = ? WHERE id = ?`
-    );
-
-    this.db.exec("BEGIN");
+    this.db.exec("BEGIN IMMEDIATE");
     try {
+      const seq =
+        (this.db
+          .query<{ max_seq: number | null }>(
+            "SELECT MAX(seq) AS max_seq FROM releases WHERE subscription_id = ?"
+          )
+          .get(input.subscriptionId)?.max_seq ?? 0) + 1;
       insertRelease.run(
         id,
         input.subscriptionId,
@@ -326,13 +363,29 @@ export class SubscriptionRepository {
         input.createdBy,
         now
       );
-      activate.run(JSON.stringify(input.buildConfig), id, now, input.subscriptionId);
+      const activate = this.db
+        .query(
+          `UPDATE subscriptions SET build_config = ?, draft_build_config = NULL,
+             draft_revision = draft_revision + 1, active_release_id = ?,
+             pending_upstream_change = 0, updated_at = ?
+           WHERE id = ? AND draft_revision = ?`
+        )
+        .run(
+          JSON.stringify(input.buildConfig),
+          id,
+          now,
+          input.subscriptionId,
+          input.expectedDraftRevision
+        );
+      if (activate.changes === 0) {
+        throw new DraftRevisionConflictError();
+      }
+      this.syncSourceIndex(input.subscriptionId, [input.buildConfig]);
       this.db.exec("COMMIT");
     } catch (error) {
       this.db.exec("ROLLBACK");
       throw error;
     }
-    this.syncSourceIndex(input.subscriptionId, input.buildConfig);
 
     return this.findReleaseById(id)!;
   }

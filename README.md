@@ -29,7 +29,7 @@ bun run dev        # backend :3001 + frontend :5173
 ```bash
 bun run typecheck            # 双端类型检查
 cd backend && bun test       # 后端测试（含 golden 渲染测试）
-bun run build                # 前端构建
+bun run build                # 全仓构建（后端类型检查 + 前端生产构建）
 bun run sync-types           # 后端 BuildConfig 类型同步到前端
 bun backend/scripts/fetch-rulesets.ts   # 更新内置规则源离线快照
 bun backend/scripts/fetch-geodata.ts    # 更新离线 geodata
@@ -43,13 +43,13 @@ bun backend/scripts/fetch-geodata.ts    # 更新离线 geodata
 |---|---|
 | `PUBLIC_BASE_URL` | 对外地址（订阅链接与 /rs 端点用），如 `https://pp.example.com` |
 | `JWT_SECRET` | 认证密钥，必须设置 |
-| `PP_SECRET_KEY` | 自建节点凭据加密密钥（hex 64 位）；不设则首启生成到 `data/.secret-key` |
-| `DATABASE_PATH` | SQLite 路径，默认 `data/proxyparser.v2.sqlite` |
+| `PP_SECRET_KEY` | 数据加密密钥（hex 64 位）；不设则首启生成到数据库同目录的 `.secret-key` |
+| `DATABASE_PATH` | SQLite 路径，默认 `data/proxyparser.sqlite` |
 
-备份 = SQLite 文件 + `data/.secret-key`。
+备份 = SQLite 文件 + 匹配的 `.secret-key`（或外部保存的 `PP_SECRET_KEY`）。
 
 ## 文档
 
 - 产品设计：`docs/2026-07-04-proxyparser-next-product-design.md`
-- 技术方案（施工图）：`docs/2026-07-04-proxyparser-next-technical-plan.md`
+- 技术实现（as-built）：`docs/2026-07-04-proxyparser-next-technical-plan.md`
 - 设计原型：`designs/proxyparser-next/`（`index.html` 总览）

@@ -265,6 +265,31 @@ describe("evaluate（rebuild）", () => {
     expect((result.document as Record<string, unknown>)["unified-delay"]).toBe(true);
   });
 
+  test("classical 快照内联时把目标放在 no-resolve/src 修饰符之前", () => {
+    const input = createInput();
+    input.rulesetSnapshots.set("hash_cn", {
+      hash: "hash_cn",
+      slug: "cn-small",
+      behavior: "classical",
+      content: [
+        "payload:",
+        "  - GEOIP,CN,no-resolve",
+        "  - IP-CIDR,10.0.0.0/8,no-resolve,src",
+        "  - DOMAIN,example.cn",
+        ""
+      ].join("\n"),
+      isPublic: true
+    });
+
+    const result = evaluate(input);
+    const rules = result.document.rules ?? [];
+
+    expect(rules).toContain("GEOIP,CN,DIRECT,no-resolve");
+    expect(rules).toContain("IP-CIDR,10.0.0.0/8,DIRECT,no-resolve,src");
+    expect(rules).toContain("DOMAIN,example.cn,DIRECT");
+    expect(rules).not.toContain("GEOIP,CN,no-resolve,DIRECT");
+  });
+
   test("确定性：同输入双跑字节一致", () => {
     const first = evaluate(createInput());
     const second = evaluate(createInput());

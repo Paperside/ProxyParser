@@ -519,7 +519,16 @@ const inlineRulesFromSnapshot = (
 
   for (const entry of entries) {
     if (snapshot.behavior === "classical") {
-      rules.push(`${entry},${target}`);
+      const parts = entry.split(",").map((part) => part.trim());
+      const modifiers: string[] = [];
+      while (parts.length > 2) {
+        const tail = parts[parts.length - 1]!.toLowerCase();
+        if (tail !== "no-resolve" && tail !== "src") break;
+        modifiers.unshift(parts.pop()!);
+      }
+      rules.push(
+        `${parts.join(",")},${target}${modifiers.length > 0 ? `,${modifiers.join(",")}` : ""}`
+      );
       continue;
     }
     if (snapshot.behavior === "ipcidr") {

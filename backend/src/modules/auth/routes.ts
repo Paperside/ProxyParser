@@ -171,7 +171,7 @@ export const createAuthRoutes = (
           entityType: "user",
           entityId: result.user.id,
           action: "auth.register",
-          summary: "注册新账号并初始化订阅秘钥。"
+          summary: "注册新账号。"
         });
         logger.info({
           event: "auth.register.success",

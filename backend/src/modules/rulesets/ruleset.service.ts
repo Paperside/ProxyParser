@@ -123,7 +123,7 @@ export class RulesetService {
       const message = error instanceof Error ? error.message : String(error);
       this.repository.markChecked(catalogId, message);
       logger.warn({ event: "ruleset.check.failed", catalogId, reason: message });
-      return { updated: false, newHash: null };
+      throw new RulesetError(`检查更新失败：${message}`, 502);
     }
   }
 

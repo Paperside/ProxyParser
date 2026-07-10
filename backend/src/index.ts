@@ -2,11 +2,18 @@ import { cors } from "@elysiajs/cors";
 import { swagger } from "@elysiajs/swagger";
 import { Elysia } from "elysia";
 
-import { getDatabaseHealth, initializeDatabase } from "./lib/db";
+import {
+  getDatabaseHealth,
+  initializeDatabase,
+  listEncryptedSecretRecords
+} from "./lib/db";
 import { logger } from "./lib/logging/logger";
 import { getRuntimeConfig } from "./lib/runtime-config";
 import { InMemoryRateLimiter } from "./lib/security/rate-limiter";
-import { loadOrCreateSecretBox } from "./lib/security/secret-box";
+import {
+  loadOrCreateSecretBox,
+  verifySecretBoxCiphertexts
+} from "./lib/security/secret-box";
 import { Scheduler } from "./lib/scheduler/scheduler";
 import { isMihomoAvailable } from "./lib/validate/mihomo-gate";
 import { AuditLogRepository } from "./modules/audit/audit-log.repository";
@@ -38,14 +45,23 @@ const main = async () => {
   const authService = new AuthService(db, runtimeConfig);
   const events = new EventRepository(db);
 
+  const encryptedSecretRecords = listEncryptedSecretRecords(db);
   const secretBox = loadOrCreateSecretBox({
     secretKeyHex: runtimeConfig.secretKey,
-    dataDir: runtimeConfig.dataDir
+    dataDir: runtimeConfig.secretDataDir,
+    requireExistingKey: encryptedSecretRecords.length > 0,
+    legacyDataDir: runtimeConfig.mihomoDataDir
   });
+  verifySecretBoxCiphertexts(
+    secretBox,
+    encryptedSecretRecords.map((record) => record.ciphertext)
+  );
   const secretStore = new SecretStore(db, secretBox);
 
   const sourceRepository = new UpstreamSourceRepository(db);
-  const sourceService = new UpstreamSourceService(sourceRepository, events);
+  const sourceService = new UpstreamSourceService(sourceRepository, events, {
+    defaultSyncIntervalMinutes: runtimeConfig.sourceSyncDefaultIntervalMinutes
+  });
 
   const rulesetRepository = new RulesetRepository(db);
   const rulesetService = new RulesetService(rulesetRepository, events);
@@ -62,9 +78,10 @@ const main = async () => {
     secretBox,
     {
       publicBaseUrl: runtimeConfig.publicBaseUrl,
+      tempTokenTtlSeconds: runtimeConfig.subscriptionTempTokenTtlSeconds,
       mihomo: {
         mihomoPath: runtimeConfig.mihomoPath,
-        dataDir: runtimeConfig.dataDir,
+        dataDir: runtimeConfig.mihomoDataDir,
         assetsDir: runtimeConfig.assetsDir
       }
     }
@@ -81,7 +98,7 @@ const main = async () => {
 
   const mihomoAvailable = isMihomoAvailable({
     mihomoPath: runtimeConfig.mihomoPath,
-    dataDir: runtimeConfig.dataDir,
+    dataDir: runtimeConfig.mihomoDataDir,
     assetsDir: runtimeConfig.assetsDir
   });
 
@@ -154,7 +171,7 @@ const main = async () => {
     logger.warn({
       event: "mihomo.gate.unavailable",
       message:
-        "未找到 mihomo 二进制，发布门禁降级为仅结构校验。运行 bun scripts/fetch-mihomo.ts 可启用内核校验。"
+        "未找到 mihomo 二进制，发布门禁降级为仅结构校验。运行 bun backend/scripts/fetch-mihomo.ts 可启用内核校验。"
     });
   }
   if (runtimeConfig.jwtSecret === "dev-insecure-change-me") {

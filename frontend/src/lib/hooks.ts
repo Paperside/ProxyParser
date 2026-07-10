@@ -10,6 +10,7 @@ import type {
   PasteParseReportDto,
   PreviewResult,
   ReleaseDetail,
+  ReleaseMutationResult,
   ReleaseSummary,
   RevealedToken,
   RulesetCatalogEntry,
@@ -18,12 +19,13 @@ import type {
   SourceSummary,
   SubscriptionDetail,
   SubscriptionSummary,
+  SyncLatestRulesetsResult,
   SyncReport,
   TemplateDetail,
   TemplateSummary,
   TraceResultDto
 } from "./types";
-import type { BuildConfig } from "./build-config-types";
+import type { BuildConfig, TemplateExtractionReport } from "./build-config-types";
 
 // 服务端状态层：react-query + authorizedRequest。
 // 命名约定：useXxx 查询，useXxxMutation 变更；变更成功后按 key 失效。
@@ -41,6 +43,8 @@ const keys = {
   rulesets: ["rulesets"] as const,
   templates: ["templates"] as const,
   template: (id: string) => ["templates", id] as const,
+  templateExtractPreview: (subscriptionId: string) =>
+    ["template-extract-preview", subscriptionId] as const,
   events: ["events"] as const,
   instance: ["instance"] as const
 };
@@ -146,34 +150,98 @@ export const useSubscriptionMutations = (id?: string) => {
       onSuccess: invalidate
     }),
     saveDraft: useMutation({
-      mutationFn: (config: BuildConfig) =>
-        authorizedRequest<SubscriptionDetail>(`/api/subscriptions/${id}/draft`, {
+      mutationFn: ({
+        subscriptionId,
+        buildConfig,
+        expectedDraftRevision
+      }: {
+        subscriptionId: string;
+        buildConfig: BuildConfig;
+        expectedDraftRevision: number;
+      }) =>
+        authorizedRequest<SubscriptionDetail>(`/api/subscriptions/${subscriptionId}/draft`, {
           method: "PUT",
-          body: JSON.stringify(config)
+          body: JSON.stringify({ buildConfig, expectedDraftRevision })
         }),
-      onSuccess: invalidate
+      onSuccess: (_detail, { subscriptionId }) => {
+        void qc.invalidateQueries({ queryKey: keys.subscriptions });
+        void qc.invalidateQueries({ queryKey: keys.subscription(subscriptionId) });
+        void qc.invalidateQueries({ queryKey: keys.releases(subscriptionId) });
+      }
     }),
     discardDraft: useMutation({
-      mutationFn: () =>
-        authorizedRequest<SubscriptionDetail>(`/api/subscriptions/${id}/draft`, {
-          method: "DELETE"
+      mutationFn: ({
+        subscriptionId,
+        expectedDraftRevision
+      }: {
+        subscriptionId: string;
+        expectedDraftRevision: number;
+      }) =>
+        authorizedRequest<SubscriptionDetail>(`/api/subscriptions/${subscriptionId}/draft`, {
+          method: "DELETE",
+          body: JSON.stringify({ expectedDraftRevision })
         }),
-      onSuccess: invalidate
+      onSuccess: (_detail, { subscriptionId }) => {
+        void qc.invalidateQueries({ queryKey: keys.subscriptions });
+        void qc.invalidateQueries({ queryKey: keys.subscription(subscriptionId) });
+        void qc.invalidateQueries({ queryKey: keys.releases(subscriptionId) });
+      }
     }),
     publish: useMutation({
-      mutationFn: () =>
-        authorizedRequest<ReleaseSummary>(`/api/subscriptions/${id}/publish`, {
-          method: "POST"
+      mutationFn: ({
+        subscriptionId,
+        expectedDraftRevision,
+        expectedRenderedHash
+      }: {
+        subscriptionId: string;
+        expectedDraftRevision: number;
+        expectedRenderedHash: string;
+      }) =>
+        authorizedRequest<ReleaseMutationResult>(`/api/subscriptions/${subscriptionId}/publish`, {
+          method: "POST",
+          body: JSON.stringify({ expectedDraftRevision, expectedRenderedHash })
         }),
-      onSuccess: invalidate
+      onSuccess: (_release, { subscriptionId }) => {
+        void qc.invalidateQueries({ queryKey: keys.subscriptions });
+        void qc.invalidateQueries({ queryKey: keys.subscription(subscriptionId) });
+        void qc.invalidateQueries({ queryKey: keys.releases(subscriptionId) });
+      }
+    }),
+    syncLatestRulesets: useMutation({
+      mutationFn: (expectedDraftRevision: number) => {
+        if (!id) throw new Error("缺少订阅 ID");
+        return authorizedRequest<SyncLatestRulesetsResult>(
+          `/api/subscriptions/${id}/rulesets/sync-latest`,
+          { method: "POST", body: JSON.stringify({ expectedDraftRevision }) }
+        );
+      },
+      onSuccess: async () => {
+        if (!id) return;
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: keys.subscriptions, exact: true }),
+          qc.invalidateQueries({ queryKey: keys.subscription(id) })
+        ]);
+      }
     }),
     rollback: useMutation({
-      mutationFn: (releaseId: string) =>
-        authorizedRequest<ReleaseSummary>(`/api/subscriptions/${id}/rollback`, {
+      mutationFn: ({
+        subscriptionId,
+        releaseId,
+        expectedDraftRevision
+      }: {
+        subscriptionId: string;
+        releaseId: string;
+        expectedDraftRevision: number;
+      }) =>
+        authorizedRequest<ReleaseMutationResult>(`/api/subscriptions/${subscriptionId}/rollback`, {
           method: "POST",
-          body: JSON.stringify({ releaseId })
+          body: JSON.stringify({ releaseId, expectedDraftRevision })
         }),
-      onSuccess: invalidate
+      onSuccess: (_release, { subscriptionId }) => {
+        void qc.invalidateQueries({ queryKey: keys.subscriptions });
+        void qc.invalidateQueries({ queryKey: keys.subscription(subscriptionId) });
+        void qc.invalidateQueries({ queryKey: keys.releases(subscriptionId) });
+      }
     }),
     remove: useMutation({
       mutationFn: (subscriptionId: string) =>
@@ -341,7 +409,8 @@ export const useRulesetMutations = () => {
           `/api/rulesets/${catalogId}/refresh`,
           { method: "POST" }
         ),
-      onSuccess: invalidate
+      // 失败也会在后端落 lastCheckError；无论结果如何都刷新列表，避免 UI 仍显示旧状态。
+      onSettled: invalidate
     }),
     importFromUrl: useMutation({
       mutationFn: (body: { name: string; sourceUrl: string; behavior: string }) =>
@@ -359,8 +428,12 @@ export const useRulesetMutations = () => {
         })
     }),
     applyUpdate: useMutation({
-      mutationFn: (body: { catalogId: string; toHash: string; subscriptionIds: string[] }) =>
-        authorizedRequest<Array<{ subscriptionId: string; changed: boolean }>>(
+      mutationFn: (body: {
+        catalogId: string;
+        toHash: string;
+        subscriptions: Array<{ id: string; expectedDraftRevision: number }>;
+      }) =>
+        authorizedRequest<Array<{ subscriptionId: string; changed: boolean; conflict?: boolean }>>(
           "/api/rulesets/apply-update",
           { method: "POST", body: JSON.stringify(body) }
         ),
@@ -389,7 +462,7 @@ export const useReferencingSubscriptions = (catalogId: string | null) => {
   return useQuery({
     queryKey: ["rulesets", catalogId, "referencing"],
     queryFn: () =>
-      authorizedRequest<Array<{ id: string; displayName: string }>>(
+      authorizedRequest<Array<{ id: string; displayName: string; draftRevision: number }>>(
         `/api/rulesets/${catalogId}/referencing-subscriptions`
       ),
     enabled: catalogId !== null
@@ -413,21 +486,35 @@ export const useTemplate = (id: string | null) => {
   });
 };
 
+export const useTemplateExtractPreview = (subscriptionId: string) => {
+  const { authorizedRequest } = useAuth();
+  return useQuery({
+    queryKey: keys.templateExtractPreview(subscriptionId),
+    queryFn: () =>
+      authorizedRequest<{
+        payload: unknown;
+        report: TemplateExtractionReport;
+        draftRevision: number;
+      }>(
+        "/api/templates/extract-preview",
+        { method: "POST", body: JSON.stringify({ subscriptionId }) }
+      ),
+    // 每次打开都重新分析当前草稿；React Query 会复用同一轮仍在进行的请求。
+    staleTime: 0,
+    refetchOnMount: "always" as const,
+    retry: false
+  });
+};
+
 export const useTemplateMutations = () => {
   const { authorizedRequest } = useAuth();
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: keys.templates });
   return {
-    extractPreview: useMutation({
-      mutationFn: (subscriptionId: string) =>
-        authorizedRequest<{ payload: unknown; report: { recorded: string[]; dropped: Array<{ reason: string; detail: string }> } }>(
-          "/api/templates/extract-preview",
-          { method: "POST", body: JSON.stringify({ subscriptionId }) }
-        )
-    }),
     create: useMutation({
       mutationFn: (body: {
         subscriptionId: string;
+        expectedDraftRevision: number;
         displayName: string;
         description?: string;
         visibility?: string;

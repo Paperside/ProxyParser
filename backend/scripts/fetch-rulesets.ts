@@ -8,19 +8,36 @@ import { mergeMultiSourceClassical, type RulesetSource } from "../src/lib/rulese
 
 const assetsDir = resolve(import.meta.dir, "../assets/rulesets");
 
-interface ManifestEntry {
+export interface ManifestEntry {
   slug: string;
   sources: RulesetSource[];
   extraRules?: string[];
   file: string;
 }
 
+export const selectManifestEntries = (
+  entries: ManifestEntry[],
+  requested: string[]
+): ManifestEntry[] => {
+  const requestedSlugs = new Set(requested);
+  if (requestedSlugs.size === 0) return entries;
+
+  const selected = entries.filter((entry) => requestedSlugs.has(entry.slug));
+  if (selected.length !== requestedSlugs.size) {
+    const known = new Set(entries.map((entry) => entry.slug));
+    const unknown = [...requestedSlugs].filter((slug) => !known.has(slug));
+    throw new Error(`未知内置规则集：${unknown.join(", ")}`);
+  }
+  return selected;
+};
+
 const main = async () => {
   const manifest = JSON.parse(readFileSync(resolve(assetsDir, "manifest.json"), "utf8")) as {
     entries: ManifestEntry[];
   };
+  const entries = selectManifestEntries(manifest.entries, Bun.argv.slice(2));
 
-  for (const entry of manifest.entries) {
+  for (const entry of entries) {
     process.stdout.write(`fetch ${entry.slug} (${entry.sources.length} 源) ... `);
     try {
       const { content, entryCount } = await mergeMultiSourceClassical({

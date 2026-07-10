@@ -66,14 +66,20 @@ export const createTemplateRoutes = (
         set.status = 422;
         return { message: result.error };
       }
-      return result;
+      return { ...result, draftRevision: subscription.draftRevision };
     })
 
     // 确认保存模板
     .post("/", ({ body, currentUser, set }: Omit<Ctx, "params">) => {
-      if (!isRecord(body) || typeof body.subscriptionId !== "string") {
+      if (
+        !isRecord(body) ||
+        typeof body.subscriptionId !== "string" ||
+        typeof body.expectedDraftRevision !== "number" ||
+        !Number.isInteger(body.expectedDraftRevision) ||
+        body.expectedDraftRevision < 0
+      ) {
         set.status = 400;
-        return { message: "缺少 subscriptionId。" };
+        return { message: "缺少 subscriptionId 或有效的 expectedDraftRevision。" };
       }
       const subscription = subscriptionRepository.findByIdAndOwner(
         body.subscriptionId,
@@ -83,6 +89,10 @@ export const createTemplateRoutes = (
       if (!subscription || !config) {
         set.status = 404;
         return { message: "订阅不存在或尚无构建配置。" };
+      }
+      if (subscription.draftRevision !== body.expectedDraftRevision) {
+        set.status = 409;
+        return { message: "草稿已在预览后变化。请重新分析后再保存模板。" };
       }
       const result = extractTemplate(config);
       if ("error" in result) {

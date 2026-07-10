@@ -4,7 +4,8 @@ import {
   RouterProvider,
   createRootRoute,
   createRoute,
-  createRouter
+  createRouter,
+  useParams
 } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 
@@ -75,6 +76,19 @@ const ProtectedLayout = () => {
   );
 };
 
+const SubscriptionWorkspaceRedirect = () => {
+  const { subscriptionId } = useParams({ strict: false }) as {
+    subscriptionId: string;
+  };
+  return (
+    <Navigate
+      to="/subscriptions/$subscriptionId/$tab"
+      params={{ subscriptionId, tab: "overview" }}
+      replace
+    />
+  );
+};
+
 const rootRoute = createRootRoute({ component: () => <Outlet /> });
 
 const entryRoute = createRoute({
@@ -128,7 +142,7 @@ const newSubscriptionRoute = createRoute({
 const subscriptionWorkspaceRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/subscriptions/$subscriptionId",
-  component: () => <SubscriptionWorkspacePage />
+  component: SubscriptionWorkspaceRedirect
 });
 
 const subscriptionWorkspaceTabRoute = createRoute({

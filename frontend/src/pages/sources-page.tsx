@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { EmptyState, HealthDot } from "../components/shared";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Card, CardTitle } from "../components/ui/card";
+import { Card } from "../components/ui/card";
 import { Dialog, DialogContent, DialogFooter } from "../components/ui/dialog";
 import { Field, Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";

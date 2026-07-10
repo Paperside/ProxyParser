@@ -207,7 +207,7 @@ const GroupEditorDialog = ({
   initial: CustomGroup | null;
   onClose: () => void;
 }) => {
-  const { update, preview } = useWorkspace();
+  const { update, preview, editingLocked } = useWorkspace();
   const [name, setName] = useState(initial?.name ?? "");
   const [type, setType] = useState<CustomGroup["type"]>(initial?.type ?? "select");
   const [rows, setRows] = useState<MemberRow[]>(() => toMemberRows(initial?.members ?? []));
@@ -225,7 +225,7 @@ const GroupEditorDialog = ({
       return;
     }
     const members = rows.map((row) => row.member);
-    update((draft) => {
+    const accepted = update((draft) => {
       const existingIndex = draft.groups.custom.findIndex((group) => group.name === (initial?.name ?? name));
       const nextGroup: CustomGroup = { name: name.trim(), type, members };
       if (existingIndex >= 0) {
@@ -240,7 +240,11 @@ const GroupEditorDialog = ({
         draft.groups.order.push(nextGroup.name);
       }
     });
-    onClose();
+    if (accepted) {
+      onClose();
+    } else {
+      toast.error("草稿已锁定，请先重新载入最新草稿。");
+    }
   };
 
   return (
@@ -292,7 +296,7 @@ const GroupEditorDialog = ({
         <MemberPicker onAdd={(member) => setRows((current) => [...current, { id: crypto.randomUUID(), member }])} />
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>取消</Button>
-          <Button variant="primary" onClick={save}>保存</Button>
+          <Button variant="primary" disabled={editingLocked} onClick={save}>保存</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -3,7 +3,11 @@ import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
 import { formatRelative, usageSummary } from "../../lib/format";
-import { useSubscriptionMutations, useTemplateMutations } from "../../lib/hooks";
+import {
+  useSubscriptionMutations,
+  useTemplateExtractPreview,
+  useTemplateMutations
+} from "../../lib/hooks";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardTitle } from "../ui/card";
@@ -13,34 +17,50 @@ import { useWorkspace } from "./context";
 
 // 提炼模板：先看报告，确认后保存（对应产品文档 §9.5）
 const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
-  const { detail } = useWorkspace();
+  const { detail, editingLocked } = useWorkspace();
+  const navigate = useNavigate();
+  const preview = useTemplateExtractPreview(detail.id);
   const mutations = useTemplateMutations();
-  const [report, setReport] = useState<{
-    recorded: string[];
-    dropped: Array<{ reason: string; detail: string }>;
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState(`${detail.displayName} 方案`);
-  const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const report = preview.data?.report ?? null;
+  const normalizedName = name.trim();
 
-  const loadPreview = () => {
-    setLoading(true);
-    mutations.extractPreview
-      .mutateAsync(detail.id)
-      .then((result) => setReport(result.report))
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "提炼失败"))
-      .finally(() => setLoading(false));
+  const submit = async () => {
+    if (!report || !normalizedName || !preview.data || editingLocked) return;
+    setSaveError(null);
+    try {
+      const created = await mutations.create.mutateAsync({
+        subscriptionId: detail.id,
+        expectedDraftRevision: preview.data.draftRevision,
+        displayName: normalizedName
+      });
+      toast.success(`模板「${created.displayName}」已保存`);
+      onClose();
+      void navigate({ to: "/templates" });
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "保存失败");
+    }
   };
 
-  if (!report && !error && !loading) {
-    loadPreview();
-  }
+  const requestClose = () => {
+    if (!mutations.create.isPending) onClose();
+  };
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && requestClose()}>
       <DialogContent title="提炼为模板" description="模板与订阅源脱钩：换机场时套用即可。以下是将被记录与剔除的内容。">
-        {error ? (
-          <p className="rounded-md bg-err-bg px-3 py-2 text-xs text-err">{error}</p>
+        {preview.isFetching ? (
+          <p className="text-xs text-muted">正在分析当前草稿…</p>
+        ) : preview.isError ? (
+          <div className="flex flex-col items-start gap-3 rounded-md bg-err-bg px-3 py-2.5">
+            <p className="text-xs text-err">
+              {preview.error instanceof Error ? preview.error.message : "提炼失败"}
+            </p>
+            <Button size="sm" variant="danger" onClick={() => void preview.refetch()}>
+              重新分析
+            </Button>
+          </div>
         ) : report ? (
           <div className="flex flex-col gap-4">
             <div className="text-xs">
@@ -58,28 +78,38 @@ const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
               ) : null}
             </div>
             <Field label="模板名称">
-              <Input value={name} onChange={(event) => setName(event.target.value)} />
+              <Input
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setSaveError(null);
+                }}
+              />
             </Field>
+            {!normalizedName ? <p className="text-xs text-err">模板名称不能为空。</p> : null}
+            {saveError ? (
+              <p className="rounded-md bg-err-bg px-3 py-2 text-xs text-err">{saveError}</p>
+            ) : null}
           </div>
         ) : (
-          <p className="text-xs text-muted">正在分析…</p>
+          <p className="text-xs text-err">未能读取提炼报告。</p>
         )}
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>取消</Button>
+          <Button variant="ghost" disabled={mutations.create.isPending} onClick={requestClose}>
+            取消
+          </Button>
           <Button
             variant="primary"
-            disabled={!report || mutations.create.isPending}
-            onClick={() =>
-              mutations.create
-                .mutateAsync({ subscriptionId: detail.id, displayName: name })
-                .then(() => {
-                  toast.success("模板已保存");
-                  onClose();
-                })
-                .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "保存失败"))
+            disabled={
+              !report ||
+              !normalizedName ||
+              preview.isFetching ||
+              mutations.create.isPending ||
+              editingLocked
             }
+            onClick={() => void submit()}
           >
-            确认保存模板
+            {mutations.create.isPending ? "保存中…" : "确认保存模板"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -88,7 +118,7 @@ const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
 };
 
 export const OverviewTab = () => {
-  const { detail, config, preview } = useWorkspace();
+  const { detail, config, preview, saving } = useWorkspace();
   const navigate = useNavigate();
   const mutations = useSubscriptionMutations(detail.id);
   const [showExtract, setShowExtract] = useState(false);
@@ -146,7 +176,11 @@ export const OverviewTab = () => {
       <Card>
         <CardTitle>操作</CardTitle>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" disabled={config.mode !== "rebuild"} onClick={() => setShowExtract(true)}>
+          <Button
+            size="sm"
+            disabled={config.mode !== "rebuild" || saving}
+            onClick={() => setShowExtract(true)}
+          >
             提炼为模板
           </Button>
           <Button
@@ -170,8 +204,12 @@ export const OverviewTab = () => {
         </div>
         {config.mode !== "rebuild" ? (
           <p className="mt-2 text-[11px] text-faint">保留源配置模式与订阅源绑定，不能提炼为通用模板。</p>
+        ) : saving ? (
+          <p className="mt-2 text-[11px] text-faint">草稿保存完成后即可提炼，确保模板包含最新修改。</p>
         ) : null}
       </Card>
+
+      {showExtract ? <ExtractDialog onClose={() => setShowExtract(false)} /> : null}
     </div>
   );
 };

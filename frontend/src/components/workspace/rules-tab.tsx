@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import type { RuleEntry, RuleItem } from "../../lib/build-config-types";
@@ -31,10 +31,10 @@ const RULE_TYPES = [
 const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () => void }) => {
   const rulesets = useRulesets();
   const mutations = useRulesetMutations();
-  const { update } = useWorkspace();
+  const { update, editingLocked } = useWorkspace();
   const [busy, setBusy] = useState<string | null>(null);
 
-  const pushToBlock = (catalogId: string, slug: string, hash: string, emit: "inline" | "provider") => {
+  const pushToBlock = (catalogId: string, slug: string, hash: string, emit: "inline" | "provider") =>
     update((draft) => {
       let block = draft.rules.targets.find((candidate) => candidate.target === target);
       if (!block) {
@@ -44,13 +44,18 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
       }
       block.items.push({ kind: "snapshot", catalogId, slug, hash, emit });
     });
-  };
 
   const importOne = async (catalogId: string, slug: string) => {
+    if (editingLocked) {
+      toast.error("草稿已锁定，请先重新载入最新草稿。");
+      return;
+    }
     setBusy(catalogId);
     try {
       const snapshot = await mutations.ensureSnapshot.mutateAsync(catalogId);
-      pushToBlock(catalogId, slug, snapshot.hash, snapshot.entryCount < 50 ? "inline" : "provider");
+      if (!pushToBlock(catalogId, slug, snapshot.hash, snapshot.entryCount < 50 ? "inline" : "provider")) {
+        throw new Error("草稿在导入期间被锁定。请重新载入后再试。");
+      }
       toast.success(`已导入 ${slug}（钉住 @${snapshot.hash.slice(0, 8)}）`);
       onClose();
     } catch (error) {
@@ -63,6 +68,10 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
   // 从扩展目录导入：先落库为自定义规则源，再直接钉版本写入当前块（一步到位）。
   // 目录条目大小未知，统一走 provider 引用，不做内联。
   const importFromDirectory = async (entry: RulesetDirectoryEntry) => {
+    if (editingLocked) {
+      toast.error("草稿已锁定，请先重新载入最新草稿。");
+      return;
+    }
     setBusy(entry.slug);
     try {
       const created = await mutations.importFromUrl.mutateAsync({
@@ -73,7 +82,9 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
       if (!created.latestSnapshotHash) {
         throw new Error("导入后没有可用快照。");
       }
-      pushToBlock(created.id, created.slug, created.latestSnapshotHash, "provider");
+      if (!pushToBlock(created.id, created.slug, created.latestSnapshotHash, "provider")) {
+        throw new Error("草稿在导入期间被锁定。请重新载入后再试。");
+      }
       toast.success(`已导入「${entry.name}」并加入「${target}」`);
       onClose();
     } catch (error) {
@@ -97,7 +108,7 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
               <Button
                 size="sm"
                 className="ml-auto"
-                disabled={busy !== null}
+                disabled={busy !== null || editingLocked}
                 onClick={() => void importOne(entry.id, entry.slug)}
               >
                 {busy === entry.id ? "钉版本中…" : "导入"}
@@ -107,7 +118,10 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
         </div>
         <div className="mt-3 border-t border-line pt-3">
           <p className="mb-2 text-[11px] font-medium text-muted">从扩展目录发现更多规则组</p>
-          <RulesetDirectoryBrowser onImport={(entry) => void importFromDirectory(entry)} busySlug={busy} />
+          <RulesetDirectoryBrowser
+            onImport={(entry) => void importFromDirectory(entry)}
+            busySlug={editingLocked ? "__locked__" : busy}
+          />
         </div>
       </DialogContent>
     </Dialog>
@@ -117,7 +131,7 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
 // 粘贴规则：解析 → 规范化报告确认 → 保存（v0.2 §8.5）
 const PasteDialog = ({ target, onClose }: { target: string; onClose: () => void }) => {
   const mutations = useRulesetMutations();
-  const { update } = useWorkspace();
+  const { update, editingLocked } = useWorkspace();
   const [text, setText] = useState("");
   const [report, setReport] = useState<PasteParseReportDto | null>(null);
 
@@ -130,7 +144,7 @@ const PasteDialog = ({ target, onClose }: { target: string; onClose: () => void 
 
   const confirm = () => {
     if (!report) return;
-    update((draft) => {
+    const accepted = update((draft) => {
       let block = draft.rules.targets.find((candidate) => candidate.target === target);
       if (!block) {
         block = { target, items: [] };
@@ -139,6 +153,10 @@ const PasteDialog = ({ target, onClose }: { target: string; onClose: () => void 
       }
       block.items.push({ kind: "manual", entries: report.entries as RuleEntry[] });
     });
+    if (!accepted) {
+      toast.error("草稿已锁定，请先重新载入最新草稿。");
+      return;
+    }
     toast.success(`${report.entries.length} 条规则已加入「${target}」`);
     onClose();
   };
@@ -182,7 +200,11 @@ const PasteDialog = ({ target, onClose }: { target: string; onClose: () => void 
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setReport(null)}>返回修改</Button>
-              <Button variant="primary" disabled={report.entries.length === 0} onClick={confirm}>
+              <Button
+                variant="primary"
+                disabled={report.entries.length === 0 || editingLocked}
+                onClick={confirm}
+              >
                 确认保存规范化结果
               </Button>
             </DialogFooter>
@@ -194,7 +216,7 @@ const PasteDialog = ({ target, onClose }: { target: string; onClose: () => void 
 };
 
 const AddBlockDialog = ({ onClose }: { onClose: () => void }) => {
-  const { config, update, knownGroupNames } = useWorkspace();
+  const { config, update, knownGroupNames, editingLocked } = useWorkspace();
   const existing = new Set(config.rules.targets.map((block) => block.target));
   const candidates = [
     ...knownGroupNames.filter((name) => !existing.has(name)),
@@ -219,13 +241,13 @@ const AddBlockDialog = ({ onClose }: { onClose: () => void }) => {
           <Button variant="ghost" onClick={onClose}>取消</Button>
           <Button
             variant="primary"
-            disabled={!target}
+            disabled={!target || editingLocked}
             onClick={() => {
-              update((draft) => {
+              const accepted = update((draft) => {
                 draft.rules.targets.push({ target, items: [] });
                 draft.rules.order.push(target);
               });
-              onClose();
+              if (accepted) onClose();
             }}
           >
             创建
@@ -241,14 +263,34 @@ const itemSummary = (item: RuleItem) =>
     ? `${item.slug} @${item.hash.slice(0, 8)} · ${item.emit === "provider" ? "provider" : "内联"}`
     : `${item.entries.length} 条手动规则`;
 
+const SYNC_SKIP_REASON: Record<string, string> = {
+  "catalog-not-visible": "规则集不存在或不可见",
+  "latest-snapshot-unavailable": "规则库尚无最新快照",
+  "latest-snapshot-missing": "最新快照内容缺失"
+};
+
 export const RulesTab = () => {
-  const { config, update, knownGroupNames } = useWorkspace();
+  const {
+    config,
+    update,
+    knownGroupNames,
+    saving,
+    syncingRulesets,
+    syncLatestRulesets
+  } = useWorkspace();
   const [importFor, setImportFor] = useState<string | null>(null);
   const [pasteFor, setPasteFor] = useState<string | null>(null);
   const [showAddBlock, setShowAddBlock] = useState(false);
   const [manualFor, setManualFor] = useState<string | null>(null);
   const [manualType, setManualType] = useState<string>("DOMAIN-SUFFIX");
   const [manualValue, setManualValue] = useState("");
+  const referencedCatalogCount = new Set(
+    config.rules.targets.flatMap((block) =>
+      block.items
+        .filter((item) => item.kind === "snapshot")
+        .map((item) => item.catalogId)
+    )
+  ).size;
 
   const orderedTargets = [
     ...config.rules.order.filter((target) => config.rules.targets.some((block) => block.target === target)),
@@ -296,12 +338,64 @@ export const RulesTab = () => {
     setManualFor(null);
   };
 
+  const handleSyncLatestRulesets = async () => {
+    if (saving || syncingRulesets) return;
+    try {
+      const result = await syncLatestRulesets();
+      if (result.changes.length > 0) {
+        toast.success(`已同步 ${result.changes.length} 个规则集到最新快照`, {
+          description: `变更已写入草稿；${result.unchangedCount} 个无需更新。请预览后发布。`
+        });
+      } else if (result.skipped.length === 0) {
+        toast.info("当前引用的规则集已是最新快照", {
+          description: `${result.unchangedCount} 个规则集无需更新。`
+        });
+      }
+      if (result.skipped.length > 0) {
+        const sample = result.skipped
+          .slice(0, 2)
+          .map((item) => `${item.slug}：${SYNC_SKIP_REASON[item.reason] ?? item.reason}`)
+          .join("；");
+        toast.warning(`${result.skipped.length} 个规则集未能同步`, {
+          description: `${sample}${result.skipped.length > 2 ? "；其余请稍后重试" : ""}`
+        });
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "同步规则快照失败");
+    }
+  };
+
   return (
     <div className="max-w-3xl">
       <SectionTitle
         title="规则"
-        desc="按目标组织。块顺序决定匹配优先级；规则源以钉版本快照引用，更新永远需要你确认。"
-        actions={<Button size="sm" onClick={() => setShowAddBlock(true)}>新增规则块</Button>}
+        desc="按目标组织，块顺序决定匹配优先级。同步规则库当前最新快照只写入草稿，不自动发布；发布后客户端才生效。"
+        actions={
+          <>
+            <span
+              title={
+                referencedCatalogCount === 0
+                  ? "当前订阅尚未引用规则库快照"
+                  : saving
+                    ? "请先等待本地修改保存完成"
+                    : "同步规则库当前 latest；只写草稿，不自动发布"
+              }
+            >
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={saving || syncingRulesets || referencedCatalogCount === 0}
+                onClick={() => void handleSyncLatestRulesets()}
+              >
+                <RefreshCw
+                  className={`size-3 ${syncingRulesets ? "animate-spin" : ""}`}
+                />
+                {syncingRulesets ? "同步中…" : "同步规则库最新快照"}
+              </Button>
+            </span>
+            <Button size="sm" onClick={() => setShowAddBlock(true)}>新增规则块</Button>
+          </>
+        }
       />
 
       <SortableList

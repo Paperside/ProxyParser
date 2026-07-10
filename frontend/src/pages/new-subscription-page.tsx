@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -13,6 +13,7 @@ import { usageSummary } from "../lib/format";
 import {
   useSourceMutations,
   useSources,
+  usePreview,
   useSubscriptionMutations,
   useTemplates
 } from "../lib/hooks";
@@ -127,6 +128,7 @@ export const NewSubscriptionPage = () => {
   const [displayName, setDisplayName] = useState("");
   const [result, setResult] = useState<IssuedToken | null>(null);
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
+  const [draftRevision, setDraftRevision] = useState<number | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
 
   const selectedSource = useMemo(
@@ -160,6 +162,7 @@ export const NewSubscriptionPage = () => {
         }
       });
       setSubscriptionId(created.subscription.id);
+      setDraftRevision(created.subscription.draftRevision);
       setResult(created.token);
       // 直接发布首个版本（黄金路径：拿到链接即可导入）
       try {
@@ -294,7 +297,7 @@ export const NewSubscriptionPage = () => {
       ) : null}
 
       {step === 3 && selectedSource ? (
-        result && subscriptionId ? (
+        result && subscriptionId && draftRevision !== null ? (
           <PublishAndFinish
             subscriptionId={subscriptionId}
             token={result}
@@ -351,19 +354,34 @@ const PublishAndFinish = ({
   onDone: () => void;
 }) => {
   const mutations = useSubscriptionMutations(subscriptionId);
+  const preview = usePreview(subscriptionId, true);
   const [published, setPublished] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const publishAttempted = useRef(false);
 
   useEffect(() => {
-    if (publishAttempted.current) return;
+    if (publishAttempted.current || !preview.data) return;
     publishAttempted.current = true;
+    setError(null);
     mutations.publish
-      .mutateAsync()
-      .then(() => setPublished(true))
+      .mutateAsync({
+        subscriptionId,
+        expectedDraftRevision: preview.data.draftRevision,
+        expectedRenderedHash: preview.data.renderedHash
+      })
+      .then(() => {
+        setError(null);
+        setPublished(true);
+      })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "发布失败"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [preview.data]);
+
+  useEffect(() => {
+    if (preview.isError && !publishAttempted.current) {
+      setError(preview.error instanceof Error ? preview.error.message : "预览失败");
+    }
+  }, [preview.error, preview.isError]);
 
   if (error) {
     return (

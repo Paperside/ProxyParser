@@ -10,10 +10,8 @@ VITE_API_BASE_URL="${VITE_API_BASE_URL:-}"
 mkdir -p "$OUTPUT_DIR"
 
 cd "$ROOT_DIR"
-if [[ ! -d "$ROOT_DIR/frontend/dist" ]]; then
-  echo "Building frontend dist on the host before packaging the nginx image."
-  VITE_API_BASE_URL="$VITE_API_BASE_URL" bun run --filter @proxyparser/frontend build
-fi
+echo "Building frontend dist on the host before packaging the nginx image."
+VITE_API_BASE_URL="$VITE_API_BASE_URL" bun run --filter @proxyparser/frontend build
 
 if ! docker info >/dev/null 2>&1; then
   cat >&2 <<'MSG'

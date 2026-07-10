@@ -83,14 +83,18 @@
     {
       "slug": "anthropic",
       "name": "Anthropic",
-      "description": "Anthropic / Claude 相关域名，建议指向 Anthropic 策略组。",
+      "description": "Anthropic / Claude 及官网 CDN 相关域名，建议指向 Anthropic 策略组。",
       "behavior": "classical",
       "groupKind": "proxy-first",
       "recommendedTarget": "Anthropic",
       "sources": [
         { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Claude/Claude_No_Resolve.yaml" }
       ],
-      "extraRules": ["DOMAIN-SUFFIX,claudeusercontent.com"],
+      "extraRules": [
+        "DOMAIN-SUFFIX,claude.com",
+        "DOMAIN-SUFFIX,claudeusercontent.com",
+        "DOMAIN,servd-anthropic-website.b-cdn.net"
+      ],
       "file": "anthropic.yaml"
     },
     {
@@ -188,15 +192,14 @@
     {
       "slug": "chinamax",
       "name": "ChinaMax",
-      "description": "中国大陆域名与 IP 段（最全版本），建议指向 ChinaMax 策略组（默认直连）。",
+      "description": "中国大陆域名与 IP 段（最全版本，含 GEOIP CN 兜底），建议指向 ChinaMax 策略组（默认直连）。",
       "behavior": "classical",
       "groupKind": "direct-first",
       "recommendedTarget": "ChinaMax",
       "sources": [
-        { "kind": "domain", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMax/ChinaMax_Domain.yaml" },
-        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMax/ChinaMax_No_Resolve.yaml" }
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMax/ChinaMax_Classical_No_Resolve.yaml" }
       ],
-      "extraRules": [],
+      "extraRules": ["GEOIP,CN,no-resolve"],
       "file": "chinamax.yaml"
     },
     {

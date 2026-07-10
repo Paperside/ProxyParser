@@ -32,11 +32,12 @@ import type {
   SyncReportRecord,
   UpstreamSourceRepository
 } from "../upstream-sources/upstream-source.repository";
-import type {
-  PublishPolicy,
-  ReleaseRecord,
-  SubscriptionRecord,
-  SubscriptionRepository
+import {
+  DraftRevisionConflictError,
+  type PublishPolicy,
+  type ReleaseRecord,
+  type SubscriptionRecord,
+  type SubscriptionRepository
 } from "./subscription.repository";
 import { RECOMMENDED_TEMPLATE_ID } from "../../lib/db/seed-builtin-templates";
 
@@ -55,6 +56,25 @@ export type StartKind = "recommended" | "template" | "patch" | "blank";
 export interface SubscriptionServiceOptions {
   publicBaseUrl: string;
   mihomo: MihomoGateOptions;
+  tempTokenTtlSeconds?: number;
+}
+
+export interface SyncLatestRulesetsResult {
+  buildConfig: BuildConfig;
+  draftRevision: number;
+  changes: Array<{
+    catalogId: string;
+    slug: string;
+    fromHashes: string[];
+    toHash: string;
+    updatedReferenceCount: number;
+  }>;
+  unchangedCount: number;
+  skipped: Array<{
+    catalogId: string;
+    slug: string;
+    reason: string;
+  }>;
 }
 
 const sha256Hex = (input: string) => createHash("sha256").update(input).digest("hex");
@@ -111,6 +131,7 @@ export class SubscriptionService {
       ...this.summarize(record),
       buildConfig: record.buildConfig,
       draftBuildConfig: record.draftBuildConfig,
+      draftRevision: record.draftRevision,
       activeRelease: activeRelease
         ? {
             id: activeRelease.id,
@@ -158,6 +179,28 @@ export class SubscriptionService {
       throw new SubscriptionError("订阅不存在。", 404);
     }
     return record;
+  }
+
+  private assertConfigReferencesOwned(ownerUserId: string, config: BuildConfig) {
+    for (const source of config.sources) {
+      if (!this.sourceRepository.findByIdAndOwner(source.sourceId, ownerUserId)) {
+        throw new SubscriptionError("构建配置引用了无权访问的订阅源。", 403);
+      }
+    }
+    for (const node of config.nodes.custom) {
+      if (node.secretRef && !this.secretStore.resolveForOwner(ownerUserId, node.secretRef)) {
+        throw new SubscriptionError("自建节点引用了不存在或无权访问的敏感字段。", 403);
+      }
+    }
+    for (const block of config.rules.targets) {
+      for (const item of block.items) {
+        if (item.kind !== "snapshot") continue;
+        const catalog = this.rulesetRepository.findById(item.catalogId);
+        if (catalog && catalog.ownerUserId !== null && catalog.ownerUserId !== ownerUserId) {
+          throw new SubscriptionError("构建配置引用了无权访问的规则库。", 403);
+        }
+      }
+    }
   }
 
   // ── 创建（3 步向导第 3 步落库） ───────────────────────────────
@@ -244,30 +287,40 @@ export class SubscriptionService {
 
   // ── 草稿与预览 ──────────────────────────────────────────────
 
-  saveDraft(ownerUserId: string, id: string, rawConfig: unknown) {
+  saveDraft(
+    ownerUserId: string,
+    id: string,
+    rawConfig: unknown,
+    expectedDraftRevision?: number
+  ) {
     const record = this.requireOwned(ownerUserId, id);
     const result = validateBuildConfig(rawConfig);
     if (!result.ok) {
       throw new SubscriptionError(`构建配置不合法：${result.errors.join("；")}`, 422);
     }
-    for (const source of result.value.sources) {
-      if (!this.sourceRepository.findByIdAndOwner(source.sourceId, ownerUserId)) {
-        throw new SubscriptionError("构建配置引用了无权访问的订阅源。", 403);
-      }
-    }
+    this.assertConfigReferencesOwned(ownerUserId, result.value);
     // 与已发布配置一致的草稿视为无草稿
     const published = record.buildConfig;
-    if (published && JSON.stringify(published) === JSON.stringify(result.value)) {
-      this.repository.saveDraft(id, null);
-    } else {
-      this.repository.saveDraft(id, result.value);
+    const nextDraft = published && JSON.stringify(published) === JSON.stringify(result.value)
+      ? null
+      : result.value;
+    if (!this.repository.saveDraft(id, nextDraft, expectedDraftRevision)) {
+      throw new SubscriptionError(
+        "草稿已在其他页面或操作中更新。为避免覆盖较新的内容，请重新载入后再编辑。",
+        409
+      );
     }
     return this.getDetail(ownerUserId, id);
   }
 
-  discardDraft(ownerUserId: string, id: string) {
+  discardDraft(ownerUserId: string, id: string, expectedDraftRevision: number) {
     this.requireOwned(ownerUserId, id);
-    this.repository.saveDraft(id, null);
+    if (!this.repository.saveDraft(id, null, expectedDraftRevision)) {
+      throw new SubscriptionError(
+        "草稿已在其他页面或操作中更新，无法放弃较新的内容。请重新载入后再试。",
+        409
+      );
+    }
     return this.getDetail(ownerUserId, id);
   }
 
@@ -277,7 +330,8 @@ export class SubscriptionService {
     if (!config) {
       throw new SubscriptionError("尚无可预览的构建配置。", 409);
     }
-    const result = this.evaluateConfig(config);
+    this.assertConfigReferencesOwned(record.ownerUserId, config);
+    const result = this.evaluateConfig(config, record.ownerUserId);
     const activeRelease = record.activeReleaseId
       ? this.repository.findReleaseById(record.activeReleaseId)
       : null;
@@ -285,6 +339,8 @@ export class SubscriptionService {
       ? diffDocuments(this.parseReleaseDocument(activeRelease), result.document)
       : null;
     return {
+      draftRevision: record.draftRevision,
+      renderedHash: result.renderedHash,
       yamlText: result.yamlText,
       issues: result.issues,
       stats: result.stats,
@@ -303,6 +359,8 @@ export class SubscriptionService {
     options: {
       trigger: ReleaseRecord["trigger"];
       triggerDetail?: string;
+      expectedDraftRevision?: number;
+      expectedRenderedHash?: string;
     }
   ) {
     const record = ownerUserId
@@ -311,12 +369,31 @@ export class SubscriptionService {
     if (!record) {
       throw new SubscriptionError("订阅不存在。", 404);
     }
+    if (
+      options.expectedDraftRevision !== undefined &&
+      record.draftRevision !== options.expectedDraftRevision
+    ) {
+      throw new SubscriptionError(
+        "草稿已在预览后被其他页面或操作更新。为避免发布未经确认的内容，请重新预览。",
+        409
+      );
+    }
     const config = record.draftBuildConfig ?? record.buildConfig;
     if (!config) {
       throw new SubscriptionError("尚无构建配置，无法发布。", 409);
     }
 
-    const result = this.evaluateConfig(config);
+    this.assertConfigReferencesOwned(record.ownerUserId, config);
+    const result = this.evaluateConfig(config, record.ownerUserId);
+    if (
+      options.expectedRenderedHash !== undefined &&
+      result.renderedHash !== options.expectedRenderedHash
+    ) {
+      throw new SubscriptionError(
+        "预览后的上游数据或敏感配置已变化。为避免发布未经确认的内容，请重新预览。",
+        409
+      );
+    }
     this.repository.replaceIssues(id, result.issues);
 
     const errors = result.issues.filter((issue) => issue.severity === "error");
@@ -380,18 +457,30 @@ export class SubscriptionService {
       }
     }
 
-    const release = this.repository.createRelease({
-      subscriptionId: id,
-      buildConfig: config,
-      sourceSnapshotIds,
-      renderedYaml: result.yamlText,
-      renderedHash: result.renderedHash,
-      diffSummary,
-      trigger: options.trigger,
-      triggerDetail: options.triggerDetail ?? null,
-      validation: { structuralErrors: 0, mihomo },
-      createdBy: ownerUserId ?? "system"
-    });
+    let release: ReleaseRecord;
+    try {
+      release = this.repository.createRelease({
+        subscriptionId: id,
+        buildConfig: config,
+        sourceSnapshotIds,
+        renderedYaml: result.yamlText,
+        renderedHash: result.renderedHash,
+        diffSummary,
+        trigger: options.trigger,
+        triggerDetail: options.triggerDetail ?? null,
+        validation: { structuralErrors: 0, mihomo },
+        createdBy: ownerUserId ?? "system",
+        expectedDraftRevision: options.expectedDraftRevision ?? record.draftRevision
+      });
+    } catch (error) {
+      if (error instanceof DraftRevisionConflictError) {
+        throw new SubscriptionError(
+          "草稿已在发布过程中被其他页面或操作更新。为避免发布未经确认的内容，请重新预览。",
+          409
+        );
+      }
+      throw error;
+    }
 
     // 透传主源的用量信息
     const primarySource = config.sources[0]
@@ -424,25 +513,48 @@ export class SubscriptionService {
     return release;
   }
 
-  rollback(ownerUserId: string, id: string, releaseId: string) {
+  rollback(
+    ownerUserId: string,
+    id: string,
+    releaseId: string,
+    expectedDraftRevision: number
+  ) {
     const record = this.requireOwned(ownerUserId, id);
+    if (record.draftBuildConfig) {
+      throw new SubscriptionError(
+        "当前存在未发布草稿。为避免回滚时丢失修改，请先发布或放弃草稿。",
+        409
+      );
+    }
     const target = this.repository.findReleaseById(releaseId);
     if (!target || target.subscriptionId !== id) {
       throw new SubscriptionError("目标版本不存在。", 404);
     }
     // 历史产物不可变可信：直接复用其配置与 YAML（技术方案 §6.1）
-    const release = this.repository.createRelease({
-      subscriptionId: id,
-      buildConfig: target.buildConfig,
-      sourceSnapshotIds: target.sourceSnapshotIds,
-      renderedYaml: target.renderedYaml,
-      renderedHash: target.renderedHash,
-      diffSummary: {},
-      trigger: "rollback",
-      triggerDetail: `回滚到 v${target.seq}`,
-      validation: target.validation,
-      createdBy: ownerUserId
-    });
+    let release: ReleaseRecord;
+    try {
+      release = this.repository.createRelease({
+        subscriptionId: id,
+        buildConfig: target.buildConfig,
+        sourceSnapshotIds: target.sourceSnapshotIds,
+        renderedYaml: target.renderedYaml,
+        renderedHash: target.renderedHash,
+        diffSummary: {},
+        trigger: "rollback",
+        triggerDetail: `回滚到 v${target.seq}`,
+        validation: target.validation,
+        createdBy: ownerUserId,
+        expectedDraftRevision
+      });
+    } catch (error) {
+      if (error instanceof DraftRevisionConflictError) {
+        throw new SubscriptionError(
+          "草稿已在回滚过程中被其他页面或操作更新。为避免丢失较新的修改，请重新载入。",
+          409
+        );
+      }
+      throw error;
+    }
     this.events.insert({
       ownerUserId: record.ownerUserId,
       entityKind: "subscription",
@@ -485,15 +597,26 @@ export class SubscriptionService {
     for (const subscription of subscriptions) {
       if (!subscription.isEnabled || !subscription.buildConfig) continue;
       try {
-        const result = this.evaluateConfig(subscription.buildConfig);
+        const evaluationConfig = subscription.draftBuildConfig ?? subscription.buildConfig;
+        const result = this.evaluateConfig(evaluationConfig, subscription.ownerUserId);
         const activeRelease = subscription.activeReleaseId
           ? this.repository.findReleaseById(subscription.activeReleaseId)
           : null;
-        if (activeRelease && activeRelease.renderedHash === result.renderedHash) {
+        if (
+          !subscription.draftBuildConfig &&
+          activeRelease &&
+          activeRelease.renderedHash === result.renderedHash
+        ) {
           continue; // 输出无变化
         }
         const hasErrors = result.issues.some((issue) => issue.severity === "error");
-        if (subscription.publishPolicy === "auto" && !hasErrors) {
+        // 草稿可能包含与已发布版本无关的用户修改。自动发布必须等待
+        // 用户先处理草稿，否则会把这些未确认修改一并发布并清空草稿。
+        if (
+          !subscription.draftBuildConfig &&
+          subscription.publishPolicy === "auto" &&
+          !hasErrors
+        ) {
           this.publish(null, subscription.id, {
             trigger: "upstream_sync",
             triggerDetail: `订阅源「${source.displayName}」变化`
@@ -509,7 +632,11 @@ export class SubscriptionService {
             payload: {
               displayName: subscription.displayName,
               sourceName: source.displayName,
-              reason: hasErrors ? "上游变化导致引用失效，需处理后发布" : "发布策略为确认模式",
+              reason: hasErrors
+                ? "上游变化导致引用失效，需处理后发布"
+                : subscription.draftBuildConfig
+                  ? "存在未发布草稿，已暂停自动发布"
+                  : "发布策略为确认模式",
               reportId: report?.id ?? null
             }
           });
@@ -642,10 +769,11 @@ export class SubscriptionService {
   createTempToken(
     ownerUserId: string,
     id: string,
-    input: { label: string | null; ttlSeconds: number }
+    input: { label: string | null; ttlSeconds?: number }
   ) {
     this.requireOwned(ownerUserId, id);
-    if (input.ttlSeconds < 3600 || input.ttlSeconds > 30 * 24 * 3600) {
+    const ttlSeconds = input.ttlSeconds ?? this.options.tempTokenTtlSeconds ?? 24 * 3600;
+    if (ttlSeconds < 3600 || ttlSeconds > 30 * 24 * 3600) {
       throw new SubscriptionError("短期链接有效期必须在 1 小时到 30 天之间。");
     }
     const plaintext = randomBytes(16).toString("hex");
@@ -653,7 +781,7 @@ export class SubscriptionService {
       subscriptionId: id,
       tokenHash: sha256Hex(plaintext),
       label: input.label,
-      expiresAt: new Date(Date.now() + input.ttlSeconds * 1000).toISOString()
+      expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString()
     });
     return {
       ...record,
@@ -759,7 +887,8 @@ export class SubscriptionService {
     if (!config) {
       throw new SubscriptionError("尚无可追踪的配置。", 409);
     }
-    const result = this.evaluateConfig(config);
+    this.assertConfigReferencesOwned(record.ownerUserId, config);
+    const result = this.evaluateConfig(config, record.ownerUserId);
     const rulesetContentBySlug = new Map<string, { behavior: string; content: string }>();
     for (const block of config.rules.targets) {
       for (const item of block.items) {
@@ -778,13 +907,143 @@ export class SubscriptionService {
 
   // ── 规则源更新应用（技术方案 §8） ─────────────────────────────
 
+  syncRulesetsToLatest(
+    ownerUserId: string,
+    id: string,
+    expectedDraftRevision: number
+  ): SyncLatestRulesetsResult {
+    const record = this.requireOwned(ownerUserId, id);
+    if (record.draftRevision !== expectedDraftRevision) {
+      throw new SubscriptionError(
+        "草稿已在其他页面或操作中更新。请重新载入后再同步规则。",
+        409
+      );
+    }
+    const sourceConfig = record.draftBuildConfig ?? record.buildConfig;
+    if (!sourceConfig) {
+      throw new SubscriptionError("尚无构建配置，无法同步规则。", 409);
+    }
+
+    const config = structuredClone(sourceConfig);
+    const itemsByCatalog = new Map<
+      string,
+      Array<Extract<BuildConfig["rules"]["targets"][number]["items"][number], { kind: "snapshot" }>>
+    >();
+    for (const block of config.rules.targets) {
+      for (const item of block.items) {
+        if (item.kind !== "snapshot") continue;
+        const items = itemsByCatalog.get(item.catalogId) ?? [];
+        items.push(item);
+        itemsByCatalog.set(item.catalogId, items);
+      }
+    }
+
+    const result: SyncLatestRulesetsResult = {
+      buildConfig: config,
+      draftRevision: record.draftRevision,
+      changes: [],
+      unchangedCount: 0,
+      skipped: []
+    };
+
+    for (const [catalogId, items] of itemsByCatalog) {
+      const referencedSlug = items[0]!.slug;
+      const catalog = this.rulesetRepository.findById(catalogId);
+      if (!catalog || (catalog.ownerUserId !== null && catalog.ownerUserId !== ownerUserId)) {
+        result.skipped.push({
+          catalogId,
+          slug: referencedSlug,
+          reason: "catalog-not-visible"
+        });
+        continue;
+      }
+
+      const toHash = catalog.latestSnapshotHash;
+      if (!toHash) {
+        result.skipped.push({
+          catalogId,
+          slug: catalog.slug,
+          reason: "latest-snapshot-unavailable"
+        });
+        continue;
+      }
+      const latestSnapshot = this.rulesetRepository.findSnapshot(toHash);
+      if (!latestSnapshot) {
+        result.skipped.push({
+          catalogId,
+          slug: catalog.slug,
+          reason: "latest-snapshot-missing"
+        });
+        continue;
+      }
+
+      const changedItems = items.filter((item) => item.hash !== toHash);
+      if (changedItems.length === 0) {
+        result.unchangedCount += 1;
+        continue;
+      }
+
+      result.changes.push({
+        catalogId,
+        slug: catalog.slug,
+        fromHashes: [...new Set(changedItems.map((item) => item.hash))],
+        toHash,
+        updatedReferenceCount: changedItems.length
+      });
+      for (const item of items) {
+        item.hash = toHash;
+      }
+    }
+
+    if (result.changes.length > 0) {
+      // 这是对已落库配置中「可见 catalog」快照的定向替换。历史脏数据里
+      // 可能仍有不可见 catalog（上面会 skipped）；不经过面向客户端的整份
+      // saveDraft 权限门禁，以允许其余合法项完成修复，但仍使用 revision CAS。
+      if (!this.repository.saveDraft(id, config, expectedDraftRevision)) {
+        throw new SubscriptionError(
+          "草稿已在规则同步期间被其他操作更新。请重新载入后重试。",
+          409
+        );
+      }
+      result.draftRevision = this.requireOwned(ownerUserId, id).draftRevision;
+    }
+    return result;
+  }
+
   applyRulesetUpdate(
     ownerUserId: string,
-    input: { catalogId: string; toHash: string; subscriptionIds: string[] }
+    input: {
+      catalogId: string;
+      toHash: string;
+      subscriptions: Array<{ id: string; expectedDraftRevision: number }>;
+    }
   ) {
-    const results: Array<{ subscriptionId: string; changed: boolean }> = [];
-    for (const id of input.subscriptionIds) {
-      const record = this.requireOwned(ownerUserId, id);
+    const catalog = this.rulesetRepository.findById(input.catalogId);
+    if (!catalog || (catalog.ownerUserId !== null && catalog.ownerUserId !== ownerUserId)) {
+      throw new SubscriptionError("规则库不存在或无权访问。", 404);
+    }
+    const snapshot = this.rulesetRepository.findSnapshot(input.toHash);
+    if (
+      !snapshot || catalog.latestSnapshotHash !== input.toHash
+    ) {
+      throw new SubscriptionError("目标快照不是该规则库的最新快照。", 422);
+    }
+
+    // 先完整验证选中集合，避免前几个已写入后才发现后一个越权/过期。
+    const prepared = input.subscriptions.map((selection) => {
+      const record = this.requireOwned(ownerUserId, selection.id);
+      if (record.draftRevision !== selection.expectedDraftRevision) {
+        throw new SubscriptionError(
+          `订阅「${record.displayName}」的草稿已变化。请刷新列表后重试。`,
+          409
+        );
+      }
+      return { selection, record };
+    });
+
+    const results: Array<{ subscriptionId: string; changed: boolean; conflict?: boolean }> = [];
+    for (const { selection, record } of prepared) {
+      const id = selection.id;
       const config = structuredClone(record.draftBuildConfig ?? record.buildConfig);
       if (!config) {
         results.push({ subscriptionId: id, changed: false });
@@ -800,7 +1059,12 @@ export class SubscriptionService {
         }
       }
       if (changed) {
-        this.repository.saveDraft(id, config);
+        if (!this.repository.saveDraft(id, config, selection.expectedDraftRevision)) {
+          // 预检与 CAS 之间仍可能有其他实例写入。返回逐项冲突，
+          // 而不是让调用方把已完成的项目误认为整体失败。
+          results.push({ subscriptionId: id, changed: false, conflict: true });
+          continue;
+        }
       }
       results.push({ subscriptionId: id, changed });
     }
@@ -817,23 +1081,26 @@ export class SubscriptionService {
           block.items.some((item) => item.kind === "snapshot" && item.catalogId === catalogId)
         );
       })
-      .map((record) => ({ id: record.id, displayName: record.displayName }));
+      .map((record) => ({
+        id: record.id,
+        displayName: record.displayName,
+        draftRevision: record.draftRevision
+      }));
   }
 
   // ── 求值输入组装 ────────────────────────────────────────────
 
-  private evaluateConfig(config: BuildConfig): EvaluateResult {
-    return evaluate(this.buildEvaluateInput(config));
+  private evaluateConfig(config: BuildConfig, ownerUserId: string): EvaluateResult {
+    return evaluate(this.buildEvaluateInput(config, ownerUserId));
   }
 
-  private buildEvaluateInput(config: BuildConfig): EvaluateInput {
+  private buildEvaluateInput(config: BuildConfig, ownerUserId: string): EvaluateInput {
     const sourceSnapshots = new Map<string, ClashProxyDocument>();
     const sourceLabels = new Map<string, string>();
     for (const ref of config.sources) {
-      const source = this.sourceRepository.findById(ref.sourceId);
-      if (source) {
-        sourceLabels.set(ref.sourceId, source.displayName);
-      }
+      const source = this.sourceRepository.findByIdAndOwner(ref.sourceId, ownerUserId);
+      if (!source) continue;
+      sourceLabels.set(ref.sourceId, source.displayName);
       const snapshot = this.sourceRepository.findLatestSuccessfulSnapshot(ref.sourceId);
       if (snapshot?.parsed) {
         sourceSnapshots.set(ref.sourceId, snapshot.parsed);
@@ -844,6 +1111,10 @@ export class SubscriptionService {
     for (const block of config.rules.targets) {
       for (const item of block.items) {
         if (item.kind !== "snapshot") continue;
+        const catalog = this.rulesetRepository.findById(item.catalogId);
+        if (!catalog || (catalog.ownerUserId !== null && catalog.ownerUserId !== ownerUserId)) {
+          continue;
+        }
         const snapshot = this.rulesetRepository.findSnapshot(item.hash);
         if (snapshot) {
           rulesetSnapshots.set(item.hash, {
@@ -860,7 +1131,7 @@ export class SubscriptionService {
     const customNodeSecrets = new Map<string, Record<string, unknown>>();
     for (const node of config.nodes.custom) {
       if (!node.secretRef) continue;
-      const fields = this.secretStore.resolve(node.secretRef);
+      const fields = this.secretStore.resolveForOwner(ownerUserId, node.secretRef);
       if (fields) {
         customNodeSecrets.set(node.secretRef, fields);
       }

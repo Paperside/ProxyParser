@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { Database } from "bun:sqlite";
+import yaml from "js-yaml";
 
 import { encodeMultiSourceSpec, type RulesetSource } from "../rulesets/merge";
 
@@ -61,6 +62,23 @@ const countPayloadEntries = (content: string) => {
   return count;
 };
 
+const payloadEntries = (content: string) => {
+  try {
+    const parsed = yaml.load(content);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "payload" in parsed &&
+      Array.isArray(parsed.payload)
+    ) {
+      return new Set(parsed.payload.filter((entry): entry is string => typeof entry === "string"));
+    }
+  } catch {
+    // 损坏或悬空的旧快照按缺少 mandatory rules 处理，回退到仓库内离线副本。
+  }
+  return new Set<string>();
+};
+
 export const seedBuiltinRulesetCatalog = (db: Database): number => {
   const now = new Date().toISOString();
   const entries = loadBuiltinRulesetManifest();
@@ -87,6 +105,26 @@ export const seedBuiltinRulesetCatalog = (db: Database): number => {
   const setLatest = db.query(`
     UPDATE ruleset_catalog SET latest_snapshot_hash = ? WHERE id = ? AND latest_snapshot_hash IS NULL
   `);
+  const getCatalogState = db.query<{
+    latest_snapshot_hash: string | null;
+    owner_user_id: string | null;
+    is_official: number;
+  }>(`
+    SELECT latest_snapshot_hash, owner_user_id, is_official
+    FROM ruleset_catalog
+    WHERE id = ?
+  `);
+  const getSnapshotContent = db.query<{ content: string }>(`
+    SELECT content FROM ruleset_snapshots WHERE hash = ?
+  `);
+  const promoteBundledSnapshot = db.query(`
+    UPDATE ruleset_catalog
+    SET latest_snapshot_hash = ?, update_available = 1, updated_at = ?
+    WHERE id = ?
+      AND latest_snapshot_hash = ?
+      AND is_official = 1
+      AND owner_user_id IS NULL
+  `);
 
   for (const entry of entries) {
     const content = loadBuiltinRulesetContent(entry);
@@ -112,6 +150,33 @@ export const seedBuiltinRulesetCatalog = (db: Database): number => {
     const hash = sha256Hex(content);
     insertSnapshot.run(hash, catalogId, content, entry.behavior, countPayloadEntries(content), now);
     setLatest.run(hash, catalogId);
+
+    // 已存在的 catalog 可能仍指向旧版本快照。只有当旧 latest 缺少当前 manifest
+    // 明确要求的后处理规则时，才把随版本发布的离线快照提升为 latest 并点亮徽章。
+    // 这样能补齐新增的 mandatory extraRules，同时不会把已经包含这些规则、但内容更新的
+    // 远端快照降级回较旧的 bundled snapshot；订阅本身仍保持钉版本，等待用户确认应用。
+    const catalogState = getCatalogState.get(catalogId);
+    const latestHash = catalogState?.latest_snapshot_hash ?? null;
+    const requiredRules = entry.extraRules ?? [];
+    if (
+      catalogState?.is_official === 1 &&
+      catalogState.owner_user_id === null &&
+      latestHash &&
+      latestHash !== hash &&
+      requiredRules.length > 0
+    ) {
+      const bundledEntries = payloadEntries(content);
+      const bundledHasRequiredRules = requiredRules.every((rule) => bundledEntries.has(rule));
+      if (bundledHasRequiredRules) {
+        const latestContent = getSnapshotContent.get(latestHash)?.content ?? null;
+        const latestEntries = latestContent ? payloadEntries(latestContent) : new Set<string>();
+        const isMissingRequiredRule = requiredRules.some((rule) => !latestEntries.has(rule));
+        if (isMissingRequiredRule) {
+          // CAS 防止启动 seed 与后台 refresh 并发时覆盖刚写入的更新快照。
+          promoteBundledSnapshot.run(hash, now, catalogId, latestHash);
+        }
+      }
+    }
     seeded += 1;
   }
 

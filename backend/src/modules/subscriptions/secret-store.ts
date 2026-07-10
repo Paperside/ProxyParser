@@ -29,15 +29,6 @@ export class SecretStore {
     return id;
   }
 
-  update(ownerUserId: string, id: string, fields: Record<string, unknown>): boolean {
-    const result = this.db
-      .query(
-        "UPDATE custom_node_secrets SET ciphertext = ?, updated_at = ? WHERE id = ? AND owner_user_id = ?"
-      )
-      .run(this.box.encrypt(fields), new Date().toISOString(), id, ownerUserId);
-    return result.changes > 0;
-  }
-
   resolve(id: string): Record<string, unknown> | null {
     const row = this.db
       .query<{ ciphertext: Uint8Array }>(
@@ -67,32 +58,23 @@ export class SecretStore {
     }
   }
 
-  // 用户视角只填一张表单：这里按协议 schema 把字段拆成密文/明文两份，
-  // 并根据 existingSecretRef 决定新建 / 原地更新 / 删除孤儿记录。
+  // 用户视角只填一张表单：这里按协议 schema 把字段拆成密文/明文两份。
+  // 密文必须 copy-on-write：已发布版本和历史 Release 可能仍引用旧 secretRef，
+  // 因此编辑/清空时不得原地更新或删除旧记录。孤儿由后续的可达性 GC 处理。
   upsertSplit(
     ownerUserId: string,
     type: string,
     fields: Record<string, unknown>,
-    existingSecretRef: string | null
+    _existingSecretRef: string | null
   ): SplitUpsertResult {
     const { secretFields, extra } = splitFields(type, fields);
     const hasSecret = Object.keys(secretFields).length > 0;
 
     if (!hasSecret) {
-      if (existingSecretRef) this.delete(ownerUserId, existingSecretRef);
       return { secretRef: null, extra };
-    }
-
-    if (existingSecretRef && this.update(ownerUserId, existingSecretRef, secretFields)) {
-      return { secretRef: existingSecretRef, extra };
     }
 
     return { secretRef: this.create(ownerUserId, secretFields), extra };
   }
 
-  delete(ownerUserId: string, id: string) {
-    this.db
-      .query("DELETE FROM custom_node_secrets WHERE id = ? AND owner_user_id = ?")
-      .run(id, ownerUserId);
-  }
 }

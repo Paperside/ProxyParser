@@ -55,12 +55,19 @@ export interface SourceWithStats extends SourceRecord {
   ruleCount: number;
 }
 
+export interface UpstreamSourceServiceOptions {
+  defaultSyncIntervalMinutes: number;
+}
+
 export class UpstreamSourceService {
   private onSyncedHooks: SourceSyncedHook[] = [];
 
   constructor(
     private readonly repository: UpstreamSourceRepository,
-    private readonly events: EventRepository
+    private readonly events: EventRepository,
+    private readonly options: UpstreamSourceServiceOptions = {
+      defaultSyncIntervalMinutes: 360
+    }
   ) {}
 
   registerOnSynced(hook: SourceSyncedHook) {
@@ -102,7 +109,8 @@ export class UpstreamSourceService {
       sourceUrl: input.sourceUrl,
       sourceKind: "url",
       uploadedFileName: null,
-      syncIntervalMinutes: input.syncIntervalMinutes ?? 360
+      syncIntervalMinutes:
+        input.syncIntervalMinutes ?? this.options.defaultSyncIntervalMinutes
     });
     await this.sync(source.id).catch(() => undefined);
     return this.getById(ownerUserId, source.id);
@@ -200,7 +208,9 @@ export class UpstreamSourceService {
       return; // 已有同步在进行
     }
 
-    const nextSyncAt = computeNextSyncAt(source.syncIntervalMinutes || 360);
+    const nextSyncAt = computeNextSyncAt(
+      source.syncIntervalMinutes || this.options.defaultSyncIntervalMinutes
+    );
     const previousSnapshot = this.repository.findLatestSuccessfulSnapshot(sourceId);
 
     try {
@@ -223,7 +233,6 @@ export class UpstreamSourceService {
       }
 
       const headers = result.headers ?? {};
-      const usage = parseSubscriptionUserInfo(findSubscriptionUserInfoHeader(headers));
       const refreshed = this.repository.findById(sourceId)!;
       const report = this.storeSnapshotAndReport(
         refreshed,
@@ -295,7 +304,11 @@ export class UpstreamSourceService {
       snapshotId,
       headers,
       usage,
-      nextSyncAt: nextSyncAt ?? computeNextSyncAt(source.syncIntervalMinutes || 360)
+      nextSyncAt:
+        nextSyncAt ??
+        computeNextSyncAt(
+          source.syncIntervalMinutes || this.options.defaultSyncIntervalMinutes
+        )
     });
 
     // 结构化同步报告（按稳定 ID 对比，技术方案 §4.2 同步流）

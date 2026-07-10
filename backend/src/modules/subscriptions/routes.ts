@@ -96,14 +96,44 @@ export const createSubscriptionRoutes = (
     // ── 草稿 / 预览 / 发布 ─────────────────────────────────────
     .put("/subscriptions/:id/draft", ({ params, body, currentUser, set }: Ctx) => {
       try {
-        return service.saveDraft(currentUser.id, params.id!, body);
+        if (!isRecord(body) || !("buildConfig" in body)) {
+          throw new SubscriptionError(
+            "草稿保存请求缺少并发版本；请刷新控制台后重试。",
+            422
+          );
+        }
+        if (
+          typeof body.expectedDraftRevision !== "number" ||
+          !Number.isInteger(body.expectedDraftRevision) ||
+          body.expectedDraftRevision < 0
+        ) {
+          throw new SubscriptionError("缺少有效的 expectedDraftRevision。", 422);
+        }
+        return service.saveDraft(
+          currentUser.id,
+          params.id!,
+          body.buildConfig,
+          body.expectedDraftRevision
+        );
       } catch (error) {
         return sendError(error, set);
       }
     })
-    .delete("/subscriptions/:id/draft", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+    .delete("/subscriptions/:id/draft", ({ params, body, currentUser, set }: Ctx) => {
       try {
-        return service.discardDraft(currentUser.id, params.id!);
+        if (
+          !isRecord(body) ||
+          typeof body.expectedDraftRevision !== "number" ||
+          !Number.isInteger(body.expectedDraftRevision) ||
+          body.expectedDraftRevision < 0
+        ) {
+          throw new SubscriptionError("缺少有效的 expectedDraftRevision。", 422);
+        }
+        return service.discardDraft(
+          currentUser.id,
+          params.id!,
+          body.expectedDraftRevision
+        );
       } catch (error) {
         return sendError(error, set);
       }
@@ -115,9 +145,26 @@ export const createSubscriptionRoutes = (
         return sendError(error, set);
       }
     })
-    .post("/subscriptions/:id/publish", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+    .post("/subscriptions/:id/publish", ({ params, body, currentUser, set }: Ctx) => {
       try {
-        const release = service.publish(currentUser.id, params.id!, { trigger: "manual" });
+        if (
+          !isRecord(body) ||
+          typeof body.expectedDraftRevision !== "number" ||
+          !Number.isInteger(body.expectedDraftRevision) ||
+          body.expectedDraftRevision < 0 ||
+          typeof body.expectedRenderedHash !== "string" ||
+          !/^[a-f0-9]{64}$/.test(body.expectedRenderedHash)
+        ) {
+          throw new SubscriptionError(
+            "缺少有效的 expectedDraftRevision 或 expectedRenderedHash。",
+            422
+          );
+        }
+        const release = service.publish(currentUser.id, params.id!, {
+          trigger: "manual",
+          expectedDraftRevision: body.expectedDraftRevision,
+          expectedRenderedHash: body.expectedRenderedHash
+        });
         return {
           id: release.id,
           seq: release.seq,
@@ -131,10 +178,21 @@ export const createSubscriptionRoutes = (
     })
     .post("/subscriptions/:id/rollback", ({ params, body, currentUser, set }: Ctx) => {
       try {
-        if (!isRecord(body) || typeof body.releaseId !== "string") {
-          throw new SubscriptionError("缺少 releaseId。");
+        if (
+          !isRecord(body) ||
+          typeof body.releaseId !== "string" ||
+          typeof body.expectedDraftRevision !== "number" ||
+          !Number.isInteger(body.expectedDraftRevision) ||
+          body.expectedDraftRevision < 0
+        ) {
+          throw new SubscriptionError("缺少 releaseId 或有效的 expectedDraftRevision。", 422);
         }
-        const release = service.rollback(currentUser.id, params.id!, body.releaseId);
+        const release = service.rollback(
+          currentUser.id,
+          params.id!,
+          body.releaseId,
+          body.expectedDraftRevision
+        );
         return { id: release.id, seq: release.seq, createdAt: release.createdAt };
       } catch (error) {
         return sendError(error, set);
@@ -182,6 +240,30 @@ export const createSubscriptionRoutes = (
         return sendError(error, set);
       }
     })
+
+    // ── 当前订阅规则快照同步 ────────────────────────────────────
+    .post(
+      "/subscriptions/:id/rulesets/sync-latest",
+      ({ params, body, currentUser, set }: Ctx) => {
+        try {
+          if (
+            !isRecord(body) ||
+            typeof body.expectedDraftRevision !== "number" ||
+            !Number.isInteger(body.expectedDraftRevision) ||
+            body.expectedDraftRevision < 0
+          ) {
+            throw new SubscriptionError("缺少有效的 expectedDraftRevision。", 422);
+          }
+          return service.syncRulesetsToLatest(
+            currentUser.id,
+            params.id!,
+            body.expectedDraftRevision
+          );
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
 
     // ── 问题 ──────────────────────────────────────────────────
     .get("/subscriptions/:id/issues", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
@@ -264,7 +346,7 @@ export const createSubscriptionRoutes = (
       try {
         const record = isRecord(body) ? body : {};
         const ttlSeconds =
-          typeof record.ttlSeconds === "number" ? record.ttlSeconds : 24 * 3600;
+          typeof record.ttlSeconds === "number" ? record.ttlSeconds : undefined;
         return service.createTempToken(currentUser.id, params.id!, {
           label: str(record, "label") ?? null,
           ttlSeconds
@@ -319,16 +401,29 @@ export const createSubscriptionRoutes = (
           !isRecord(body) ||
           typeof body.catalogId !== "string" ||
           typeof body.toHash !== "string" ||
-          !Array.isArray(body.subscriptionIds)
+          !Array.isArray(body.subscriptions)
         ) {
-          throw new SubscriptionError("需要 catalogId、toHash 与 subscriptionIds。");
+          throw new SubscriptionError("需要 catalogId、toHash 与 subscriptions。");
+        }
+        const subscriptions = body.subscriptions.map((value) => {
+          if (
+            !isRecord(value) ||
+            typeof value.id !== "string" ||
+            typeof value.expectedDraftRevision !== "number" ||
+            !Number.isInteger(value.expectedDraftRevision) ||
+            value.expectedDraftRevision < 0
+          ) {
+            throw new SubscriptionError("subscriptions 包含无效的订阅或草稿版本。", 422);
+          }
+          return { id: value.id, expectedDraftRevision: value.expectedDraftRevision };
+        });
+        if (new Set(subscriptions.map((item) => item.id)).size !== subscriptions.length) {
+          throw new SubscriptionError("subscriptions 不得包含重复订阅。", 422);
         }
         return service.applyRulesetUpdate(currentUser.id, {
           catalogId: body.catalogId,
           toHash: body.toHash,
-          subscriptionIds: body.subscriptionIds.filter(
-            (id): id is string => typeof id === "string"
-          )
+          subscriptions
         });
       } catch (error) {
         return sendError(error, set);
