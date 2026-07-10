@@ -16,14 +16,14 @@
 
 <header class="topbar">
   <div class="brand"><span class="brand-mark">P</span>ProxyParser <span class="badge badge-accent">Next 设计原型 v1</span></div>
-  <div class="topbar-right"><span class="faint" style="font-size: 12px;">2026-07-04 · 对应技术方案 §14.1（M4.0）</span></div>
+  <div class="topbar-right"><span class="faint" style="font-size: 12px;">2026-07-04 · Next 视觉规格快照</span></div>
 </header>
 
 <main class="page">
   <div class="page-head">
     <div>
       <h1 class="page-title">六张关键屏</h1>
-      <p class="page-desc">hi-fi 静态原型，作为 M4 前端实现的视觉规格。点击卡片打开；屏与屏之间的导航链接可点。</p>
+      <p class="page-desc">hi-fi 静态原型，保留为当前前端的视觉规格快照。点击卡片可查看关键屏；页面内的 <code class="inline">#</code> 链接仅用于表达静态交互位置。</p>
     </div>
   </div>
 
@@ -58,21 +58,21 @@
     <div class="card">
       <div class="card-title">设计假设与理由</div>
       <ul style="padding-left: 18px; color: var(--text-muted); font-size: 12.5px; display: flex; flex-direction: column; gap: 6px;">
-        <li><strong style="color: var(--text);">深色高密度控制台</strong>：延续 05-14 规格"冷静、精确、可扫描"；无渐变、无装饰卡片堆叠。</li>
+        <li><strong style="color: var(--text);">深色高密度控制台</strong>：遵循"冷静、精确、可扫描"的 Next 视觉原则；无渐变、无装饰卡片堆叠。</li>
         <li><strong style="color: var(--text);">健康灯是一等公民</strong>：绿/黄/红三态贯穿所有屏，黄色永远伴随"正在服务缓存版本"的解释。</li>
         <li><strong style="color: var(--text);">推断与数据视觉区分</strong>：系统推断（地区徽章）用虚线边框，用户确认后转实线——对应"不悄悄改任何东西"。</li>
         <li><strong style="color: var(--text);">等宽字体标记机器语义</strong>：版本号、节点名、规则文本、hash 一律 mono，与中文界面文案形成层次。</li>
-        <li><strong style="color: var(--text);">diff 是统一语言</strong>：diff-chip（结构摘要）+ diff-lines（行级）两种粒度复用于版本、规则源更新、发布确认。</li>
+        <li><strong style="color: var(--text);">diff 是统一语言</strong>：当前产品已使用 diff-chip 结构摘要；原型中的 diff-lines 保留为后续完整行级 diff 的视觉方向。</li>
         <li>字体：系统栈（PingFang SC / SF Pro），代码 SF Mono；色彩 oklch 定义，单一青色 accent + 三个状态色。</li>
       </ul>
     </div>
     <div class="card">
-      <div class="card-title">覆盖范围与后续</div>
+      <div class="card-title">覆盖范围与实现现状</div>
       <ul style="padding-left: 18px; color: var(--text-muted); font-size: 12.5px; display: flex; flex-direction: column; gap: 6px;">
-        <li>未覆盖的屏（M4.0 迭代补齐）：代理组编辑、配置 Tab、访问管理、订阅源详情、规则库、模板、设置。骨架均可由本组 tokens/组件推导。</li>
-        <li>确认弹窗（"系统将做 N 件事"）与 Toast 未单独出屏，规格见技术方案 §14.4。</li>
-        <li>本组原型确认后：按 baoyu-design 流程沉淀正式 design system（tokens 即 <code class="inline">styles.css</code>），再进入组件实现。</li>
-        <li>浅色主题暂不设计：控制台产品深色优先，浅色作为 M5 后打磨项。</li>
+        <li>本快照只覆盖最初六张关键屏；代理组、配置、访问、订阅源、规则库、模板和设置等页面已经在正式前端中实现。</li>
+        <li>确认弹窗与 Toast 未单独出屏，实际交互以 <code class="inline">frontend/src/</code> 为准。</li>
+        <li><code class="inline">styles.css</code> 保留完整视觉 tokens，并作为正式前端样式的设计来源。</li>
+        <li>当前产品继续以深色控制台为唯一主题；浅色主题不在现版本范围内。</li>
       </ul>
     </div>
   </div>

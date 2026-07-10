@@ -7,10 +7,12 @@
     "moduleDetection": "force",
     "allowImportingTsExtensions": true,
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
     "types": ["node"]
   },
-  "include": ["src/**/*", "config.example.ts"]
+  "include": ["src/**/*"]
 }

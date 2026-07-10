@@ -264,7 +264,7 @@ export const createSubscriptionRoutes = (
       try {
         const record = isRecord(body) ? body : {};
         const ttlSeconds =
-          typeof record.ttlSeconds === "number" ? record.ttlSeconds : 24 * 3600;
+          typeof record.ttlSeconds === "number" ? record.ttlSeconds : undefined;
         return service.createTempToken(currentUser.id, params.id!, {
           label: str(record, "label") ?? null,
           ttlSeconds

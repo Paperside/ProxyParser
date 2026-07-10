@@ -1,12 +1,12 @@
 # ProxyParser Deployment Guide
 
-> **Next 版本（2026-07）要点** — 在旧流程基础上注意以下变化：
+> **生产部署要点**
 >
-> 1. 公开路由变化：`/subscribe/*` 已移除；新增 `/s/*`（订阅拉取）与 `/rs/*`（不可变规则快照），Nginx 需将这两个前缀转发到 backend。
-> 2. 数据库文件更名为 `proxyparser.v2.sqlite`（`DATABASE_PATH` 可覆盖）。旧库不再读取。
-> 3. 必设环境变量：`PUBLIC_BASE_URL`（对外地址，订阅链接与 rule-provider URL 以此生成）、`JWT_SECRET`；建议设 `PP_SECRET_KEY`（hex 64 位），否则首启在 `/data/.secret-key` 生成，需随库一起备份。
-> 4. backend 镜像构建期会执行 `bun scripts/fetch-mihomo.ts` 内置校验内核（linux/amd64 注意 `--platform`）；失败不阻断构建，运行时降级为结构校验并在设置页提示。
-> 5. 备份 = `/data` 目录整体（SQLite + `.secret-key`）。
+> 1. Nginx 必须把 `/api/*`、`/swagger*`、`/s/*`（订阅拉取）和 `/rs/*`（不可变规则快照）转发到 backend。
+> 2. Compose 默认使用无版本文件名 `/data/proxyparser.sqlite`；`DATABASE_PATH` 可覆盖。
+> 3. 必设 `PUBLIC_BASE_URL`（订阅链接与 rule-provider URL 的公开根地址）和 `JWT_SECRET`。
+> 4. 不设 `PP_SECRET_KEY` 时，首启会在数据库同目录生成 `/data/.secret-key`；它必须与数据库一起持久化和备份。
+> 5. backend 镜像构建期尝试内置 mihomo 校验内核；失败不阻断构建，运行时会降级为结构校验并在设置页提示。
 
 This project is deployed as Docker images built away from the production server. The production host is intentionally small, so it must not run TypeScript checks, Vite builds, or Docker builds.
 
@@ -54,7 +54,7 @@ docker context use colima
 
 ## Build image archives locally
 
-The frontend Docker image packages `frontend/dist`. The build script creates this dist directory on the host first, then copies it into an nginx image. This avoids running the memory-heavy TypeScript/Vite build inside an amd64 emulated container on macOS arm64.
+The frontend Docker image packages `frontend/dist`. The build script always rebuilds this directory on the host before packaging it into an nginx image, so an old `dist` cannot leak into a new release. This also avoids running the memory-heavy TypeScript/Vite build inside an amd64 emulated container on macOS arm64.
 
 From the repository root:
 
@@ -186,22 +186,29 @@ cd /opt/proxyparser/deploy
 docker compose up -d
 ```
 
-## Database backup
+## Data backup and restore
 
-SQLite data is stored at:
+Persistent state is stored together under:
 
 ```text
-/var/lib/proxyparser/proxyparser.sqlite
+/var/lib/proxyparser/
+  proxyparser.sqlite
+  .secret-key
 ```
 
-Basic backup while the app is quiet:
+The SQLite file and `.secret-key` are one recovery unit. Losing or replacing the key makes encrypted custom-node credentials and saved long-term subscription links unreadable. If `PP_SECRET_KEY` is supplied through the environment instead, back up that value in the deployment secret store rather than expecting `.secret-key`.
+
+The safest filesystem backup briefly stops the backend so the SQLite WAL is fully closed:
 
 ```bash
 mkdir -p /var/backups/proxyparser
-cp /var/lib/proxyparser/proxyparser.sqlite /var/backups/proxyparser/proxyparser-$(date +%Y%m%d-%H%M%S).sqlite
+cd /opt/proxyparser/deploy
+docker compose stop backend
+tar -C /var/lib -czf /var/backups/proxyparser/proxyparser-$(date +%Y%m%d-%H%M%S).tar.gz proxyparser
+docker compose start backend
 ```
 
-For a more robust live backup, use SQLite `.backup` from a container or install `sqlite3` on the host.
+Restore only while the backend is stopped, replace the complete directory from one backup set, verify ownership/permissions, and then start the backend. For a no-downtime database backup, use SQLite's online `.backup` API and copy the matching key into the same backup set; do not copy a live WAL database file by itself.
 
 ## Future registry-based deployment
 

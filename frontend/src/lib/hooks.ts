@@ -23,7 +23,7 @@ import type {
   TemplateSummary,
   TraceResultDto
 } from "./types";
-import type { BuildConfig } from "./build-config-types";
+import type { BuildConfig, TemplateExtractionReport } from "./build-config-types";
 
 // 服务端状态层：react-query + authorizedRequest。
 // 命名约定：useXxx 查询，useXxxMutation 变更；变更成功后按 key 失效。
@@ -41,6 +41,8 @@ const keys = {
   rulesets: ["rulesets"] as const,
   templates: ["templates"] as const,
   template: (id: string) => ["templates", id] as const,
+  templateExtractPreview: (subscriptionId: string) =>
+    ["template-extract-preview", subscriptionId] as const,
   events: ["events"] as const,
   instance: ["instance"] as const
 };
@@ -413,18 +415,27 @@ export const useTemplate = (id: string | null) => {
   });
 };
 
+export const useTemplateExtractPreview = (subscriptionId: string) => {
+  const { authorizedRequest } = useAuth();
+  return useQuery({
+    queryKey: keys.templateExtractPreview(subscriptionId),
+    queryFn: () =>
+      authorizedRequest<{ payload: unknown; report: TemplateExtractionReport }>(
+        "/api/templates/extract-preview",
+        { method: "POST", body: JSON.stringify({ subscriptionId }) }
+      ),
+    // 每次打开都重新分析当前草稿；React Query 会复用同一轮仍在进行的请求。
+    staleTime: 0,
+    refetchOnMount: "always" as const,
+    retry: false
+  });
+};
+
 export const useTemplateMutations = () => {
   const { authorizedRequest } = useAuth();
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: keys.templates });
   return {
-    extractPreview: useMutation({
-      mutationFn: (subscriptionId: string) =>
-        authorizedRequest<{ payload: unknown; report: { recorded: string[]; dropped: Array<{ reason: string; detail: string }> } }>(
-          "/api/templates/extract-preview",
-          { method: "POST", body: JSON.stringify({ subscriptionId }) }
-        )
-    }),
     create: useMutation({
       mutationFn: (body: {
         subscriptionId: string;

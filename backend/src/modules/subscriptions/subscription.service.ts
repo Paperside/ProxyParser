@@ -55,6 +55,7 @@ export type StartKind = "recommended" | "template" | "patch" | "blank";
 export interface SubscriptionServiceOptions {
   publicBaseUrl: string;
   mihomo: MihomoGateOptions;
+  tempTokenTtlSeconds?: number;
 }
 
 const sha256Hex = (input: string) => createHash("sha256").update(input).digest("hex");
@@ -642,10 +643,11 @@ export class SubscriptionService {
   createTempToken(
     ownerUserId: string,
     id: string,
-    input: { label: string | null; ttlSeconds: number }
+    input: { label: string | null; ttlSeconds?: number }
   ) {
     this.requireOwned(ownerUserId, id);
-    if (input.ttlSeconds < 3600 || input.ttlSeconds > 30 * 24 * 3600) {
+    const ttlSeconds = input.ttlSeconds ?? this.options.tempTokenTtlSeconds ?? 24 * 3600;
+    if (ttlSeconds < 3600 || ttlSeconds > 30 * 24 * 3600) {
       throw new SubscriptionError("短期链接有效期必须在 1 小时到 30 天之间。");
     }
     const plaintext = randomBytes(16).toString("hex");
@@ -653,7 +655,7 @@ export class SubscriptionService {
       subscriptionId: id,
       tokenHash: sha256Hex(plaintext),
       label: input.label,
-      expiresAt: new Date(Date.now() + input.ttlSeconds * 1000).toISOString()
+      expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString()
     });
     return {
       ...record,

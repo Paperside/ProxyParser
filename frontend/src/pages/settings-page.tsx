@@ -37,7 +37,7 @@ export const SettingsPage = () => {
                 <StatusBadge
                   ok={health.data.mihomoGate.available}
                   okText="已启用（发布前会用真实内核校验配置）"
-                  failText="未启用（降级为结构校验；运行 bun scripts/fetch-mihomo.ts 启用）"
+                  failText="未启用（降级为结构校验；运行 bun backend/scripts/fetch-mihomo.ts 启用）"
                 />
               </dd>
               <dt className="text-faint">后台调度器</dt>

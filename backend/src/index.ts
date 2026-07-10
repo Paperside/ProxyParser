@@ -45,7 +45,9 @@ const main = async () => {
   const secretStore = new SecretStore(db, secretBox);
 
   const sourceRepository = new UpstreamSourceRepository(db);
-  const sourceService = new UpstreamSourceService(sourceRepository, events);
+  const sourceService = new UpstreamSourceService(sourceRepository, events, {
+    defaultSyncIntervalMinutes: runtimeConfig.sourceSyncDefaultIntervalMinutes
+  });
 
   const rulesetRepository = new RulesetRepository(db);
   const rulesetService = new RulesetService(rulesetRepository, events);
@@ -62,6 +64,7 @@ const main = async () => {
     secretBox,
     {
       publicBaseUrl: runtimeConfig.publicBaseUrl,
+      tempTokenTtlSeconds: runtimeConfig.subscriptionTempTokenTtlSeconds,
       mihomo: {
         mihomoPath: runtimeConfig.mihomoPath,
         dataDir: runtimeConfig.dataDir,
@@ -154,7 +157,7 @@ const main = async () => {
     logger.warn({
       event: "mihomo.gate.unavailable",
       message:
-        "未找到 mihomo 二进制，发布门禁降级为仅结构校验。运行 bun scripts/fetch-mihomo.ts 可启用内核校验。"
+        "未找到 mihomo 二进制，发布门禁降级为仅结构校验。运行 bun backend/scripts/fetch-mihomo.ts 可启用内核校验。"
     });
   }
   if (runtimeConfig.jwtSecret === "dev-insecure-change-me") {

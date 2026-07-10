@@ -41,12 +41,28 @@ const readNumberEnv = (name: string, fallback: number) => {
   return parsed;
 };
 
+const readNumberEnvInRange = (
+  name: string,
+  fallback: number,
+  minimum: number,
+  maximum: number
+) => {
+  const value = readNumberEnv(name, fallback);
+
+  if (value < minimum || value > maximum) {
+    throw new Error(
+      `Environment variable ${name} must be between ${minimum} and ${maximum}.`
+    );
+  }
+
+  return value;
+};
+
 const resolveDatabasePath = () => {
   const configuredPath = process.env.DATABASE_PATH;
 
   if (!configuredPath) {
-    // Next 版本全新 schema，与旧 proxyparser.sqlite 彻底切断
-    return resolve(backendRootDir, "data", "proxyparser.v2.sqlite");
+    return resolve(backendRootDir, "data", "proxyparser.sqlite");
   }
 
   return isAbsolute(configuredPath)
@@ -56,14 +72,16 @@ const resolveDatabasePath = () => {
 
 export const getRuntimeConfig = (): RuntimeConfig => {
   const port = readNumberEnv("PORT", 3001);
+  const databasePath = resolveDatabasePath();
 
   return {
     host: process.env.HOST ?? "0.0.0.0",
     port,
-    databasePath: resolveDatabasePath(),
+    databasePath,
     migrationsDir: resolve(backendRootDir, "migrations"),
     assetsDir: resolve(backendRootDir, "assets"),
-    dataDir: resolve(backendRootDir, "data"),
+    // 运行数据（数据库与自动生成的 .secret-key）必须落在同一持久化目录。
+    dataDir: dirname(databasePath),
     publicBaseUrl: process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`,
     mihomoPath: process.env.PROXYPARSER_MIHOMO_PATH ?? null,
     secretKey: process.env.PP_SECRET_KEY ?? null,
@@ -72,11 +90,18 @@ export const getRuntimeConfig = (): RuntimeConfig => {
     jwtIssuer: process.env.JWT_ISSUER ?? "proxyparser",
     jwtAccessTtlSeconds: readNumberEnv("JWT_ACCESS_TTL_SECONDS", 15 * 60),
     jwtRefreshTtlSeconds: readNumberEnv("JWT_REFRESH_TTL_SECONDS", 30 * 24 * 60 * 60),
-    subscriptionTempTokenTtlSeconds: readNumberEnv(
+    subscriptionTempTokenTtlSeconds: readNumberEnvInRange(
       "SUBSCRIPTION_TEMP_TOKEN_TTL_SECONDS",
-      24 * 60 * 60
+      24 * 60 * 60,
+      60 * 60,
+      30 * 24 * 60 * 60
     ),
-    sourceSyncDefaultIntervalMinutes: readNumberEnv("SOURCE_SYNC_INTERVAL_MINUTES", 360),
+    sourceSyncDefaultIntervalMinutes: readNumberEnvInRange(
+      "SOURCE_SYNC_INTERVAL_MINUTES",
+      360,
+      15,
+      7 * 24 * 60
+    ),
     rulesetCheckIntervalMinutes: readNumberEnv("RULESET_CHECK_INTERVAL_MINUTES", 24 * 60)
   };
 };
