@@ -469,6 +469,75 @@ describe("规则库", () => {
     expect(chinaMaxPayload.some((rule) => rule.startsWith("IP-CIDR6,") && rule.endsWith(",no-resolve"))).toBe(true);
   });
 
+  test("启动 seed 提升缺少 mandatory extraRules 的旧快照且不降级较新的完整快照", () => {
+    const ctx = createTestContext();
+    const anthropic = ctx.rulesetService
+      .list(ctx.userId)
+      .find((entry) => entry.slug === "anthropic")!;
+    const manifestEntry = loadBuiltinRulesetManifest().find((entry) => entry.slug === "anthropic")!;
+    const bundledHash = anthropic.latestSnapshotHash!;
+    const now = new Date().toISOString();
+
+    const staleContent = yaml.dump({ payload: ["DOMAIN-SUFFIX,anthropic.com"] });
+    const staleHash = sha256Hex(staleContent);
+    ctx.rulesetRepository.insertSnapshot({
+      hash: staleHash,
+      catalogId: anthropic.id,
+      content: staleContent,
+      behavior: "classical",
+      entryCount: 1,
+      isPublic: true,
+      fetchedAt: now
+    });
+    ctx.rulesetRepository.setLatestSnapshot(anthropic.id, staleHash, false);
+
+    seedBuiltinRulesetCatalog(ctx.db);
+    const promoted = ctx.rulesetService.getById(ctx.userId, anthropic.id);
+    expect(promoted.latestSnapshotHash).toBe(bundledHash);
+    expect(promoted.updateAvailable).toBe(true);
+
+    const futurePayload = [
+      ...(manifestEntry.extraRules ?? []),
+      "DOMAIN-SUFFIX,future-anthropic.example"
+    ];
+    const futureContent = yaml.dump({ payload: futurePayload });
+    const futureHash = sha256Hex(futureContent);
+    ctx.rulesetRepository.insertSnapshot({
+      hash: futureHash,
+      catalogId: anthropic.id,
+      content: futureContent,
+      behavior: "classical",
+      entryCount: futurePayload.length,
+      isPublic: true,
+      fetchedAt: now
+    });
+    ctx.rulesetRepository.setLatestSnapshot(anthropic.id, futureHash, false);
+
+    seedBuiltinRulesetCatalog(ctx.db);
+    const preserved = ctx.rulesetService.getById(ctx.userId, anthropic.id);
+    expect(preserved.latestSnapshotHash).toBe(futureHash);
+    expect(preserved.updateAvailable).toBe(false);
+  });
+
+  test("规则源检查失败会持久化错误并向调用方返回失败", async () => {
+    const ctx = createTestContext();
+    const anthropic = ctx.rulesetService
+      .list(ctx.userId)
+      .find((entry) => entry.slug === "anthropic")!;
+    const oldHash = anthropic.latestSnapshotHash;
+
+    globalThis.fetch = (async () =>
+      new Response("upstream unavailable", { status: 503 })) as unknown as typeof fetch;
+
+    await expect(ctx.rulesetService.checkForUpdates(anthropic.id)).rejects.toThrow(
+      "检查更新失败：HTTP 503"
+    );
+    const failed = ctx.rulesetService.getById(ctx.userId, anthropic.id);
+    expect(failed.latestSnapshotHash).toBe(oldHash);
+    expect(failed.lastCheckedAt).toBeTruthy();
+    expect(failed.lastCheckError).toContain("HTTP 503");
+  });
+
   test("规则源更新：新快照 + 徽章 + 应用到订阅草稿", async () => {
     const ctx = createTestContext();
     const { subscription } = ctx.subscriptionService.create(ctx.userId, {

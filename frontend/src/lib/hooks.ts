@@ -360,7 +360,8 @@ export const useRulesetMutations = () => {
           `/api/rulesets/${catalogId}/refresh`,
           { method: "POST" }
         ),
-      onSuccess: invalidate
+      // 失败也会在后端落 lastCheckError；无论结果如何都刷新列表，避免 UI 仍显示旧状态。
+      onSettled: invalidate
     }),
     importFromUrl: useMutation({
       mutationFn: (body: { name: string; sourceUrl: string; behavior: string }) =>
