@@ -91,7 +91,7 @@ export const diffDocuments = (
   summary.ruleCountDelta = (next.rules?.length ?? 0) - (previous?.rules?.length ?? 0);
 
   const configKeys = new Set<string>();
-  const skip = new Set(["proxies", "proxy-groups", "rules", "rule-providers"]);
+  const skip = new Set(["proxies", "proxy-groups", "rules"]);
   const prevConfig = (previous ?? {}) as Record<string, unknown>;
   const nextConfig = next as unknown as Record<string, unknown>;
   for (const key of new Set([...Object.keys(prevConfig), ...Object.keys(nextConfig)])) {

@@ -170,10 +170,15 @@ describe("发布管线", () => {
     );
     expect(doc.rules?.[doc.rules.length - 1]).toBe("MATCH,Proxies");
     // 规则快照以不可变哈希端点输出
-    const providers = doc["rule-providers"] as Record<string, { url: string }>;
+    const providers = doc["rule-providers"] as Record<string, { url: string; path: string }>;
     expect(Object.values(providers).every((p) => p.url.startsWith("https://pp.test/rs/"))).toBe(
       true
     );
+    for (const provider of Object.values(providers)) {
+      const hash = provider.url.match(/\/rs\/([a-f0-9]{64})\.yaml$/)?.[1];
+      expect(hash).toBeDefined();
+      expect(provider.path).toBe(`./rule-providers/${hash}.yaml`);
+    }
     expect(doc.rules).toContain("RULE-SET,anthropic,Anthropic");
     expect(doc.rules).toContain("RULE-SET,chinamax,ChinaMax");
     // 发布后健康转绿

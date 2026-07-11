@@ -632,7 +632,7 @@ export const assembleRules = (
         continue;
       }
 
-      // provider 模式：同 slug 不同 hash 时用 hash 前缀去重
+      // provider 模式：同 slug 不同 hash 时用完整 hash 去重，避免短前缀碰撞。
       let slug = providerSlugByHash.get(item.hash);
       if (!slug) {
         slug = item.slug;
@@ -640,7 +640,7 @@ export const assembleRules = (
           (existing) => existing === slug && providerSlugByHash.get(item.hash) !== slug
         );
         if (providers[slug] && taken) {
-          slug = `${item.slug}-${item.hash.slice(0, 8)}`;
+          slug = `${item.slug}-${item.hash}`;
         }
         providerSlugByHash.set(item.hash, slug);
         providers[slug] = {
@@ -648,7 +648,9 @@ export const assembleRules = (
           behavior: snapshot.behavior,
           format: "yaml",
           url: `${input.publicBaseUrl}/rs/${item.hash}.yaml`,
-          path: `./rule-providers/${slug}.yaml`
+          // URL 和本地缓存路径必须同时内容寻址。Mihomo 会优先复用已存在的
+          // path；若 path 只含 slug，订阅切到新快照 URL 后仍可能永久读取旧规则。
+          path: `./rule-providers/${item.hash}.yaml`
         };
       }
       rules.push(`RULE-SET,${slug},${block.target}`);
