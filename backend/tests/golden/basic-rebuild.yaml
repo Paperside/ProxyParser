@@ -80,7 +80,7 @@ rule-providers:
     behavior: domain
     format: yaml
     url: https://pp.example.com/rs/hash_openai.yaml
-    path: ./rule-providers/geosite-openai.yaml
+    path: ./rule-providers/hash_openai.yaml
 rules:
   - PROCESS-NAME,clash,DIRECT
   - RULE-SET,geosite-openai,AI

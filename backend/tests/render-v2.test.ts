@@ -260,6 +260,7 @@ describe("evaluate（rebuild）", () => {
     // provider 指向不可变哈希端点
     const providers = result.document["rule-providers"] as Record<string, Record<string, unknown>>;
     expect(providers["geosite-openai"]!.url).toBe("https://pp.example.com/rs/hash_openai.yaml");
+    expect(providers["geosite-openai"]!.path).toBe("./rule-providers/hash_openai.yaml");
 
     // rawPatch 深合并
     expect((result.document as Record<string, unknown>)["unified-delay"]).toBe(true);
@@ -295,6 +296,96 @@ describe("evaluate（rebuild）", () => {
     const second = evaluate(createInput());
     expect(first.yamlText).toBe(second.yamlText);
     expect(first.renderedHash).toBe(second.renderedHash);
+  });
+
+  test("provider 快照变化时 URL 与本地缓存路径一起变化", () => {
+    const first = evaluate(createInput());
+    const nextConfig = structuredClone(buildConfig);
+    const firstItem = nextConfig.rules.targets[0]!.items[0]!;
+    if (firstItem.kind !== "snapshot") throw new Error("expected snapshot rule item");
+    firstItem.hash = "hash_openai_v2";
+
+    const nextSnapshots = new Map(createInput().rulesetSnapshots);
+    nextSnapshots.set("hash_openai_v2", {
+      hash: "hash_openai_v2",
+      slug: "geosite-openai",
+      behavior: "domain",
+      content: "payload:\n  - '+.openai.com'\n  - '+.platform.openai.com'\n",
+      isPublic: true
+    });
+    const second = evaluate(
+      createInput({ buildConfig: nextConfig, rulesetSnapshots: nextSnapshots })
+    );
+
+    const firstProvider = (
+      first.document["rule-providers"] as Record<string, Record<string, unknown>>
+    )["geosite-openai"]!;
+    const secondProvider = (
+      second.document["rule-providers"] as Record<string, Record<string, unknown>>
+    )["geosite-openai"]!;
+    expect(firstProvider.url).toBe("https://pp.example.com/rs/hash_openai.yaml");
+    expect(secondProvider.url).toBe("https://pp.example.com/rs/hash_openai_v2.yaml");
+    expect(firstProvider.path).toBe("./rule-providers/hash_openai.yaml");
+    expect(secondProvider.path).toBe("./rule-providers/hash_openai_v2.yaml");
+    expect(secondProvider.path).not.toBe(firstProvider.path);
+  });
+
+  test("同 slug 的快照即使短 hash 前缀相同也不会覆盖 provider", () => {
+    const firstHash = "abcdef12_snapshot_a";
+    const secondHash = "abcdef12_snapshot_b";
+    const config = structuredClone(buildConfig);
+    config.rules.targets[0]!.items = [
+      {
+        kind: "snapshot",
+        catalogId: "cat_openai",
+        slug: "geosite-openai",
+        hash: firstHash,
+        emit: "provider"
+      },
+      {
+        kind: "snapshot",
+        catalogId: "cat_openai",
+        slug: "geosite-openai",
+        hash: secondHash,
+        emit: "provider"
+      }
+    ];
+    const snapshots = new Map(createInput().rulesetSnapshots);
+    snapshots.set(firstHash, {
+      hash: firstHash,
+      slug: "geosite-openai",
+      behavior: "domain",
+      content: "payload:\n  - '+.openai.com'\n",
+      isPublic: true
+    });
+    snapshots.set(secondHash, {
+      hash: secondHash,
+      slug: "geosite-openai",
+      behavior: "domain",
+      content: "payload:\n  - '+.anthropic.com'\n",
+      isPublic: true
+    });
+
+    const result = evaluate(
+      createInput({ buildConfig: config, rulesetSnapshots: snapshots })
+    );
+    const providers = result.document["rule-providers"] as Record<
+      string,
+      Record<string, unknown>
+    >;
+    expect(Object.keys(providers)).toEqual([
+      "geosite-openai",
+      `geosite-openai-${secondHash}`
+    ]);
+    expect(providers["geosite-openai"]!.path).toBe(
+      `./rule-providers/${firstHash}.yaml`
+    );
+    expect(providers[`geosite-openai-${secondHash}`]!.path).toBe(
+      `./rule-providers/${secondHash}.yaml`
+    );
+    expect(result.document.rules).toContain(
+      `RULE-SET,geosite-openai-${secondHash},AI`
+    );
   });
 
   test("golden：锁定 YAML 字节输出", () => {
@@ -363,6 +454,43 @@ describe("evaluate（patch）", () => {
 
     // 自建节点已注入
     expect(result.document.proxies.map((proxy) => proxy.name)).toContain("Home VPS");
+  });
+
+  test("provider 规则同样使用内容寻址缓存路径", () => {
+    const config: BuildConfig = {
+      ...structuredClone(buildConfig),
+      mode: "patch",
+      groups: { generators: [], custom: [], order: [] },
+      rules: {
+        targets: [
+          {
+            target: "SourceGroup",
+            items: [
+              {
+                kind: "snapshot",
+                catalogId: "cat_openai",
+                slug: "geosite-openai",
+                hash: "hash_openai",
+                emit: "provider"
+              }
+            ]
+          }
+        ],
+        order: ["SourceGroup"],
+        prelude: [],
+        final: { target: "SourceGroup" }
+      }
+    };
+
+    const result = evaluate(createInput({ buildConfig: config }));
+    const provider = (
+      result.document["rule-providers"] as Record<string, Record<string, unknown>>
+    )["geosite-openai"]!;
+
+    expect(result.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    expect(provider.url).toBe("https://pp.example.com/rs/hash_openai.yaml");
+    expect(provider.path).toBe("./rule-providers/hash_openai.yaml");
+    expect(result.document.rules).toContain("RULE-SET,geosite-openai,SourceGroup");
   });
 });
 
