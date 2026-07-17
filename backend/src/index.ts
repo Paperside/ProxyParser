@@ -104,6 +104,9 @@ const main = async () => {
     dataDir: runtimeConfig.mihomoDataDir,
     assetsDir: runtimeConfig.assetsDir
   });
+  if (process.env.NODE_ENV === "production" && !mihomoAvailable) {
+    throw new Error("生产环境缺少可执行的 Mihomo 内核，拒绝启动不完整的发布门禁。");
+  }
   // 离线 geodata 是发布门禁的一部分。缺失或被篡改时启动即失败，
   // 让部署健康检查回滚，而不是等到用户确认发布时才暴露问题。
   verifyMihomoGeodata(runtimeConfig.assetsDir);

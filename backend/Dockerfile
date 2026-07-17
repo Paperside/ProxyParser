@@ -13,8 +13,9 @@ COPY backend ./backend
 
 WORKDIR /app/backend
 
-# 发布门禁：构建期内置 mihomo 内核（失败不阻断构建，运行时降级为结构校验）
-RUN bun scripts/fetch-mihomo.ts || echo "mihomo fetch skipped; gate will degrade to structural validation"
+# 发布门禁：生产镜像必须包含可执行的 mihomo。下载或探测失败即终止构建，
+# 避免部署一个只能在用户发布时才暴露缺陷的残缺镜像。
+RUN bun scripts/fetch-mihomo.ts && /app/backend/data/bin/mihomo -v
 
 ENV PORT=3001
 ENV DATABASE_PATH=/data/proxyparser.sqlite
