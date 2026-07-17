@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Activity, Zap, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,6 +23,15 @@ const TRANSFORM_LABEL: Record<string, string> = {
 };
 
 const CLEAR_REGION_SENTINEL = "__auto__";
+const MAX_PARALLEL_LATENCY_REQUESTS = 2;
+const MAX_NODES_PER_LATENCY_REQUEST = 200;
+
+type LatencyPhase = "queued" | "testing";
+
+interface LatencyJob {
+  nodeIds: string[];
+  isAll: boolean;
+}
 
 const RenameDialog = ({ node, onClose }: { node: NodeIndexEntry; onClose: () => void }) => {
   const { update, editingLocked } = useWorkspace();
@@ -56,15 +65,22 @@ const RenameDialog = ({ node, onClose }: { node: NodeIndexEntry; onClose: () => 
 };
 
 export const NodesTab = () => {
-  const { config, update, preview, detail } = useWorkspace();
+  const { config, update, workspaceIndex, workspaceIndexLoading, detail } = useWorkspace();
   // "new"：新增弹窗；CustomNode：编辑该节点；null：不显示
   const [customDialog, setCustomDialog] = useState<"new" | CustomNode | null>(null);
   const [renaming, setRenaming] = useState<NodeIndexEntry | null>(null);
   const latencyTest = useLatencyTest(detail.id);
   const [latencies, setLatencies] = useState<Record<string, { delayMs: number | null; status: string }>>({});
-  const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
+  const [latencyPhases, setLatencyPhases] = useState<Record<string, LatencyPhase>>({});
+  const busyIdsRef = useRef<Set<string>>(new Set());
+  const latencyQueueRef = useRef<LatencyJob[]>([]);
+  const activeLatencyRequestsRef = useRef(0);
+  const [allLatencyPhase, setAllLatencyPhase] = useState<LatencyPhase | null>(null);
+  const allLatencyPhaseRef = useRef<LatencyPhase | null>(null);
+  const pendingAllJobsRef = useRef(0);
+  const activeAllJobsRef = useRef(0);
 
-  const nodes = preview?.nodeIndex ?? [];
+  const nodes = workspaceIndex?.nodeIndex ?? [];
 
   const toggleTransform = (kind: NodeTransform["kind"]) => {
     update((draft) => {
@@ -107,26 +123,101 @@ export const NodesTab = () => {
     });
   };
 
-  const testNodes = async (nodeIds?: string[]) => {
-    const ids = nodeIds ?? nodes.filter((node) => !node.disabled).map((node) => node.id);
-    if (ids.length === 0) return;
-    setTestingIds(new Set(ids));
-    try {
-      const response = await latencyTest.mutateAsync(nodeIds);
-      setLatencies((current) => ({
+  const drainLatencyQueue = () => {
+    while (
+      activeLatencyRequestsRef.current < MAX_PARALLEL_LATENCY_REQUESTS &&
+      latencyQueueRef.current.length > 0
+    ) {
+      const job = latencyQueueRef.current.shift()!;
+      activeLatencyRequestsRef.current += 1;
+      setLatencyPhases((current) => ({
         ...current,
-        ...Object.fromEntries(response.results.map((result) => [result.nodeId, {
-          delayMs: result.delayMs,
-          status: result.status
-        }]))
+        ...Object.fromEntries(job.nodeIds.map((nodeId) => [nodeId, "testing" as const]))
       }));
-      const reachable = response.results.filter((result) => result.status === "ok").length;
-      toast.success(`服务端延迟测试完成：${reachable}/${response.results.length} 个节点可用`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "延迟测试失败");
-    } finally {
-      setTestingIds(new Set());
+      if (job.isAll) {
+        activeAllJobsRef.current += 1;
+        allLatencyPhaseRef.current = "testing";
+        setAllLatencyPhase("testing");
+      }
+
+      void latencyTest
+        .mutateAsync(job.nodeIds)
+        .then((response) => {
+          setLatencies((current) => ({
+            ...current,
+            ...Object.fromEntries(
+              response.results.map((result) => [
+                result.nodeId,
+                { delayMs: result.delayMs, status: result.status }
+              ])
+            )
+          }));
+          const reachable = response.results.filter((result) => result.status === "ok").length;
+          toast.success(
+            `服务端延迟测试完成：${reachable}/${response.results.length} 个节点可用`
+          );
+        })
+        .catch((error: unknown) => {
+          toast.error(error instanceof Error ? error.message : "延迟测试失败");
+        })
+        .finally(() => {
+          for (const nodeId of job.nodeIds) busyIdsRef.current.delete(nodeId);
+          setLatencyPhases((current) => {
+            const next = { ...current };
+            for (const nodeId of job.nodeIds) delete next[nodeId];
+            return next;
+          });
+          if (job.isAll) {
+            activeAllJobsRef.current -= 1;
+            pendingAllJobsRef.current -= 1;
+            const nextAllPhase =
+              pendingAllJobsRef.current === 0
+                ? null
+                : activeAllJobsRef.current > 0
+                  ? "testing"
+                  : "queued";
+            allLatencyPhaseRef.current = nextAllPhase;
+            setAllLatencyPhase(nextAllPhase);
+          }
+          activeLatencyRequestsRef.current -= 1;
+          drainLatencyQueue();
+        });
     }
+  };
+
+  const testNodes = (nodeIds?: string[]) => {
+    const isAll = nodeIds === undefined;
+    if (isAll && allLatencyPhaseRef.current) return;
+
+    const requestedIds = nodeIds ?? nodes.filter((node) => !node.disabled).map((node) => node.id);
+    // 同一节点只占一个队列位置；单节点任务之间最多并发两个请求。
+    const availableIds = requestedIds.filter((nodeId) => !busyIdsRef.current.has(nodeId));
+    if (availableIds.length === 0) return;
+
+    for (const nodeId of availableIds) busyIdsRef.current.add(nodeId);
+    setLatencyPhases((current) => ({
+      ...current,
+      ...Object.fromEntries(availableIds.map((nodeId) => [nodeId, "queued" as const]))
+    }));
+    if (isAll) {
+      allLatencyPhaseRef.current = "queued";
+      setAllLatencyPhase("queued");
+    }
+    if (isAll) {
+      const jobs: LatencyJob[] = [];
+      for (let index = 0; index < availableIds.length; index += MAX_NODES_PER_LATENCY_REQUEST) {
+        jobs.push({
+          nodeIds: availableIds.slice(index, index + MAX_NODES_PER_LATENCY_REQUEST),
+          isAll: true
+        });
+      }
+      pendingAllJobsRef.current = jobs.length;
+      activeAllJobsRef.current = 0;
+      latencyQueueRef.current.push(...jobs);
+    } else {
+      latencyQueueRef.current.push({ nodeIds: availableIds, isAll: false });
+    }
+    drainLatencyQueue();
   };
 
   return (
@@ -139,12 +230,23 @@ export const NodesTab = () => {
             <Button
               size="sm"
               variant="ghost"
-              disabled={latencyTest.isPending || nodes.every((node) => node.disabled)}
-              title="从 ProxyParser 服务端测试当前草稿中的全部节点"
-              onClick={() => void testNodes()}
+              disabled={
+                allLatencyPhase !== null ||
+                nodes.every((node) => node.disabled || latencyPhases[node.id])
+              }
+              title={
+                Object.keys(latencyPhases).length > 0 && !allLatencyPhase
+                  ? "从 ProxyParser 服务端测试其余可用节点"
+                  : "从 ProxyParser 服务端测试当前草稿中的全部节点"
+              }
+              onClick={() => testNodes()}
             >
-              <Activity className={`size-3 ${latencyTest.isPending ? "animate-pulse" : ""}`} />
-              {latencyTest.isPending ? "测试中…" : "测试全部"}
+              <Activity className={`size-3 ${allLatencyPhase ? "animate-pulse" : ""}`} />
+              {allLatencyPhase === "queued"
+                ? "全部排队中…"
+                : allLatencyPhase === "testing"
+                  ? "全部测试中…"
+                  : "测试全部"}
             </Button>
             <Button size="sm" onClick={() => setCustomDialog("new")}>新增自建节点</Button>
           </>
@@ -191,6 +293,7 @@ export const NodesTab = () => {
             {nodes.map((node) => {
               const override = config.nodes.overrides.find((o) => o.nodeId === node.id);
               const isCustom = node.sourceId === null;
+              const latencyPhase = latencyPhases[node.id];
               return (
                 <tr key={node.id} className={`hover:bg-surface2/45 ${node.disabled ? "opacity-50" : ""}`}>
                   <td className="border-b border-line px-3 py-1.5">
@@ -242,16 +345,28 @@ export const NodesTab = () => {
                       <Button
                         size="sm"
                         variant="ghost"
-                        disabled={node.disabled || latencyTest.isPending}
-                        title={node.disabled ? "已禁用节点不能测试" : "从服务端测试此节点连通性"}
-                        onClick={() => void testNodes([node.id])}
+                        disabled={node.disabled || latencyPhase !== undefined}
+                        title={
+                          node.disabled
+                            ? "已禁用节点不能测试"
+                            : latencyPhase === "queued"
+                              ? "此节点正在等待服务端测试"
+                              : latencyPhase === "testing"
+                                ? "此节点正在测试"
+                              : "从服务端测试此节点连通性"
+                        }
+                        onClick={() => testNodes([node.id])}
                       >
-                        <Zap className={`size-3 ${testingIds.has(node.id) ? "animate-pulse" : ""}`} />
-                        {latencies[node.id]?.status === "ok"
-                          ? `${latencies[node.id]!.delayMs} ms`
-                          : latencies[node.id]
-                            ? "不可用"
-                            : "测试"}
+                        <Zap className={`size-3 ${latencyPhase ? "animate-pulse" : ""}`} />
+                        {latencyPhase === "queued"
+                          ? "排队中…"
+                          : latencyPhase === "testing"
+                            ? "测试中…"
+                            : latencies[node.id]?.status === "ok"
+                              ? `${latencies[node.id]!.delayMs} ms`
+                              : latencies[node.id]
+                                ? "不可用"
+                                : "测试"}
                       </Button>
                       {!isCustom ? (
                         <>
@@ -287,7 +402,11 @@ export const NodesTab = () => {
             {nodes.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-3 py-6 text-center text-xs text-faint">
-                  {preview ? "没有可用节点——检查订阅源是否同步成功。" : "等待预览渲染…"}
+                  {workspaceIndex
+                    ? "没有可用节点——检查订阅源是否同步成功。"
+                    : workspaceIndexLoading
+                      ? "正在更新节点索引…"
+                      : "节点索引暂不可用，请刷新后重试。"}
                 </td>
               </tr>
             ) : null}

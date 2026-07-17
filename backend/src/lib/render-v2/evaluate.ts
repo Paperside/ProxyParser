@@ -84,6 +84,13 @@ export interface EvaluateResult {
   renderedHash: string;
 }
 
+export interface WorkspaceIndexResult {
+  issues: EvaluateIssue[];
+  stats: { nodeCount: number; groupCount: number };
+  nodeIndex: EvaluateResult["nodeIndex"];
+  groupIndex: EvaluateResult["groupIndex"];
+}
+
 const AUTO_TEST_URL = "https://www.gstatic.com/generate_204";
 const AUTO_TEST_INTERVAL = 300;
 const BUILTIN_SET = new Set<string>(BUILTIN_POLICIES);
@@ -846,7 +853,8 @@ export const validateStructural = (
 
 const evaluatePatchMode = (
   input: EvaluateInput,
-  issues: EvaluateIssue[]
+  issues: EvaluateIssue[],
+  includeRules = true
 ): { document: ClashProxyDocument; pool: PoolNode[] } => {
   const { buildConfig } = input;
   const sourceRef = buildConfig.sources[0]!;
@@ -864,7 +872,17 @@ const evaluatePatchMode = (
     };
   }
 
-  const document = deepClone(snapshot);
+  // 工作区的自动索引只关心节点与组。不要复制（更不要后续组装）可能非常大的
+  // 源规则；完整 preview/publish 仍走 includeRules=true 的确定性管线。
+  const document = includeRules
+    ? deepClone(snapshot)
+    : {
+        proxies: deepClone(Array.isArray(snapshot.proxies) ? snapshot.proxies : []),
+        "proxy-groups": deepClone(
+          Array.isArray(snapshot["proxy-groups"]) ? snapshot["proxy-groups"] : []
+        ),
+        rules: []
+      };
   document.proxies = Array.isArray(document.proxies) ? document.proxies : [];
   document["proxy-groups"] = Array.isArray(document["proxy-groups"])
     ? document["proxy-groups"]
@@ -964,23 +982,25 @@ const evaluatePatchMode = (
     });
   }
 
-  // 规则：我们的块插入在源 MATCH 之前
-  const groupNames = new Set(document["proxy-groups"].map((group) => group.name));
-  const ourRules = assembleRules(input, groupNames, issues);
-  // patch 模式不使用我们的 MATCH（保留源兜底）
-  const ourLines = ourRules.rules.filter((rule) => !rule.startsWith("MATCH,"));
-  const sourceRules = document.rules;
-  const matchIndex = sourceRules.findIndex((rule) => rule.startsWith("MATCH,"));
-  document.rules =
-    matchIndex >= 0
-      ? [...sourceRules.slice(0, matchIndex), ...ourLines, ...sourceRules.slice(matchIndex)]
-      : [...sourceRules, ...ourLines];
+  if (includeRules) {
+    // 规则：我们的块插入在源 MATCH 之前
+    const groupNames = new Set(document["proxy-groups"].map((group) => group.name));
+    const ourRules = assembleRules(input, groupNames, issues);
+    // patch 模式不使用我们的 MATCH（保留源兜底）
+    const ourLines = ourRules.rules.filter((rule) => !rule.startsWith("MATCH,"));
+    const sourceRules = document.rules;
+    const matchIndex = sourceRules.findIndex((rule) => rule.startsWith("MATCH,"));
+    document.rules =
+      matchIndex >= 0
+        ? [...sourceRules.slice(0, matchIndex), ...ourLines, ...sourceRules.slice(matchIndex)]
+        : [...sourceRules, ...ourLines];
 
-  if (Object.keys(ourRules.providers).length > 0) {
-    const existing = isRecord(document["rule-providers"])
-      ? (document["rule-providers"] as Record<string, unknown>)
-      : {};
-    document["rule-providers"] = { ...existing, ...ourRules.providers };
+    if (Object.keys(ourRules.providers).length > 0) {
+      const existing = isRecord(document["rule-providers"])
+        ? (document["rule-providers"] as Record<string, unknown>)
+        : {};
+      document["rule-providers"] = { ...existing, ...ourRules.providers };
+    }
   }
 
   return { document, pool };
@@ -992,6 +1012,61 @@ const DEFAULT_BASE: Record<string, unknown> = {
   "mixed-port": 7890,
   mode: "rule",
   "log-level": "info"
+};
+
+const nodeIndexFromPool = (pool: PoolNode[]): EvaluateResult["nodeIndex"] =>
+  pool.map((node) => ({
+    id: node.id,
+    renderedName: node.renderedName,
+    sourceId: node.sourceId,
+    disabled: node.disabled,
+    region: node.region,
+    regionInferred: !(node.tags.find(isRegionCode) ?? null),
+    protocol: node.protocol,
+    tags: node.tags
+  }));
+
+const groupIndexFromDocument = (
+  document: ClashProxyDocument
+): EvaluateResult["groupIndex"] =>
+  (document["proxy-groups"] ?? []).map((group) => ({
+    name: group.name,
+    type: group.type,
+    proxies: group.proxies
+  }));
+
+// 工作区自动刷新专用的轻量路径。它刻意不调用 assembleRules/applyConfig/
+// emitClashYaml，也不需要 rulesetSnapshots 中存在任何正文。
+export const evaluateWorkspaceIndex = (input: EvaluateInput): WorkspaceIndexResult => {
+  const issues: EvaluateIssue[] = [];
+  let document: ClashProxyDocument;
+  let pool: PoolNode[];
+
+  if (input.buildConfig.mode === "patch") {
+    const patched = evaluatePatchMode(input, issues, false);
+    document = patched.document;
+    pool = patched.pool;
+  } else {
+    pool = collectNodes(input, issues);
+    const { groups } = generateGroups(input, pool, issues);
+    document = {
+      proxies: pool.filter((node) => !node.disabled).map((node) => node.document),
+      "proxy-groups": groups,
+      rules: []
+    };
+  }
+
+  // 只验证节点/组名字空间与成员引用；空 rules 可确保不会进入规则校验成本。
+  validateStructural(document, issues);
+  return {
+    issues,
+    stats: {
+      nodeCount: document.proxies.length,
+      groupCount: document["proxy-groups"].length
+    },
+    nodeIndex: nodeIndexFromPool(pool),
+    groupIndex: groupIndexFromDocument(document)
+  };
 };
 
 export const evaluate = (input: EvaluateInput): EvaluateResult => {
@@ -1037,21 +1112,8 @@ export const evaluate = (input: EvaluateInput): EvaluateResult => {
       ruleCount: document.rules?.length ?? 0,
       providerCount
     },
-    nodeIndex: pool.map((node) => ({
-      id: node.id,
-      renderedName: node.renderedName,
-      sourceId: node.sourceId,
-      disabled: node.disabled,
-      region: node.region,
-      regionInferred: !(node.tags.find(isRegionCode) ?? null),
-      protocol: node.protocol,
-      tags: node.tags
-    })),
-    groupIndex: (document["proxy-groups"] ?? []).map((group) => ({
-      name: group.name,
-      type: group.type,
-      proxies: group.proxies
-    })),
+    nodeIndex: nodeIndexFromPool(pool),
+    groupIndex: groupIndexFromDocument(document),
     renderedHash: createHash("sha256").update(yamlText).digest("hex")
   };
 };

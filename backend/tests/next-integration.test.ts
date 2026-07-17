@@ -5,6 +5,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import yaml from "js-yaml";
+import { Elysia } from "elysia";
 
 import {
   loadBuiltinRulesetManifest,
@@ -16,24 +17,29 @@ import {
   seedBuiltinTemplates
 } from "../src/lib/db/seed-builtin-templates";
 import { SecretBox } from "../src/lib/security/secret-box";
+import { InMemoryRateLimiter } from "../src/lib/security/rate-limiter";
+import type { LatencyResult, LatencyTarget } from "../src/lib/latency/mihomo-latency";
 import { Scheduler } from "../src/lib/scheduler/scheduler";
 import { extractTemplate, instantiateTemplate } from "../src/lib/build-config/template";
 import { EventRepository } from "../src/modules/events/event.repository";
 import { RulesetRepository } from "../src/modules/rulesets/ruleset.repository";
 import { RulesetService } from "../src/modules/rulesets/ruleset.service";
 import { SecretStore } from "../src/modules/subscriptions/secret-store";
+import { createSubscriptionRoutes } from "../src/modules/subscriptions/routes";
 import {
   DraftRevisionConflictError,
   SubscriptionRepository
 } from "../src/modules/subscriptions/subscription.repository";
 import {
   SubscriptionError,
-  SubscriptionService
+  SubscriptionService,
+  type SubscriptionServiceOptions
 } from "../src/modules/subscriptions/subscription.service";
 import { TemplateRepository } from "../src/modules/templates/template.repository";
 import { UpstreamSourceRepository } from "../src/modules/upstream-sources/upstream-source.repository";
 import { UpstreamSourceService } from "../src/modules/upstream-sources/upstream-source.service";
 import type { ClashProxyDocument } from "../src/types";
+import type { AuthService } from "../src/modules/auth/auth.service";
 
 const migrationsDir = resolve(import.meta.dir, "../migrations");
 
@@ -68,7 +74,9 @@ const defaultNodes = [
   { name: "神秘节点", type: "ss", server: "x1.test", port: 443, cipher: "aes-128-gcm", password: "c" }
 ];
 
-const createTestContext = (options: { mihomo?: boolean } = {}) => {
+const createTestContext = (
+  options: { mihomo?: boolean; latencyRunner?: SubscriptionServiceOptions["latencyRunner"] } = {}
+) => {
   const db = new Database(":memory:");
   db.exec("PRAGMA foreign_keys = ON;");
   applyMigrations(db);
@@ -101,7 +109,8 @@ const createTestContext = (options: { mihomo?: boolean } = {}) => {
             dataDir: backendDataDir,
             assetsDir: resolve(import.meta.dir, "..", "assets")
           }
-        : { mihomoPath: null, dataDir: "/nonexistent-dir", assetsDir: "/nonexistent-dir" }
+        : { mihomoPath: null, dataDir: "/nonexistent-dir", assetsDir: "/nonexistent-dir" },
+      latencyRunner: options.latencyRunner
     }
   );
   sourceService.registerOnSynced((source, report) =>
@@ -526,6 +535,75 @@ describe("Token", () => {
   });
 });
 
+// ── 节点延迟测试 ─────────────────────────────────────────────
+
+describe("节点延迟测试", () => {
+  test("测速只收集节点，不读取或展开规则正文", async () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "轻量测速",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    let rulesetSnapshotReads = 0;
+    ctx.rulesetRepository.findSnapshot = () => {
+      rulesetSnapshotReads += 1;
+      throw new Error("latency must not load ruleset content");
+    };
+
+    await expect(
+      ctx.subscriptionService.testLatency(ctx.userId, subscription.id, ["missing-node"])
+    ).rejects.toThrow("不存在或已禁用");
+    expect(rulesetSnapshotReads).toBe(0);
+  });
+
+  test("第三个独立测速请求进入 FIFO 等待，不会因两个运行中请求直接 429", async () => {
+    const controls: Array<{
+      targets: LatencyTarget[];
+      resolve: (results: LatencyResult[]) => void;
+    }> = [];
+    const runner: NonNullable<SubscriptionServiceOptions["latencyRunner"]> = (targets) =>
+      new Promise<LatencyResult[]>((resolveRun) => {
+        controls.push({ targets, resolve: resolveRun });
+      });
+    const ctx = createTestContext({ latencyRunner: runner });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "并发测速",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const nodeId = ctx.subscriptionService.workspaceIndex(ctx.userId, subscription.id)
+      .nodeIndex[0]!.id;
+    const requests = [
+      ctx.subscriptionService.testLatency(ctx.userId, subscription.id, [nodeId]),
+      ctx.subscriptionService.testLatency(ctx.userId, subscription.id, [nodeId]),
+      ctx.subscriptionService.testLatency(ctx.userId, subscription.id, [nodeId])
+    ];
+    await new Promise<void>((resolveTick) => setTimeout(resolveTick, 0));
+    expect(controls).toHaveLength(2);
+
+    const resultFor = (target: LatencyTarget): LatencyResult => ({
+      nodeId: target.nodeId,
+      name: target.name,
+      status: "ok",
+      delayMs: 12
+    });
+    controls[0]!.resolve(controls[0]!.targets.map(resultFor));
+    await requests[0];
+    await new Promise<void>((resolveTick) => setTimeout(resolveTick, 0));
+    expect(controls).toHaveLength(3);
+
+    controls[1]!.resolve(controls[1]!.targets.map(resultFor));
+    controls[2]!.resolve(controls[2]!.targets.map(resultFor));
+    const responses = await Promise.all(requests);
+    expect(responses.map((response) => response.results[0]?.status)).toEqual([
+      "ok",
+      "ok",
+      "ok"
+    ]);
+  });
+});
+
 // ── 上游变化吸收与调度器 ───────────────────────────────────────
 
 describe("上游吸收", () => {
@@ -656,6 +734,139 @@ describe("上游吸收", () => {
       expectedRenderedHash: refreshedPreview.renderedHash
     });
     expect(release.renderedYaml).toContain("JP-Preview");
+  });
+
+  test("工作区索引不读取规则正文，完整 YAML 仅由按需预览返回", () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "轻量工作区",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+
+    let rulesetSnapshotReads = 0;
+    const originalFindSnapshot = ctx.rulesetRepository.findSnapshot.bind(ctx.rulesetRepository);
+    ctx.rulesetRepository.findSnapshot = (hash: string) => {
+      rulesetSnapshotReads += 1;
+      return originalFindSnapshot(hash);
+    };
+
+    const workspace = ctx.subscriptionService.workspaceIndex(ctx.userId, subscription.id);
+    expect(rulesetSnapshotReads).toBe(0);
+    expect(workspace.draftRevision).toBe(subscription.draftRevision);
+    expect(workspace.stats.nodeCount).toBe(defaultNodes.length);
+    expect(workspace.stats.groupCount).toBeGreaterThan(0);
+    expect(workspace.nodeIndex).toHaveLength(defaultNodes.length);
+    expect(workspace.groupIndex.length).toBe(workspace.stats.groupCount);
+    expect(
+      workspace.issues.some((issue) => issue.kind === "missing-ruleset-snapshot")
+    ).toBe(false);
+    expect(workspace).not.toHaveProperty("yamlText");
+    expect(JSON.stringify(workspace)).not.toContain('"password"');
+
+    const preview = ctx.subscriptionService.preview(ctx.userId, subscription.id);
+    expect(rulesetSnapshotReads).toBeGreaterThan(0);
+    expect(preview).not.toHaveProperty("yamlText");
+    expect(preview.yamlBytes).toBeGreaterThan(0);
+
+    const yamlPreview = ctx.subscriptionService.previewYaml(ctx.userId, subscription.id);
+    expect(yamlPreview.draftRevision).toBe(preview.draftRevision);
+    expect(yamlPreview.renderedHash).toBe(preview.renderedHash);
+    expect(Buffer.byteLength(yamlPreview.yamlText, "utf8")).toBe(preview.yamlBytes);
+    expect(yamlPreview.yamlText).toContain("proxy-groups:");
+  });
+
+  test("版本摘要查询不携带 rendered_yaml，完整产物仍可按需读取", () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "版本摘要",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const release = ctx.subscriptionService.publish(ctx.userId, subscription.id, {
+      trigger: "manual"
+    });
+
+    const summary = ctx.subscriptionRepository.findReleaseSummaryById(release.id)!;
+    const summaries = ctx.subscriptionRepository.listReleaseSummaries(subscription.id);
+    expect(summary).not.toHaveProperty("renderedYaml");
+    expect(summary).not.toHaveProperty("buildConfig");
+    expect(summaries[0]).toEqual(summary);
+    const artifact = ctx.subscriptionRepository.findReleaseArtifactById(release.id)!;
+    expect(artifact.renderedYaml).toContain("proxy-groups:");
+    expect(artifact.renderedHash).toBe(summary.renderedHash);
+  });
+
+  test("预览路由默认返回轻量 JSON，YAML 路由返回带校验头的原始正文", async () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "预览路由",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const now = new Date().toISOString();
+    const authService = {
+      authenticate: () => ({
+        id: ctx.userId,
+        email: "alice@test.local",
+        username: "alice",
+        displayName: "Alice",
+        locale: "zh-CN",
+        status: "active" as const,
+        isAdmin: false,
+        createdAt: now,
+        updatedAt: now
+      })
+    } as unknown as AuthService;
+    const app = new Elysia().use(
+      createSubscriptionRoutes(
+        authService,
+        ctx.subscriptionService,
+        ctx.secretStore,
+        new InMemoryRateLimiter()
+      )
+    );
+
+    const workspaceResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/workspace-index`, {
+        method: "POST"
+      })
+    );
+    expect(workspaceResponse.status).toBe(200);
+    const workspacePayload = await workspaceResponse.json() as Record<string, unknown>;
+    expect(workspacePayload).not.toHaveProperty("yamlText");
+    expect(workspacePayload).toHaveProperty("nodeIndex");
+
+    const previewResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/preview`, {
+        method: "POST"
+      })
+    );
+    expect(previewResponse.status).toBe(200);
+    const previewPayload = await previewResponse.json() as Record<string, unknown>;
+    expect(previewPayload).not.toHaveProperty("yamlText");
+    expect(previewPayload).toHaveProperty("yamlBytes");
+
+    const yamlResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/preview/yaml`, {
+        method: "POST"
+      })
+    );
+    expect(yamlResponse.status).toBe(200);
+    expect(yamlResponse.headers.get("content-type")).toContain("application/yaml");
+    expect(yamlResponse.headers.get("cache-control")).toBe("no-store");
+    expect(yamlResponse.headers.get("access-control-expose-headers")).toContain(
+      "X-Draft-Revision"
+    );
+    expect(yamlResponse.headers.get("access-control-expose-headers")).toContain(
+      "X-Rendered-Hash"
+    );
+    expect(yamlResponse.headers.get("x-draft-revision")).toBe(String(subscription.draftRevision));
+    expect(yamlResponse.headers.get("x-rendered-hash")).toBe(previewPayload.renderedHash);
+    expect(yamlResponse.headers.get("etag")).toBe(`"${previewPayload.renderedHash}"`);
+    const yamlText = await yamlResponse.text();
+    expect(Buffer.byteLength(yamlText, "utf8")).toBe(previewPayload.yamlBytes);
+    expect(yamlText).toContain("proxy-groups:");
   });
 
   test("auto 策略遇到未发布草稿时只标记变化，不夹带草稿发布", async () => {

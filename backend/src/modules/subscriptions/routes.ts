@@ -147,6 +147,16 @@ export const createSubscriptionRoutes = (
         return sendError(error, set);
       }
     })
+    .post(
+      "/subscriptions/:id/workspace-index",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          return service.workspaceIndex(currentUser.id, params.id!);
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
     .post("/subscriptions/:id/preview", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       try {
         return service.preview(currentUser.id, params.id!);
@@ -154,6 +164,28 @@ export const createSubscriptionRoutes = (
         return sendError(error, set);
       }
     })
+    .post(
+      "/subscriptions/:id/preview/yaml",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          const result = service.previewYaml(currentUser.id, params.id!);
+          set.headers = {
+            ...set.headers,
+            "Content-Type": "application/yaml; charset=utf-8",
+            "Content-Length": String(Buffer.byteLength(result.yamlText, "utf8")),
+            "Cache-Control": "no-store",
+            "Access-Control-Expose-Headers":
+              "X-Draft-Revision, X-Rendered-Hash, ETag, Content-Length",
+            "X-Draft-Revision": String(result.draftRevision),
+            "X-Rendered-Hash": result.renderedHash,
+            ETag: `"${result.renderedHash}"`
+          };
+          return result.yamlText;
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
     .post("/subscriptions/:id/latency-tests", async ({ params, body, currentUser, set }: Ctx) => {
       try {
         const limit = rateLimiter.consume(currentUser.id, {

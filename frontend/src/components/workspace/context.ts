@@ -3,14 +3,14 @@ import { createContext, useContext } from "react";
 import type { BuildConfig } from "../../lib/build-config-types";
 import { REGION_CODES } from "../../lib/regions";
 import type {
-  PreviewResult,
   SubscriptionDetail,
-  SyncLatestRulesetsResult
+  SyncLatestRulesetsResult,
+  WorkspaceIndexResult
 } from "../../lib/types";
 
 // 订阅工作台上下文：
 // config 是当前编辑中的 BuildConfig（草稿 ?? 已发布），
-// update() 以不可变方式修改并触发防抖保存草稿；preview 是最近一次求值结果。
+// update() 以不可变方式修改并触发防抖保存草稿；workspaceIndex 是不展开规则正文的轻量索引。
 
 export interface WorkspaceContextValue {
   detail: SubscriptionDetail;
@@ -22,9 +22,8 @@ export interface WorkspaceContextValue {
   discardingDraft: boolean;
   draftRevision: number;
   syncLatestRulesets: () => Promise<SyncLatestRulesetsResult>;
-  preview: PreviewResult | null;
-  previewLoading: boolean;
-  refreshPreview: () => void;
+  workspaceIndex: WorkspaceIndexResult | null;
+  workspaceIndexLoading: boolean;
   knownGroupNames: string[]; // 生成器产物 + 自定义组（规则目标/成员选择用）
 }
 

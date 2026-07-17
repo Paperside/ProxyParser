@@ -22,7 +22,12 @@ import { AccessTab } from "../components/workspace/access-tab";
 import { WorkspaceRail } from "../components/workspace/rail";
 import { cn } from "../lib/cn";
 import type { BuildConfig } from "../lib/build-config-types";
-import { usePreview, useSubscription, useSubscriptionMutations } from "../lib/hooks";
+import {
+  usePreview,
+  useSubscription,
+  useSubscriptionMutations,
+  useWorkspaceIndex
+} from "../lib/hooks";
 
 const TABS = [
   { id: "overview", label: "概览" },
@@ -39,16 +44,20 @@ type TabId = (typeof TABS)[number]["id"];
 
 const PublishDialog = ({
   subscriptionId,
+  expectedDraftRevision,
   onClose
 }: {
   subscriptionId: string;
+  expectedDraftRevision: number;
   onClose: () => void;
 }) => {
   const preview = usePreview(subscriptionId, true);
   const mutations = useSubscriptionMutations(subscriptionId);
   const [publishError, setPublishError] = useState<string | null>(null);
 
-  const errors = preview.data?.issues.filter((issue) => issue.severity === "error") ?? [];
+  const currentPreview =
+    preview.data?.draftRevision === expectedDraftRevision ? preview.data : null;
+  const errors = currentPreview?.issues.filter((issue) => issue.severity === "error") ?? [];
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -61,32 +70,32 @@ const PublishDialog = ({
           <p className="text-xs text-muted">正在渲染与校验…</p>
         ) : preview.isError ? (
           <p className="text-xs text-err">预览失败：{preview.error.message}</p>
-        ) : preview.data ? (
+        ) : currentPreview ? (
           <div className="flex flex-col gap-4">
             <div>
               <p className="mb-1.5 text-xs font-medium text-muted">
                 与当前版本
-                {preview.data.activeReleaseSeq !== null
-                  ? ` v${preview.data.activeReleaseSeq} `
+                {currentPreview.activeReleaseSeq !== null
+                  ? ` v${currentPreview.activeReleaseSeq} `
                   : ""}
                 的差异
               </p>
-              <DiffChips diff={preview.data.diffVsActive} />
+              <DiffChips diff={currentPreview.diffVsActive} />
             </div>
             <div className="flex gap-4 font-mono text-xs text-muted">
-              <span>{preview.data.stats.nodeCount} 节点</span>
-              <span>{preview.data.stats.groupCount} 组</span>
-              <span>{preview.data.stats.ruleCount} 规则</span>
-              <span>{preview.data.stats.providerCount} 规则集</span>
+              <span>{currentPreview.stats.nodeCount} 节点</span>
+              <span>{currentPreview.stats.groupCount} 组</span>
+              <span>{currentPreview.stats.ruleCount} 规则</span>
+              <span>{currentPreview.stats.providerCount} 规则集</span>
             </div>
-            {preview.data.issues.length > 0 ? (
+            {currentPreview.issues.length > 0 ? (
               <div>
                 <p className="mb-1 text-xs font-medium text-muted">
                   {errors.length > 0
                     ? `存在 ${errors.length} 个必须处理的问题，发布将被阻断：`
                     : "提示（不阻断发布）："}
                 </p>
-                <IssueList issues={preview.data.issues} />
+                <IssueList issues={currentPreview.issues} />
               </div>
             ) : null}
             {publishError ? (
@@ -95,7 +104,9 @@ const PublishDialog = ({
               </pre>
             ) : null}
           </div>
-        ) : null}
+        ) : (
+          <p className="text-xs text-muted">草稿版本已变化，正在等待最新预览…</p>
+        )}
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
             取消
@@ -105,7 +116,7 @@ const PublishDialog = ({
             disabled={
               preview.isFetching ||
               !preview.isSuccess ||
-              !preview.data ||
+              !currentPreview ||
               errors.length > 0 ||
               mutations.publish.isPending
             }
@@ -113,8 +124,8 @@ const PublishDialog = ({
               mutations.publish
                 .mutateAsync({
                   subscriptionId,
-                  expectedDraftRevision: preview.data!.draftRevision,
-                  expectedRenderedHash: preview.data!.renderedHash
+                  expectedDraftRevision: currentPreview!.draftRevision,
+                  expectedRenderedHash: currentPreview!.renderedHash
                 })
                 .then((release) => {
                   toast.success(`v${release.seq} 已发布`);
@@ -524,7 +535,7 @@ const SubscriptionWorkspace = ({
     }
   };
 
-  const preview = usePreview(subscriptionId, config !== null && !dirty);
+  const workspaceIndex = useWorkspaceIndex(subscriptionId, config !== null && !dirty);
   const [showPublish, setShowPublish] = useState(false);
 
   const knownGroupNames = useMemo(() => (config ? deriveGroupNames(config) : []), [config]);
@@ -538,6 +549,13 @@ const SubscriptionWorkspace = ({
 
   const saveConflict = saveFailure?.kind === "conflict";
   const workspaceLocked = syncingRulesets || discardingDraft || saveConflict;
+  const currentDraftRevision = draftRevision.current ?? detail.data.draftRevision;
+  const currentWorkspaceIndex =
+    !dirty &&
+    !savingDraft &&
+    workspaceIndex.data?.draftRevision === currentDraftRevision
+      ? workspaceIndex.data
+      : null;
 
   const value: WorkspaceContextValue = {
     detail: detail.data,
@@ -547,11 +565,10 @@ const SubscriptionWorkspace = ({
     saving: dirty || savingDraft,
     syncingRulesets,
     discardingDraft,
-    draftRevision: draftRevision.current ?? detail.data.draftRevision,
+    draftRevision: currentDraftRevision,
     syncLatestRulesets,
-    preview: preview.data ?? null,
-    previewLoading: preview.isFetching,
-    refreshPreview: () => void preview.refetch(),
+    workspaceIndex: currentWorkspaceIndex,
+    workspaceIndexLoading: workspaceIndex.isFetching || dirty || savingDraft,
     knownGroupNames
   };
 
@@ -725,6 +742,7 @@ const SubscriptionWorkspace = ({
       {showPublish ? (
         <PublishDialog
           subscriptionId={subscriptionId}
+          expectedDraftRevision={value.draftRevision}
           onClose={() => setShowPublish(false)}
         />
       ) : null}

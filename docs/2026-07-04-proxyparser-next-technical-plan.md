@@ -89,6 +89,8 @@ Next schema 直接定义当前最终表结构：
 整份草稿写入以 `draft_revision` 做乐观并发控制；`subscription_sources` 物化索引始终覆盖「已发布 BuildConfig ∪ 草稿 BuildConfig」的源，避免编辑草稿时丢失对线上源的变化跟踪。草稿行与该索引在同一事务更新；发布时 Release 插入、revision CAS、active 切换与源索引更新也属于同一事务。手动发布还需同时校验预览返回的 `renderedHash`，防止预览后上游快照变化导致发布未经确认的产物。
 手动发布使用“本次预览”返回的 revision；回滚只允许在没有未发布草稿时执行，并同样以 revision CAS 防止旧标签页清掉较新的状态。
 
+工作区读取拆成三层，避免 inline 规则把编辑页放大成十几 MB 响应：`workspace-index` 自动生成节点/分组索引，不读规则正文、不组装规则、不输出 YAML；`preview` 只在用户主动预览或打开发布确认时做完整确定性求值，响应只含统计、issues、diff、hash 与 YAML 字节数；`preview/yaml` 再以 `Cache-Control: no-store` 按需返回原始 YAML。发布门禁始终使用完整预览的 revision + hash。
+
 ## 4. BuildConfig 与稳定引用
 
 权威类型位于 `backend/src/lib/build-config/types.ts`，通过 `bun run sync-types` 同步到前端。当前 `BuildConfig.version` 为 `1`，包括：
@@ -211,7 +213,7 @@ mihomo -t -f <config> -d <temp-dir>
 - 密钥不进入 SQLite，也不得提交 Git；备份必须同时包含 `proxyparser.sqlite` 与匹配的 `.secret-key`，或外部保存的 `PP_SECRET_KEY`。
 - 自建节点密文采用 copy-on-write：编辑会创建新 `secretRef`，不原地覆盖或删除可能被已发布/历史 BuildConfig 引用的密文。
 - 节点分享 URI 由认证后的 `POST /api/nodes/parse-uri` 纯解析；限制 16 KiB，不联网且不记录原始链接。支持当前表单协议的通用分享 scheme，Snell 因无通用标准保持手填。
-- 延迟测试在服务端启动一次性 Mihomo：随机 loopback controller、随机 secret、固定管理员配置的测试 URL、5 秒默认超时、4 并发、每用户限流与全局进程上限。结果不持久化，配置临时文件权限为 0600，进程结束后删除工作目录。
+- 延迟测试在服务端启动一次性 Mihomo：随机 loopback controller、随机 secret、固定管理员配置的测试 URL、5 秒默认超时、单次 runner 内 4 并发、每用户限流。节点求值只收集代理必需数据，不读或展开规则正文。UI 按 node ID 独立跟踪排队/测试/结果；服务端最多同时运行 2 个 Mihomo，其余请求进入有界 FIFO 队列，不会因一个节点正在测试就锁住整张表。结果不持久化，配置临时文件权限为 0600，进程结束后删除工作目录。
 - 公开交付和规则快照端点有独立的内存限流；认证注册、登录与刷新也有限流。
 - 公开 `/rs/*` 只读取 `is_public=1` 的快照。
 - `backend/data/mock-subscriptions/` 可能包含真实节点，禁止提交或在日志/测试输出中打印。
@@ -231,7 +233,9 @@ mihomo -t -f <config> -d <temp-dir>
 
 前端路由位于 `frontend/src/router.tsx`，业务页面按路由 lazy load。认证后入口为 `/workbench`，其余主路由是 `/subscriptions`、`/subscriptions/new`、`/subscriptions/:id/:tab`、`/sources`、`/rulesets`、`/templates` 与 `/settings`。
 
-订阅工作台按 overview/nodes/groups/rules/config/releases/access 分区；右侧 rail 提供预览、diff、问题与规则追踪。服务端状态由 TanStack Query 管理，变更后按 query key 失效刷新；UI 文案统一中文。
+订阅工作台按 overview/nodes/groups/rules/config/releases/access 分区；右侧 rail 提供按需预览、diff、问题与规则追踪。进入工作区只自动请求轻量索引，完整预览必须由用户或发布确认触发；超过 1 MiB 的 YAML 以下载方式交付，不写入 React DOM。服务端状态由 TanStack Query 管理，变更后按 query key 失效刷新；UI 文案统一中文。
+
+生产 Nginx 对 API JSON/YAML 与静态 JS/CSS/SVG 启用 gzip；Vite 内容 hash 的 `/assets/*` 使用一年 `immutable` 缓存，`index.html`/SPA fallback 始终 `no-cache` 以及时选中新版本资源。
 
 设置页当前提供账号信息、数据库/调度器/mihomo/公开地址健康状态和备份指引。备份/恢复是运维操作，当前没有浏览器内导出或恢复接口。
 
@@ -241,7 +245,7 @@ mihomo -t -f <config> -d <temp-dir>
 |---|---|
 | 认证 | `/api/auth/*`, `/api/me`：注册、登录、刷新、退出、资料 |
 | 订阅源 | `/api/sources/*`：URL/上传源 CRUD、同步、同步报告 |
-| 订阅 | `/api/subscriptions/*`：CRUD、草稿、规则快照同步、预览、发布、回滚、版本、追踪、问题、访问、服务端节点延迟测试 |
+| 订阅 | `/api/subscriptions/*`：CRUD、草稿、规则快照同步、轻量 `workspace-index`、预览元数据、按需原始 YAML、发布、回滚、版本、追踪、问题、访问、服务端节点延迟测试 |
 | 节点 URI | `/api/nodes/parse-uri`：分享链接纯解析与规范化表单字段 |
 | 自建节点 secrets | `/api/secrets/*`：按协议拆分/加密字段、owner 校验后的编辑回显 |
 | 规则库 | `/api/rulesets/*`：目录、导入、快照、更新、diff、解析、应用更新 |
@@ -253,7 +257,7 @@ API 的精确请求体和响应体以各模块 `routes.ts` 及 Swagger `/swagger
 
 ## 16. 验证与变更检查
 
-自动化包含后端单元/集成/golden 测试与 Playwright 浏览器 E2E，覆盖稳定 ID、BuildConfig 校验、规则全局交付、分享 URI、确定性渲染、发布与回滚、断网交付、上游吸收、规则更新、追踪、模板加密凭据跨用户复制、token 生命周期、secrets 拆分、运行时持久化，以及关键工作台交互。延迟 runner 另以仓库内真实 Mihomo + 本地 204 fixture 验证。
+自动化包含后端单元/集成/golden 测试与 Playwright 浏览器 E2E，覆盖稳定 ID、BuildConfig 校验、规则全局交付、分享 URI、确定性渲染、发布与回滚、断网交付、上游吸收、规则更新、追踪、模板加密凭据跨用户复制、token 生命周期、secrets 拆分、运行时持久化，以及关键工作台交互。性能回归还要锁定 workspace-index 不读规则正文、自动进工作区不请求完整 preview、preview 不内嵌 YAML、大 YAML 不进 DOM，以及多节点测速的独立状态/FIFO 边界。延迟 runner 另以仓库内真实 Mihomo + 本地 204 fixture 验证。
 
 提交前至少运行：
 

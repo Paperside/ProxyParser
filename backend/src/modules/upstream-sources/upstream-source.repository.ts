@@ -37,6 +37,11 @@ export interface SourceSnapshotRecord {
   createdAt: string;
 }
 
+export interface ParsedSourceSnapshotRecord {
+  id: string;
+  parsed: ClashProxyDocument | null;
+}
+
 export interface SyncReportRecord {
   id: string;
   upstreamSourceId: string;
@@ -344,6 +349,15 @@ export class UpstreamSourceRepository {
       .query<SnapshotRow>("SELECT * FROM upstream_source_snapshots WHERE id = ?")
       .get(id);
     return row ? mapSnapshot(row) : null;
+  }
+
+  findParsedSnapshotById(id: string): ParsedSourceSnapshotRecord | null {
+    const row = this.db
+      .query<{ id: string; parsed_json: string | null }>(
+        "SELECT id, parsed_json FROM upstream_source_snapshots WHERE id = ?"
+      )
+      .get(id);
+    return row ? { id: row.id, parsed: parseJson<ClashProxyDocument | null>(row.parsed_json, null) } : null;
   }
 
   findLatestSuccessfulSnapshot(sourceId: string): SourceSnapshotRecord | null {

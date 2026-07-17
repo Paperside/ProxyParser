@@ -46,6 +46,19 @@ export interface ReleaseRecord {
   createdAt: string;
 }
 
+export type ReleaseSummaryRecord = Omit<
+  ReleaseRecord,
+  "buildConfig" | "sourceSnapshotIds" | "renderedYaml"
+>;
+
+export interface ReleaseArtifactRecord {
+  id: string;
+  subscriptionId: string;
+  seq: number;
+  renderedYaml: string;
+  renderedHash: string;
+}
+
 export interface TokenRecord {
   id: string;
   subscriptionId: string;
@@ -113,6 +126,16 @@ interface ReleaseRow {
   created_at: string;
 }
 
+type ReleaseSummaryRow = Omit<ReleaseRow, "build_config" | "source_snapshot_ids" | "rendered_yaml">;
+
+interface ReleaseArtifactRow {
+  id: string;
+  subscription_id: string;
+  seq: number;
+  rendered_yaml: string;
+  rendered_hash: string;
+}
+
 const parseJson = <T,>(value: string | null, fallback: T): T => {
   if (!value) return fallback;
   try {
@@ -155,6 +178,27 @@ const mapRelease = (row: ReleaseRow): ReleaseRecord => ({
   validation: parseJson(row.validation, { structuralErrors: 0, mihomo: null }),
   createdBy: row.created_by,
   createdAt: row.created_at
+});
+
+const mapReleaseSummary = (row: ReleaseSummaryRow): ReleaseSummaryRecord => ({
+  id: row.id,
+  subscriptionId: row.subscription_id,
+  seq: row.seq,
+  renderedHash: row.rendered_hash,
+  diffSummary: parseJson(row.diff_summary, {}),
+  trigger: row.trigger as ReleaseTrigger,
+  triggerDetail: row.trigger_detail,
+  validation: parseJson(row.validation, { structuralErrors: 0, mihomo: null }),
+  createdBy: row.created_by,
+  createdAt: row.created_at
+});
+
+const mapReleaseArtifact = (row: ReleaseArtifactRow): ReleaseArtifactRecord => ({
+  id: row.id,
+  subscriptionId: row.subscription_id,
+  seq: row.seq,
+  renderedYaml: row.rendered_yaml,
+  renderedHash: row.rendered_hash
 });
 
 export class SubscriptionRepository {
@@ -334,6 +378,7 @@ export class SubscriptionRepository {
   }): ReleaseRecord {
     const id = createId("rel");
     const now = new Date().toISOString();
+    let seq = 0;
     const insertRelease = this.db.query(
       `INSERT INTO releases (
          id, subscription_id, seq, build_config, source_snapshot_ids, rendered_yaml,
@@ -342,7 +387,7 @@ export class SubscriptionRepository {
     );
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      const seq =
+      seq =
         (this.db
           .query<{ max_seq: number | null }>(
             "SELECT MAX(seq) AS max_seq FROM releases WHERE subscription_id = ?"
@@ -387,12 +432,49 @@ export class SubscriptionRepository {
       throw error;
     }
 
-    return this.findReleaseById(id)!;
+    // YAML 可能达到数十 MB，刚 INSERT 后不要再 SELECT * 从 SQLite 读回一遍。
+    // 调用方已经持有不可变发布产物的全部输入，可直接构造返回值。
+    return {
+      id,
+      subscriptionId: input.subscriptionId,
+      seq,
+      buildConfig: input.buildConfig,
+      sourceSnapshotIds: input.sourceSnapshotIds,
+      renderedYaml: input.renderedYaml,
+      renderedHash: input.renderedHash,
+      diffSummary: input.diffSummary,
+      trigger: input.trigger,
+      triggerDetail: input.triggerDetail,
+      validation: input.validation,
+      createdBy: input.createdBy,
+      createdAt: now
+    };
   }
 
   findReleaseById(id: string): ReleaseRecord | null {
     const row = this.db.query<ReleaseRow>("SELECT * FROM releases WHERE id = ?").get(id);
     return row ? mapRelease(row) : null;
+  }
+
+  findReleaseSummaryById(id: string): ReleaseSummaryRecord | null {
+    const row = this.db
+      .query<ReleaseSummaryRow>(
+        `SELECT id, subscription_id, seq, rendered_hash, diff_summary, trigger,
+                trigger_detail, validation, created_by, created_at
+         FROM releases WHERE id = ?`
+      )
+      .get(id);
+    return row ? mapReleaseSummary(row) : null;
+  }
+
+  findReleaseArtifactById(id: string): ReleaseArtifactRecord | null {
+    const row = this.db
+      .query<ReleaseArtifactRow>(
+        `SELECT id, subscription_id, seq, rendered_yaml, rendered_hash
+         FROM releases WHERE id = ?`
+      )
+      .get(id);
+    return row ? mapReleaseArtifact(row) : null;
   }
 
   listReleases(subscriptionId: string, limit = 50): ReleaseRecord[] {
@@ -402,6 +484,17 @@ export class SubscriptionRepository {
       )
       .all(subscriptionId, limit)
       .map(mapRelease);
+  }
+
+  listReleaseSummaries(subscriptionId: string, limit = 50): ReleaseSummaryRecord[] {
+    return this.db
+      .query<ReleaseSummaryRow>(
+        `SELECT id, subscription_id, seq, rendered_hash, diff_summary, trigger,
+                trigger_detail, validation, created_by, created_at
+         FROM releases WHERE subscription_id = ? ORDER BY seq DESC LIMIT ?`
+      )
+      .all(subscriptionId, limit)
+      .map(mapReleaseSummary);
   }
 
   // ── Token ──────────────────────────────────────────────────

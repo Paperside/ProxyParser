@@ -166,13 +166,27 @@ export interface GroupIndexEntry {
 export interface PreviewResult {
   draftRevision: number;
   renderedHash: string;
-  yamlText: string;
+  yamlBytes: number;
   issues: EvaluateIssueDto[];
   stats: { nodeCount: number; groupCount: number; ruleCount: number; providerCount: number };
   nodeIndex: NodeIndexEntry[];
   groupIndex: GroupIndexEntry[];
   diffVsActive: DiffSummary | null;
   activeReleaseSeq: number | null;
+}
+
+export interface WorkspaceIndexResult {
+  draftRevision: number;
+  issues: EvaluateIssueDto[];
+  stats: { nodeCount: number; groupCount: number };
+  nodeIndex: NodeIndexEntry[];
+  groupIndex: GroupIndexEntry[];
+}
+
+export interface PreviewYamlResult {
+  draftRevision: number;
+  renderedHash: string;
+  yamlText: string;
 }
 
 export interface MihomoValidationDto {

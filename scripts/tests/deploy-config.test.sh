@@ -17,6 +17,14 @@ assert_eq() {
   [[ "$actual" == "$expected" ]] || fail "$label: expected '$expected', got '$actual'"
 }
 
+assert_file_contains() {
+  local file="$1"
+  local expected="$2"
+  local label="$3"
+
+  grep -Fq -- "$expected" "$file" || fail "$label: '$expected' not found in $file"
+}
+
 with_tmpdir() {
   local tmpdir
   tmpdir="$(mktemp -d)"
@@ -296,6 +304,40 @@ test_deploy_path_and_tag_validation() {
   fi
 }
 
+test_nginx_transport_and_cache_policy() {
+  local _tmpdir="$1"
+  local frontend_config="$ROOT_DIR/frontend/nginx.conf"
+  local host_config="$ROOT_DIR/deploy/nginx-proxyparser.conf.example"
+  local config
+
+  for config in "$frontend_config" "$host_config"; do
+    assert_file_contains "$config" "gzip on;" "gzip enabled"
+    assert_file_contains "$config" "gzip_vary on;" "compressed responses vary by encoding"
+    assert_file_contains "$config" "gzip_min_length 1024;" "small responses bypass gzip"
+    assert_file_contains "$config" "application/json" "JSON compression type"
+    assert_file_contains "$config" "text/yaml" "YAML compression type"
+    assert_file_contains "$config" "application/javascript" "JavaScript compression type"
+    assert_file_contains "$config" "text/css" "CSS compression type"
+    assert_file_contains "$config" "image/svg+xml" "SVG compression type"
+  done
+
+  assert_file_contains "$frontend_config" "location ^~ /assets/" "hashed asset location"
+  assert_file_contains "$frontend_config" \
+    'add_header Cache-Control "public, max-age=31536000, immutable";' \
+    "hashed asset immutable cache policy"
+  assert_file_contains "$frontend_config" "location = /index.html" "app shell location"
+  assert_file_contains "$frontend_config" \
+    'add_header Cache-Control "no-cache" always;' \
+    "app shell revalidation policy"
+  assert_file_contains "$frontend_config" 'try_files $uri $uri/ /index.html;' "SPA fallback"
+
+  assert_file_contains "$host_config" "location /rs/" "ruleset snapshot location"
+  assert_file_contains "$host_config" "proxy_hide_header Cache-Control;" "single edge cache policy"
+  assert_file_contains "$host_config" \
+    'add_header Cache-Control "public, max-age=31536000, immutable";' \
+    "ruleset snapshot immutable cache policy"
+}
+
 write_fake_docker() {
   local path="$1"
   cat > "$path" <<'SCRIPT'
@@ -491,5 +533,6 @@ with_tmpdir test_existing_persistent_key_matches_container
 with_tmpdir test_new_container_key_path_and_env_precedence
 with_tmpdir test_clear_compose_overrides
 with_tmpdir test_deploy_path_and_tag_validation
+with_tmpdir test_nginx_transport_and_cache_policy
 
 echo "deploy-config tests passed"

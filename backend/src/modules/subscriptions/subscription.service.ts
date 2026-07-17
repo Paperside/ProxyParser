@@ -8,12 +8,18 @@ import type { BuildConfig } from "../../lib/build-config/types";
 import { validateBuildConfig } from "../../lib/build-config/validate";
 import { instantiateTemplate } from "../../lib/build-config/template";
 import {
+  collectNodes,
   evaluate,
+  evaluateWorkspaceIndex,
   type EvaluateInput,
   type EvaluateIssue,
   type EvaluateResult,
   type RulesetSnapshotData
 } from "../../lib/render-v2/evaluate";
+import {
+  BoundedFifoSemaphore,
+  SemaphoreQueueFullError
+} from "../../lib/concurrency/bounded-fifo-semaphore";
 import { diffDocuments } from "../../lib/render-v2/release-diff";
 import { traceQuery, type TraceResult } from "../../lib/trace/rule-tracer";
 import {
@@ -40,7 +46,9 @@ import type {
 import {
   DraftRevisionConflictError,
   type PublishPolicy,
+  type ReleaseArtifactRecord,
   type ReleaseRecord,
+  type ReleaseSummaryRecord,
   type SubscriptionRecord,
   type SubscriptionRepository
 } from "./subscription.repository";
@@ -64,6 +72,7 @@ export interface SubscriptionServiceOptions {
   tempTokenTtlSeconds?: number;
   latencyTestUrl?: string;
   latencyTimeoutMs?: number;
+  latencyRunner?: typeof runMihomoLatencyTests;
 }
 
 export interface SyncLatestRulesetsResult {
@@ -113,7 +122,7 @@ const blankBuildConfig = (sourceIds: string[], mode: "rebuild" | "patch"): Build
 });
 
 export class SubscriptionService {
-  private latencyRunsInFlight = 0;
+  private readonly latencySemaphore = new BoundedFifoSemaphore(2, 8);
   constructor(
     private readonly repository: SubscriptionRepository,
     private readonly sourceRepository: UpstreamSourceRepository,
@@ -134,10 +143,10 @@ export class SubscriptionService {
   getDetail(ownerUserId: string, id: string) {
     const record = this.requireOwned(ownerUserId, id);
     const activeRelease = record.activeReleaseId
-      ? this.repository.findReleaseById(record.activeReleaseId)
+      ? this.repository.findReleaseSummaryById(record.activeReleaseId)
       : null;
     return {
-      ...this.summarize(record),
+      ...this.summarize(record, activeRelease),
       buildConfig: record.buildConfig,
       draftBuildConfig: record.draftBuildConfig,
       draftRevision: record.draftRevision,
@@ -153,11 +162,13 @@ export class SubscriptionService {
     };
   }
 
-  private summarize(record: SubscriptionRecord) {
+  private summarize(
+    record: SubscriptionRecord,
+    activeRelease: ReleaseSummaryRecord | null = record.activeReleaseId
+      ? this.repository.findReleaseSummaryById(record.activeReleaseId)
+      : null
+  ) {
     const issueCount = this.repository.countOpenIssues(record.id);
-    const activeRelease = record.activeReleaseId
-      ? this.repository.findReleaseById(record.activeReleaseId)
-      : null;
     const sourceNames = (record.draftBuildConfig ?? record.buildConfig)?.sources
       .map((ref) => this.sourceRepository.findById(ref.sourceId)?.displayName ?? "已删除的源")
       ?? [];
@@ -308,6 +319,19 @@ export class SubscriptionService {
 
   // ── 草稿与预览 ──────────────────────────────────────────────
 
+  workspaceIndex(ownerUserId: string, id: string) {
+    const record = this.requireOwned(ownerUserId, id);
+    const config = record.draftBuildConfig ?? record.buildConfig;
+    if (!config) {
+      throw new SubscriptionError("尚无可加载的构建配置。", 409);
+    }
+    this.assertConfigReferencesOwned(record.ownerUserId, config);
+    const result = evaluateWorkspaceIndex(
+      this.buildWorkspaceEvaluateInput(config, record.ownerUserId)
+    );
+    return { draftRevision: record.draftRevision, ...result };
+  }
+
   saveDraft(
     ownerUserId: string,
     id: string,
@@ -354,7 +378,7 @@ export class SubscriptionService {
     this.assertConfigReferencesOwned(record.ownerUserId, config);
     const result = this.evaluateConfig(config, record.ownerUserId);
     const activeRelease = record.activeReleaseId
-      ? this.repository.findReleaseById(record.activeReleaseId)
+      ? this.repository.findReleaseArtifactById(record.activeReleaseId)
       : null;
     const diffVsActive = activeRelease
       ? diffDocuments(this.parseReleaseDocument(activeRelease), result.document)
@@ -362,7 +386,7 @@ export class SubscriptionService {
     return {
       draftRevision: record.draftRevision,
       renderedHash: result.renderedHash,
-      yamlText: result.yamlText,
+      yamlBytes: Buffer.byteLength(result.yamlText, "utf8"),
       issues: result.issues,
       stats: result.stats,
       nodeIndex: result.nodeIndex,
@@ -372,40 +396,57 @@ export class SubscriptionService {
     };
   }
 
+  previewYaml(ownerUserId: string, id: string) {
+    const record = this.requireOwned(ownerUserId, id);
+    const config = record.draftBuildConfig ?? record.buildConfig;
+    if (!config) {
+      throw new SubscriptionError("尚无可预览的构建配置。", 409);
+    }
+    this.assertConfigReferencesOwned(record.ownerUserId, config);
+    const result = this.evaluateConfig(config, record.ownerUserId);
+    return {
+      draftRevision: record.draftRevision,
+      renderedHash: result.renderedHash,
+      yamlText: result.yamlText
+    };
+  }
+
   async testLatency(ownerUserId: string, id: string, nodeIds?: string[]): Promise<{
     testUrl: string;
     timeoutMs: number;
     testedAt: string;
     results: LatencyResult[];
   }> {
-    if (this.latencyRunsInFlight >= 2) {
-      throw new SubscriptionError("服务端正在执行其他延迟测试，请稍后再试。", 429);
-    }
     const record = this.requireOwned(ownerUserId, id);
     const config = record.draftBuildConfig ?? record.buildConfig;
     if (!config) throw new SubscriptionError("尚无可测试的构建配置。", 409);
     this.assertConfigReferencesOwned(ownerUserId, config);
-    const evaluation = this.evaluateConfig(config, ownerUserId);
+    // 延迟测试只需要节点本身；不要加载/内联规则或 emit 完整订阅 YAML。
+    const pool = collectNodes(this.buildWorkspaceEvaluateInput(config, ownerUserId), []);
     const requested = nodeIds ? new Set(nodeIds) : null;
     if (requested && requested.size > 200) throw new SubscriptionError("单次最多测试 200 个节点。", 400);
-    const proxiesByName = new Map(evaluation.document.proxies.map((proxy) => [proxy.name, proxy]));
-    const targets = evaluation.nodeIndex
+    const targets = pool
       .filter((node) => !node.disabled && (!requested || requested.has(node.id)))
-      .flatMap((node) => {
-        const proxy = proxiesByName.get(node.renderedName);
-        return proxy ? [{ nodeId: node.id, name: node.renderedName, proxy }] : [];
-      });
+      .map((node) => ({ nodeId: node.id, name: node.renderedName, proxy: node.document }));
     if (requested) {
       const found = new Set(targets.map((target) => target.nodeId));
       if ([...requested].some((nodeId) => !found.has(nodeId))) {
         throw new SubscriptionError("请求包含不存在或已禁用的节点。", 400);
       }
     }
-    this.latencyRunsInFlight += 1;
+    let release: (() => void) | null = null;
     try {
+      try {
+        release = await this.latencySemaphore.acquire();
+      } catch (error) {
+        if (error instanceof SemaphoreQueueFullError) {
+          throw new SubscriptionError("服务端延迟测试等待队列已满，请稍后再试。", 429);
+        }
+        throw error;
+      }
       const testUrl = this.options.latencyTestUrl ?? "https://cp.cloudflare.com/generate_204";
       const timeoutMs = this.options.latencyTimeoutMs ?? 5_000;
-      const results = await runMihomoLatencyTests(targets, {
+      const results = await (this.options.latencyRunner ?? runMihomoLatencyTests)(targets, {
         ...this.options.mihomo,
         testUrl,
         timeoutMs,
@@ -416,7 +457,7 @@ export class SubscriptionService {
       if (error instanceof MihomoLatencyError) throw new SubscriptionError(error.message, error.status);
       throw error;
     } finally {
-      this.latencyRunsInFlight -= 1;
+      release?.();
     }
   }
 
@@ -511,7 +552,7 @@ export class SubscriptionService {
     }
 
     const activeRelease = record.activeReleaseId
-      ? this.repository.findReleaseById(record.activeReleaseId)
+      ? this.repository.findReleaseArtifactById(record.activeReleaseId)
       : null;
     const diffSummary = diffDocuments(
       activeRelease ? this.parseReleaseDocument(activeRelease) : null,
@@ -519,10 +560,10 @@ export class SubscriptionService {
     );
 
     const sourceSnapshotIds: Record<string, string> = {};
-    for (const source of config.sources) {
-      const snapshot = this.sourceRepository.findLatestSuccessfulSnapshot(source.sourceId);
-      if (snapshot) {
-        sourceSnapshotIds[source.sourceId] = snapshot.id;
+    for (const sourceRef of config.sources) {
+      const source = this.sourceRepository.findById(sourceRef.sourceId);
+      if (source?.lastSuccessfulSnapshotId) {
+        sourceSnapshotIds[sourceRef.sourceId] = source.lastSuccessfulSnapshotId;
       }
     }
 
@@ -636,8 +677,8 @@ export class SubscriptionService {
   }
 
   listReleases(ownerUserId: string, id: string) {
-    this.requireOwned(ownerUserId, id);
-    return this.repository.listReleases(id).map((release) => ({
+    const record = this.requireOwned(ownerUserId, id);
+    return this.repository.listReleaseSummaries(id).map((release) => ({
       id: release.id,
       seq: release.seq,
       trigger: release.trigger,
@@ -646,7 +687,7 @@ export class SubscriptionService {
       validation: release.validation,
       createdBy: release.createdBy,
       createdAt: release.createdAt,
-      isActive: this.repository.findById(id)?.activeReleaseId === release.id
+      isActive: record.activeReleaseId === release.id
     }));
   }
 
@@ -669,7 +710,7 @@ export class SubscriptionService {
         const evaluationConfig = subscription.draftBuildConfig ?? subscription.buildConfig;
         const result = this.evaluateConfig(evaluationConfig, subscription.ownerUserId);
         const activeRelease = subscription.activeReleaseId
-          ? this.repository.findReleaseById(subscription.activeReleaseId)
+          ? this.repository.findReleaseSummaryById(subscription.activeReleaseId)
           : null;
         if (
           !subscription.draftBuildConfig &&
@@ -899,7 +940,7 @@ export class SubscriptionService {
     }
 
     const release = record.activeReleaseId
-      ? this.repository.findReleaseById(record.activeReleaseId)
+      ? this.repository.findReleaseArtifactById(record.activeReleaseId)
       : null;
     if (!release) {
       this.repository.createPullLog({
@@ -1164,19 +1205,8 @@ export class SubscriptionService {
   }
 
   private buildEvaluateInput(config: BuildConfig, ownerUserId: string): EvaluateInput {
-    const sourceSnapshots = new Map<string, ClashProxyDocument>();
-    const sourceLabels = new Map<string, string>();
-    for (const ref of config.sources) {
-      const source = this.sourceRepository.findByIdAndOwner(ref.sourceId, ownerUserId);
-      if (!source) continue;
-      sourceLabels.set(ref.sourceId, source.displayName);
-      const snapshot = this.sourceRepository.findLatestSuccessfulSnapshot(ref.sourceId);
-      if (snapshot?.parsed) {
-        sourceSnapshots.set(ref.sourceId, snapshot.parsed);
-      }
-    }
-
-    const rulesetSnapshots = new Map<string, RulesetSnapshotData>();
+    const input = this.buildWorkspaceEvaluateInput(config, ownerUserId);
+    const rulesetSnapshots = input.rulesetSnapshots;
     for (const block of config.rules.targets) {
       for (const item of block.items) {
         if (item.kind !== "snapshot") continue;
@@ -1196,6 +1226,23 @@ export class SubscriptionService {
         }
       }
     }
+    return input;
+  }
+
+  private buildWorkspaceEvaluateInput(config: BuildConfig, ownerUserId: string): EvaluateInput {
+    const sourceSnapshots = new Map<string, ClashProxyDocument>();
+    const sourceLabels = new Map<string, string>();
+    for (const ref of config.sources) {
+      const source = this.sourceRepository.findByIdAndOwner(ref.sourceId, ownerUserId);
+      if (!source) continue;
+      sourceLabels.set(ref.sourceId, source.displayName);
+      const snapshot = source.lastSuccessfulSnapshotId
+        ? this.sourceRepository.findParsedSnapshotById(source.lastSuccessfulSnapshotId)
+        : null;
+      if (snapshot?.parsed) {
+        sourceSnapshots.set(ref.sourceId, snapshot.parsed);
+      }
+    }
 
     const customNodeSecrets = new Map<string, Record<string, unknown>>();
     for (const node of config.nodes.custom) {
@@ -1210,13 +1257,15 @@ export class SubscriptionService {
       buildConfig: config,
       sourceSnapshots,
       sourceLabels,
-      rulesetSnapshots,
+      rulesetSnapshots: new Map<string, RulesetSnapshotData>(),
       customNodeSecrets,
       publicBaseUrl: this.options.publicBaseUrl
     };
   }
 
-  private parseReleaseDocument(release: ReleaseRecord): ClashProxyDocument | null {
+  private parseReleaseDocument(
+    release: ReleaseRecord | ReleaseArtifactRecord
+  ): ClashProxyDocument | null {
     try {
       return yaml.load(release.renderedYaml) as ClashProxyDocument;
     } catch {

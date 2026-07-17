@@ -101,7 +101,7 @@ const ExpandableGroupBar = ({
 
 // 组成员选择器：节点 / 组 / 抽象集合 / 内置目标 四类（v0.2 §7.3 标准成员配置）
 const MemberPicker = ({ onAdd }: { onAdd: (member: GroupMember) => void }) => {
-  const { preview, knownGroupNames } = useWorkspace();
+  const { workspaceIndex, knownGroupNames } = useWorkspace();
   const [kind, setKind] = useState("selector");
   const [value, setValue] = useState("all-enabled");
 
@@ -121,7 +121,7 @@ const MemberPicker = ({ onAdd }: { onAdd: (member: GroupMember) => void }) => {
       case "builtin":
         return BUILTIN_POLICY_OPTIONS.map((option) => ({ value: option.value, label: option.label }));
       case "node":
-        return (preview?.nodeIndex ?? [])
+        return (workspaceIndex?.nodeIndex ?? [])
           .filter((node) => !node.disabled)
           .map((node) => ({ value: node.id, label: node.renderedName }));
       default:
@@ -207,13 +207,13 @@ const GroupEditorDialog = ({
   initial: CustomGroup | null;
   onClose: () => void;
 }) => {
-  const { update, preview, editingLocked } = useWorkspace();
+  const { update, workspaceIndex, editingLocked } = useWorkspace();
   const [name, setName] = useState(initial?.name ?? "");
   const [type, setType] = useState<CustomGroup["type"]>(initial?.type ?? "select");
   const [rows, setRows] = useState<MemberRow[]>(() => toMemberRows(initial?.members ?? []));
 
   const nodeName = (id: string) =>
-    preview?.nodeIndex.find((node) => node.id === id)?.renderedName ?? id.slice(0, 10);
+    workspaceIndex?.nodeIndex.find((node) => node.id === id)?.renderedName ?? id.slice(0, 10);
 
   const save = () => {
     if (!name.trim()) {
@@ -304,18 +304,20 @@ const GroupEditorDialog = ({
 };
 
 export const GroupsTab = () => {
-  const { config, update, preview } = useWorkspace();
+  const { config, update, workspaceIndex } = useWorkspace();
   const [editing, setEditing] = useState<CustomGroup | null | "new">(null);
 
   const proxiesRoot = config.groups.generators.find((g) => g.kind === "proxies-root");
   const regionGen = config.groups.generators.find((g) => g.kind === "region-groups");
 
   const nodeName = (id: string) =>
-    preview?.nodeIndex.find((node) => node.id === id)?.renderedName ?? id.slice(0, 10);
+    workspaceIndex?.nodeIndex.find((node) => node.id === id)?.renderedName ?? id.slice(0, 10);
 
   const customNames = new Set(config.groups.custom.map((group) => group.name));
   // 生成器产物（Proxies / Auto / 各地区组 / Others）：来自渲染后的真实结果，只读展示
-  const generatedGroups = (preview?.groupIndex ?? []).filter((entry) => !customNames.has(entry.name));
+  const generatedGroups = (workspaceIndex?.groupIndex ?? []).filter(
+    (entry) => !customNames.has(entry.name)
+  );
 
   const removeGroup = (name: string) => {
     const referenced = config.rules.targets.some((block) => block.target === name);
@@ -449,7 +451,7 @@ export const GroupsTab = () => {
           onReorder={(next) => reorderCustomGroups(next.map(({ id: _id, ...group }) => group))}
           className="flex flex-col gap-2.5"
           renderItem={(group, handle) => {
-            const rendered = preview?.groupIndex.find((entry) => entry.name === group.name);
+            const rendered = workspaceIndex?.groupIndex.find((entry) => entry.name === group.name);
             return (
               <ExpandableGroupBar
                 name={group.name}

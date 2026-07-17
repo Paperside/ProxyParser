@@ -166,7 +166,7 @@ const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
 };
 
 export const OverviewTab = () => {
-  const { detail, config, preview, saving } = useWorkspace();
+  const { detail, config, workspaceIndex, saving } = useWorkspace();
   const navigate = useNavigate();
   const mutations = useSubscriptionMutations(detail.id);
   const [showExtract, setShowExtract] = useState(false);
@@ -200,12 +200,11 @@ export const OverviewTab = () => {
               </dd>
             </>
           ) : null}
-          {preview ? (
+          {workspaceIndex ? (
             <>
               <dt className="text-faint">当前草稿</dt>
               <dd className="font-mono text-xs">
-                {preview.stats.nodeCount} 节点 · {preview.stats.groupCount} 组 ·{" "}
-                {preview.stats.ruleCount} 规则
+                {workspaceIndex.stats.nodeCount} 节点 · {workspaceIndex.stats.groupCount} 组
               </dd>
             </>
           ) : null}

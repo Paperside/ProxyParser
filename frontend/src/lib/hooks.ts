@@ -11,6 +11,7 @@ import type {
   PasteParseReportDto,
   ParsedNodeUriDto,
   PreviewResult,
+  PreviewYamlResult,
   ReleaseDetail,
   ReleaseMutationResult,
   ReleaseSummary,
@@ -25,7 +26,8 @@ import type {
   SyncReport,
   TemplateDetail,
   TemplateSummary,
-  TraceResultDto
+  TraceResultDto,
+  WorkspaceIndexResult
 } from "./types";
 import type { BuildConfig, TemplateExtractionReport } from "./build-config-types";
 
@@ -271,7 +273,113 @@ export const usePreview = (id: string, enabled: boolean) => {
     queryFn: () =>
       authorizedRequest<PreviewResult>(`/api/subscriptions/${id}/preview`, { method: "POST" }),
     enabled,
+    staleTime: 0,
+    refetchOnMount: "always"
+  });
+};
+
+export const useWorkspaceIndex = (id: string, enabled: boolean) => {
+  const { authorizedRequest } = useAuth();
+  return useQuery({
+    queryKey: [...keys.subscription(id), "workspace-index"],
+    queryFn: () =>
+      authorizedRequest<WorkspaceIndexResult>(
+        `/api/subscriptions/${id}/workspace-index`,
+        { method: "POST" }
+      ),
+    enabled,
     staleTime: 0
+  });
+};
+
+export const usePreviewRequest = (id: string) => {
+  const { authorizedRequest } = useAuth();
+  return useMutation({
+    mutationFn: () =>
+      authorizedRequest<PreviewResult>(`/api/subscriptions/${id}/preview`, {
+        method: "POST"
+      })
+  });
+};
+
+export const usePreviewYaml = (id: string) => {
+  const { authorizedResponse } = useAuth();
+  return useMutation({
+    mutationFn: async ({
+      expectedDraftRevision,
+      expectedRenderedHash
+    }: {
+      expectedDraftRevision: number;
+      expectedRenderedHash: string;
+    }): Promise<PreviewYamlResult> => {
+      const response = await authorizedResponse(
+        `/api/subscriptions/${id}/preview/yaml`,
+        { method: "POST", headers: { Accept: "application/yaml" }, cache: "no-store" }
+      );
+      const draftRevision = Number(response.headers.get("X-Draft-Revision"));
+      const renderedHash = response.headers.get("X-Rendered-Hash");
+      if (!Number.isSafeInteger(draftRevision) || !renderedHash) {
+        await response.body?.cancel();
+        throw new Error("完整预览响应缺少草稿版本信息，请重试。");
+      }
+      if (
+        draftRevision !== expectedDraftRevision ||
+        renderedHash !== expectedRenderedHash
+      ) {
+        await response.body?.cancel();
+        throw new Error("草稿已变化，请重新生成预览后再加载 YAML。");
+      }
+      return {
+        draftRevision,
+        renderedHash,
+        yamlText: await response.text()
+      };
+    }
+  });
+};
+
+export const usePreviewYamlDownload = (id: string) => {
+  const { authorizedResponse } = useAuth();
+  return useMutation({
+    mutationFn: async ({
+      expectedDraftRevision,
+      expectedRenderedHash,
+      fileName
+    }: {
+      expectedDraftRevision: number;
+      expectedRenderedHash: string;
+      fileName: string;
+    }) => {
+      const response = await authorizedResponse(
+        `/api/subscriptions/${id}/preview/yaml`,
+        { method: "POST", headers: { Accept: "application/yaml" }, cache: "no-store" }
+      );
+      const draftRevision = Number(response.headers.get("X-Draft-Revision"));
+      const renderedHash = response.headers.get("X-Rendered-Hash");
+      if (!Number.isSafeInteger(draftRevision) || !renderedHash) {
+        await response.body?.cancel();
+        throw new Error("完整预览响应缺少草稿版本信息，请重试。");
+      }
+      if (
+        draftRevision !== expectedDraftRevision ||
+        renderedHash !== expectedRenderedHash
+      ) {
+        await response.body?.cancel();
+        throw new Error("草稿已变化，请重新生成预览后再下载 YAML。");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${fileName.replace(/[\\/:*?"<>|]/g, "_") || "subscription"}.yaml`;
+      link.style.display = "none";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      return { draftRevision, renderedHash };
+    }
   });
 };
 

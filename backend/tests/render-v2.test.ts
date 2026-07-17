@@ -7,7 +7,11 @@ import type { BuildConfig } from "../src/lib/build-config/types";
 import { computeNativeNodeId, identifyNodes } from "../src/lib/build-config/node-identity";
 import { validateBuildConfig } from "../src/lib/build-config/validate";
 import { emitClashYaml } from "../src/lib/render-v2/emit-yaml";
-import { evaluate, type EvaluateInput } from "../src/lib/render-v2/evaluate";
+import {
+  evaluate,
+  evaluateWorkspaceIndex,
+  type EvaluateInput
+} from "../src/lib/render-v2/evaluate";
 import { diffDocuments } from "../src/lib/render-v2/release-diff";
 import { SecretBox } from "../src/lib/security/secret-box";
 import { randomBytes } from "node:crypto";
@@ -453,6 +457,40 @@ describe("evaluate（rebuild）", () => {
 });
 
 describe("evaluate（patch）", () => {
+  test("工作区索引保留源节点与组，但不要求加载规则快照正文", () => {
+    const config: BuildConfig = {
+      ...structuredClone(buildConfig),
+      mode: "patch",
+      groups: { generators: [], custom: [], order: [] },
+      rules: {
+        targets: [
+          {
+            target: "SourceGroup",
+            items: [
+              {
+                kind: "snapshot",
+                catalogId: "cat_openai",
+                slug: "geosite-openai",
+                hash: "hash_openai",
+                emit: "provider"
+              }
+            ]
+          }
+        ],
+        order: ["SourceGroup"],
+        prelude: [],
+        final: { target: "SourceGroup" }
+      }
+    };
+
+    const result = evaluateWorkspaceIndex(
+      createInput({ buildConfig: config, rulesetSnapshots: new Map() })
+    );
+    expect(result.stats.nodeCount).toBe(sourceDocument.proxies.length + 1);
+    expect(result.groupIndex.some((group) => group.name === "SourceGroup")).toBe(true);
+    expect(result.issues.some((issue) => issue.kind === "missing-ruleset-snapshot")).toBe(false);
+  });
+
   test("保留源配置：注入自建节点与规则，改名传播到源组", () => {
     const config: BuildConfig = {
       ...JSON.parse(JSON.stringify(buildConfig)),

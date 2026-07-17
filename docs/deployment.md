@@ -168,6 +168,14 @@ The config expects an existing TLS certificate. Replace these example paths befo
 
 The certificate must include the configured `server_name`.
 
+The tracked host and frontend Nginx configs enable gzip for API JSON/YAML and
+frontend JavaScript/CSS/SVG. Because the host proxy forwards `Accept-Encoding`,
+the frontend container normally performs static compression; the host passes an
+already encoded response through without compressing it again. Vite's
+content-hashed `/assets/*` files use `public, max-age=31536000, immutable`, while
+`index.html` uses `no-cache` so a reload always discovers the current asset URLs.
+Content-addressed `/rs/*` rule snapshots retain the same one-year immutable policy.
+
 ## Health checks
 
 After deploy:
