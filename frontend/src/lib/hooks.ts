@@ -26,6 +26,7 @@ import type {
   SubscriptionSummary,
   SyncLatestRulesetsResult,
   SyncReport,
+  UploadedSourceContent,
   TemplateDetail,
   TemplateSummary,
   TraceResultDto,
@@ -40,6 +41,7 @@ const keys = {
   sources: ["sources"] as const,
   source: (id: string) => ["sources", id] as const,
   sourceReports: (id: string) => ["sources", id, "reports"] as const,
+  sourceContent: (id: string) => ["sources", id, "content"] as const,
   subscriptions: ["subscriptions"] as const,
   subscription: (id: string) => ["subscriptions", id] as const,
   releases: (id: string) => ["subscriptions", id, "releases"] as const,
@@ -68,6 +70,16 @@ export const useSourceReports = (id: string) => {
   return useQuery({
     queryKey: keys.sourceReports(id),
     queryFn: () => authorizedRequest<SyncReport[]>(`/api/sources/${id}/sync-reports`)
+  });
+};
+
+export const useSourceContent = (id: string, enabled: boolean) => {
+  const { authorizedRequest } = useAuth();
+  return useQuery({
+    queryKey: keys.sourceContent(id),
+    queryFn: () =>
+      authorizedRequest<UploadedSourceContent>(`/api/sources/${id}/content`),
+    enabled
   });
 };
 
@@ -289,7 +301,7 @@ export const usePreparePublishCandidate = (id: string) => {
   // from an earlier dialog/session.
   const flowId = useRef(crypto.randomUUID()).current;
   return useQuery({
-    queryKey: [...keys.subscription(id), "publish-candidate", flowId],
+    queryKey: ["publish-candidate", id, flowId],
     queryFn: () =>
       authorizedRequest<PublishCandidateResult>(
         `/api/subscriptions/${id}/publish-candidates`,
@@ -305,7 +317,7 @@ export const usePreparePublishCandidate = (id: string) => {
 export const useValidatePublishCandidate = (id: string, candidateId: string | null) => {
   const { authorizedRequest } = useAuth();
   return useQuery({
-    queryKey: [...keys.subscription(id), "publish-candidate", candidateId, "validation"],
+    queryKey: ["publish-candidate-validation", id, candidateId],
     queryFn: () => {
       if (!candidateId) throw new Error("缺少发布候选版本");
       return authorizedRequest<PublishCandidateResult>(

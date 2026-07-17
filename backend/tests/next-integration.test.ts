@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { gunzipSync } from "node:zlib";
 
 import yaml from "js-yaml";
 import { Elysia } from "elysia";
@@ -25,6 +27,7 @@ import { EventRepository } from "../src/modules/events/event.repository";
 import { RulesetRepository } from "../src/modules/rulesets/ruleset.repository";
 import { RulesetService } from "../src/modules/rulesets/ruleset.service";
 import { SecretStore } from "../src/modules/subscriptions/secret-store";
+import { createDeliveryRoutes } from "../src/modules/subscriptions/delivery-routes";
 import { createSubscriptionRoutes } from "../src/modules/subscriptions/routes";
 import {
   DraftRevisionConflictError,
@@ -79,6 +82,7 @@ const createTestContext = (
     mihomo?: boolean;
     latencyRunner?: SubscriptionServiceOptions["latencyRunner"];
     mihomoValidator?: SubscriptionServiceOptions["mihomoValidator"];
+    deliveryArtifactDir?: string;
   } = {}
 ) => {
   const db = new Database(":memory:");
@@ -115,7 +119,8 @@ const createTestContext = (
           }
         : { mihomoPath: null, dataDir: "/nonexistent-dir", assetsDir: "/nonexistent-dir" },
       latencyRunner: options.latencyRunner,
-      mihomoValidator: options.mihomoValidator
+      mihomoValidator: options.mihomoValidator,
+      deliveryArtifactDir: options.deliveryArtifactDir
     }
   );
   sourceService.registerOnSynced((source, report) =>
@@ -197,6 +202,47 @@ describe("发布管线", () => {
     expect(doc.rules).toContain("RULE-SET,chinamax,ChinaMax");
     // 发布后健康转绿
     expect(ctx.subscriptionRepository.findById(subscription.id)!.health).toBe("ok");
+  });
+
+  test("交付端点复用 gzip 产物并返回固定 Content-Length", async () => {
+    const artifactDir = mkdtempSync(resolve(tmpdir(), "proxyparser-delivery-"));
+    try {
+      const ctx = createTestContext({ deliveryArtifactDir: artifactDir });
+      const { subscription, token } = ctx.subscriptionService.create(ctx.userId, {
+        displayName: "压缩交付",
+        sourceIds: [ctx.source.id],
+        start: { kind: "recommended" }
+      });
+      const release = ctx.subscriptionService.publish(ctx.userId, subscription.id, {
+        trigger: "manual"
+      });
+      const app = new Elysia().use(
+        createDeliveryRoutes(
+          ctx.subscriptionService,
+          ctx.rulesetService,
+          new InMemoryRateLimiter()
+        )
+      );
+      const request = () =>
+        app.handle(
+          new Request(`http://localhost/s/${subscription.id}/${token.token}`, {
+            headers: { "Accept-Encoding": "gzip", "User-Agent": "Clash-Verge-rev/e2e" }
+          })
+        );
+
+      const first = await request();
+      expect(first.status).toBe(200);
+      expect(first.headers.get("content-encoding")).toBe("gzip");
+      const firstBytes = new Uint8Array(await first.arrayBuffer());
+      expect(first.headers.get("content-length")).toBe(String(firstBytes.byteLength));
+      expect(gunzipSync(firstBytes).toString("utf8")).toBe(release.renderedYaml);
+
+      const second = await request();
+      expect(new Uint8Array(await second.arrayBuffer())).toEqual(firstBytes);
+      expect(readdirSync(artifactDir).filter((name) => name.endsWith(".yaml.gz"))).toHaveLength(1);
+    } finally {
+      rmSync(artifactDir, { recursive: true, force: true });
+    }
   });
 
   test("拉取零上游请求：断网状态下 deliver 正常", () => {
@@ -612,6 +658,47 @@ describe("节点延迟测试", () => {
 // ── 上游变化吸收与调度器 ───────────────────────────────────────
 
 describe("上游吸收", () => {
+  test("上传 YAML 可替换或编辑，并生成报告通知引用订阅", async () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "上传源更新",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    ctx.subscriptionService.publish(ctx.userId, subscription.id, { trigger: "manual" });
+    ctx.subscriptionService.updateMeta(ctx.userId, subscription.id, { publishPolicy: "confirm" });
+
+    const replacement = sourceYaml([
+      ...defaultNodes,
+      {
+        name: "JP-Upload",
+        type: "ss",
+        server: "jp-upload.test",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "updated"
+      }
+    ]);
+    const updated = await ctx.sourceService.replaceUpload(
+      ctx.userId,
+      ctx.source.id,
+      replacement,
+      "replacement.yml"
+    );
+
+    expect(updated.uploadedFileName).toBe("replacement.yml");
+    expect(updated.proxyCount).toBe(defaultNodes.length + 1);
+    const content = ctx.sourceService.getUploadContent(ctx.userId, ctx.source.id);
+    expect(content.yamlContent).toBe(replacement);
+    expect(content.uploadedFileName).toBe("replacement.yml");
+    expect(content.contentHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(ctx.sourceRepository.listSyncReports(ctx.source.id)[0]!.nodesAdded).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "JP-Upload" })])
+    );
+    expect(ctx.subscriptionRepository.findById(subscription.id)!.pendingUpstreamChange).toBe(true);
+    expect(ctx.subscriptionRepository.listReleases(subscription.id)).toHaveLength(1);
+  });
+
   test("URL 源同步 → 报告 → auto 策略自动发布新版本", async () => {
     const ctx = createTestContext();
 

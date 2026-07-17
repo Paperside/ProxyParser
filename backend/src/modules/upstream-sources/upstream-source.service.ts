@@ -90,6 +90,23 @@ export class UpstreamSourceService {
     return this.repository.findLatestSuccessfulSnapshot(sourceId);
   }
 
+  getUploadContent(ownerUserId: string, id: string) {
+    const source = this.repository.findByIdAndOwner(id, ownerUserId);
+    if (!source || source.sourceKind !== "uploaded_yaml") {
+      throw new UpstreamSourceError("订阅源不存在或不是上传类型。", 404);
+    }
+    const snapshot = this.repository.findLatestSuccessfulSnapshot(id);
+    if (!snapshot) {
+      throw new UpstreamSourceError("上传订阅源还没有可编辑的内容。", 404);
+    }
+    return {
+      sourceId: id,
+      uploadedFileName: source.uploadedFileName,
+      yamlContent: snapshot.rawContent,
+      contentHash: snapshot.contentHash
+    };
+  }
+
   listSyncReports(ownerUserId: string, id: string) {
     this.getById(ownerUserId, id);
     return this.repository.listSyncReports(id);
@@ -137,7 +154,12 @@ export class UpstreamSourceService {
     return this.getById(ownerUserId, source.id);
   }
 
-  replaceUpload(ownerUserId: string, id: string, yamlContent: string): SourceWithStats {
+  async replaceUpload(
+    ownerUserId: string,
+    id: string,
+    yamlContent: string,
+    uploadedFileName?: string
+  ): Promise<SourceWithStats> {
     const source = this.repository.findByIdAndOwner(id, ownerUserId);
     if (!source || source.sourceKind !== "uploaded_yaml") {
       throw new UpstreamSourceError("订阅源不存在或不是上传类型。", 404);
@@ -146,7 +168,23 @@ export class UpstreamSourceService {
     if (!parsed) {
       throw new UpstreamSourceError("上传内容不是合法的 Clash/Mihomo YAML（缺少 proxies）。");
     }
-    this.storeSnapshotAndReport(source, yamlContent, parsed, {}, null, null);
+    if (uploadedFileName !== undefined) {
+      this.repository.updateUploadedMetadata(id, uploadedFileName);
+    }
+    const refreshed = this.repository.findById(id)!;
+    const report = this.storeSnapshotAndReport(refreshed, yamlContent, parsed, {}, null, null);
+    const finalSource = this.repository.findById(id)!;
+    for (const hook of this.onSyncedHooks) {
+      try {
+        await hook(finalSource, report);
+      } catch (error) {
+        logger.warn({
+          event: "source.hook.failed",
+          sourceId: id,
+          reason: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
     return this.getById(ownerUserId, id);
   }
 

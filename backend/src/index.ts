@@ -82,6 +82,7 @@ const main = async () => {
       tempTokenTtlSeconds: runtimeConfig.subscriptionTempTokenTtlSeconds,
       latencyTestUrl: runtimeConfig.latencyTestUrl,
       latencyTimeoutMs: runtimeConfig.latencyTimeoutMs,
+      deliveryArtifactDir: `${runtimeConfig.secretDataDir}/delivery-artifacts`,
       mihomo: {
         mihomoPath: runtimeConfig.mihomoPath,
         dataDir: runtimeConfig.mihomoDataDir,

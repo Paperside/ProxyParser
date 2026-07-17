@@ -4,6 +4,7 @@ import yaml from "js-yaml";
 
 import { createId } from "../../lib/ids";
 import { logger } from "../../lib/logging/logger";
+import { observeResources } from "../../lib/logging/resource-observation";
 import type { BuildConfig } from "../../lib/build-config/types";
 import { validateBuildConfig } from "../../lib/build-config/validate";
 import { instantiateTemplate } from "../../lib/build-config/template";
@@ -55,6 +56,7 @@ import {
   type SubscriptionRepository
 } from "./subscription.repository";
 import { RECOMMENDED_TEMPLATE_ID } from "../../lib/db/seed-builtin-templates";
+import { DeliveryArtifactStore } from "./delivery-artifact-store";
 
 export class SubscriptionError extends Error {
   constructor(
@@ -77,6 +79,7 @@ export interface SubscriptionServiceOptions {
   latencyRunner?: typeof runMihomoLatencyTests;
   mihomoValidator?: typeof validateWithMihomoAsync;
   publishCandidateTtlMs?: number;
+  deliveryArtifactDir?: string;
 }
 
 export type PublishCandidatePhase =
@@ -131,7 +134,6 @@ export interface SyncLatestRulesetsResult {
 }
 
 const sha256Hex = (input: string) => createHash("sha256").update(input).digest("hex");
-const MAX_PUBLISH_CANDIDATE_BYTES = 64 * 1024 * 1024;
 const MAX_PUBLISH_CANDIDATES = 4;
 
 const blankBuildConfig = (sourceIds: string[], mode: "rebuild" | "patch"): BuildConfig => ({
@@ -164,7 +166,7 @@ export class SubscriptionService {
   private readonly latencySemaphore = new BoundedFifoSemaphore(2, 8);
   private readonly publishCandidates = new Map<string, PublishCandidate>();
   private readonly candidateValidations = new Map<string, Promise<PublishCandidateResult>>();
-  private publishCandidateBytes = 0;
+  private readonly deliveryArtifactStore: DeliveryArtifactStore | null;
   constructor(
     private readonly repository: SubscriptionRepository,
     private readonly sourceRepository: UpstreamSourceRepository,
@@ -174,7 +176,11 @@ export class SubscriptionService {
     private readonly secretStore: SecretStore,
     private readonly secretBox: SecretBox,
     private readonly options: SubscriptionServiceOptions
-  ) {}
+  ) {
+    this.deliveryArtifactStore = options.deliveryArtifactDir
+      ? new DeliveryArtifactStore(options.deliveryArtifactDir)
+      : null;
+  }
 
   // ── 查询 ───────────────────────────────────────────────────
 
@@ -454,6 +460,12 @@ export class SubscriptionService {
   }
 
   preparePublishCandidate(ownerUserId: string, id: string): PublishCandidateResult {
+    const startedAt = performance.now();
+    logger.info({
+      event: "publish.candidate.render.started",
+      subscriptionId: id,
+      ...observeResources()
+    });
     const record = this.requireOwned(ownerUserId, id);
     const config = record.draftBuildConfig ?? record.buildConfig;
     if (!config) {
@@ -496,6 +508,16 @@ export class SubscriptionService {
       mihomo: null
     };
     this.storePublishCandidate(candidate);
+    logger.info({
+      event: "publish.candidate.render.finished",
+      subscriptionId: id,
+      candidateId: candidate.candidateId,
+      renderedHash: candidate.renderedHash,
+      yamlBytes: candidate.yamlBytes,
+      ruleCount: candidate.stats.ruleCount,
+      durationMs: Math.round(performance.now() - startedAt),
+      ...observeResources()
+    });
     return this.toPublishCandidateResult(candidate);
   }
 
@@ -516,6 +538,15 @@ export class SubscriptionService {
 
     this.assertPublishCandidateInputsCurrent(candidate);
     candidate.phase = "validating";
+    const startedAt = performance.now();
+    logger.info({
+      event: "publish.candidate.mihomo.started",
+      subscriptionId: id,
+      candidateId,
+      renderedHash: candidate.renderedHash,
+      yamlBytes: candidate.yamlBytes,
+      ...observeResources()
+    });
     const validationPromise = (async () => {
       let mihomo: MihomoValidation;
       try {
@@ -536,6 +567,17 @@ export class SubscriptionService {
       candidate.phase = mihomo.available && mihomo.passed === true
         ? "validated"
         : "validation_failed";
+      logger.info({
+        event: "publish.candidate.mihomo.finished",
+        subscriptionId: id,
+        candidateId,
+        renderedHash: candidate.renderedHash,
+        passed: mihomo.passed,
+        available: mihomo.available,
+        mihomoDurationMs: mihomo.durationMs,
+        durationMs: Math.round(performance.now() - startedAt),
+        ...observeResources()
+      });
       return this.toPublishCandidateResult(candidate);
     })().finally(() => {
       this.candidateValidations.delete(candidateId);
@@ -553,6 +595,13 @@ export class SubscriptionService {
       expectedRenderedHash: string;
     }
   ) {
+    const startedAt = performance.now();
+    logger.info({
+      event: "publish.candidate.commit.started",
+      subscriptionId: id,
+      candidateId: input.candidateId,
+      ...observeResources()
+    });
     const record = this.requireOwned(ownerUserId, id);
     const candidate = this.requirePublishCandidate(ownerUserId, id, input.candidateId);
     if (
@@ -623,6 +672,15 @@ export class SubscriptionService {
     });
     this.removePublishCandidate(candidate.candidateId);
     this.refreshHealth(id);
+    logger.info({
+      event: "publish.candidate.commit.finished",
+      subscriptionId: id,
+      candidateId: input.candidateId,
+      releaseId: release.id,
+      renderedHash: release.renderedHash,
+      durationMs: Math.round(performance.now() - startedAt),
+      ...observeResources()
+    });
     return release;
   }
 
@@ -1122,7 +1180,13 @@ export class SubscriptionService {
     kind: "token" | "temp_token",
     clientIp: string | null,
     userAgent: string | null
-  ): { yamlText: string; fileName: string; headers: Record<string, string> } {
+  ): {
+    yamlText: string;
+    fileName: string;
+    headers: Record<string, string>;
+    releaseId: string;
+    renderedHash: string;
+  } {
     const record = this.repository.findById(subscriptionId);
     if (!record || !record.isEnabled) {
       throw new SubscriptionError("订阅不存在或已停用。", 404);
@@ -1193,7 +1257,72 @@ export class SubscriptionService {
       }
     }
 
-    return { yamlText: release.renderedYaml, fileName: `${record.displayName}.yaml`, headers };
+    return {
+      yamlText: release.renderedYaml,
+      fileName: `${record.displayName}.yaml`,
+      headers,
+      releaseId: release.id,
+      renderedHash: release.renderedHash
+    };
+  }
+
+  async deliverForHttp(
+    subscriptionId: string,
+    token: string,
+    kind: "token" | "temp_token",
+    clientIp: string | null,
+    userAgent: string | null,
+    acceptsGzip: boolean
+  ) {
+    const startedAt = performance.now();
+    logger.info({
+      event: "delivery.started",
+      subscriptionId,
+      tokenKind: kind,
+      acceptsGzip,
+      ...observeResources()
+    });
+    const result = this.deliver(subscriptionId, token, kind, clientIp, userAgent);
+    if (!acceptsGzip || !this.deliveryArtifactStore) {
+      logger.info({
+        event: "delivery.finished",
+        subscriptionId,
+        releaseId: result.releaseId,
+        renderedHash: result.renderedHash,
+        encoding: "identity",
+        responseBytes: Buffer.byteLength(result.yamlText, "utf8"),
+        durationMs: Math.round(performance.now() - startedAt),
+        ...observeResources()
+      });
+      return {
+        ...result,
+        body: result.yamlText,
+        contentEncoding: null,
+        cacheStatus: "disabled" as const
+      };
+    }
+
+    const artifact = await this.deliveryArtifactStore.getOrCreate(
+      result.renderedHash,
+      result.yamlText
+    );
+    logger.info({
+      event: "delivery.finished",
+      subscriptionId,
+      releaseId: result.releaseId,
+      renderedHash: result.renderedHash,
+      encoding: "gzip",
+      artifactCache: artifact.cacheStatus,
+      responseBytes: artifact.bytes.byteLength,
+      durationMs: Math.round(performance.now() - startedAt),
+      ...observeResources()
+    });
+    return {
+      ...result,
+      body: artifact.bytes,
+      contentEncoding: "gzip" as const,
+      cacheStatus: artifact.cacheStatus
+    };
   }
 
   // ── 规则追踪器 ─────────────────────────────────────────────
@@ -1430,16 +1559,12 @@ export class SubscriptionService {
   private removePublishCandidate(candidateId: string) {
     const candidate = this.publishCandidates.get(candidateId);
     if (!candidate) return;
-    this.publishCandidateBytes = Math.max(0, this.publishCandidateBytes - candidate.yamlBytes);
     this.publishCandidates.delete(candidateId);
     this.candidateValidations.delete(candidateId);
   }
 
   private storePublishCandidate(candidate: PublishCandidate) {
     this.prunePublishCandidates();
-    if (candidate.yamlBytes > MAX_PUBLISH_CANDIDATE_BYTES) {
-      throw new SubscriptionError("候选订阅文件超过 64 MiB，无法安全保留待发布产物。", 413);
-    }
     for (const existing of [...this.publishCandidates.values()]) {
       if (
         existing.ownerUserId === candidate.ownerUserId &&
@@ -1448,16 +1573,12 @@ export class SubscriptionService {
         this.removePublishCandidate(existing.candidateId);
       }
     }
-    while (
-      this.publishCandidates.size >= MAX_PUBLISH_CANDIDATES ||
-      this.publishCandidateBytes + candidate.yamlBytes > MAX_PUBLISH_CANDIDATE_BYTES
-    ) {
+    while (this.publishCandidates.size >= MAX_PUBLISH_CANDIDATES) {
       const oldest = this.publishCandidates.values().next().value as PublishCandidate | undefined;
       if (!oldest) break;
       this.removePublishCandidate(oldest.candidateId);
     }
     this.publishCandidates.set(candidate.candidateId, candidate);
-    this.publishCandidateBytes += candidate.yamlBytes;
   }
 
   private requirePublishCandidate(

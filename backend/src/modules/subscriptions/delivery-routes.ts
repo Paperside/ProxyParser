@@ -23,7 +23,7 @@ export const createDeliveryRoutes = (
   rulesetService: RulesetService,
   rateLimiter: InMemoryRateLimiter
 ) => {
-  const deliver = (
+  const deliver = async (
     kind: "token" | "temp_token",
     subscriptionId: string,
     token: string,
@@ -36,12 +36,16 @@ export const createDeliveryRoutes = (
       return "拉取过于频繁，请稍后再试。";
     }
     try {
-      const result = subscriptionService.deliver(
+      const acceptsGzip = /(?:^|,)\s*gzip\s*(?:;|,|$)/i.test(
+        request.headers.get("accept-encoding") ?? ""
+      );
+      const result = await subscriptionService.deliverForHttp(
         subscriptionId,
         token,
         kind,
         clientKey(request),
-        request.headers.get("user-agent")
+        request.headers.get("user-agent"),
+        acceptsGzip
       );
       set.headers["content-type"] = "text/yaml; charset=utf-8";
       set.headers["content-disposition"] =
@@ -49,7 +53,13 @@ export const createDeliveryRoutes = (
       for (const [key, value] of Object.entries(result.headers)) {
         set.headers[key] = value;
       }
-      return result.yamlText;
+      set.headers["cache-control"] = "no-cache";
+      set.headers.vary = "Accept-Encoding";
+      if (result.contentEncoding) {
+        set.headers["content-encoding"] = result.contentEncoding;
+        set.headers["content-length"] = String(result.body.byteLength);
+      }
+      return result.body;
     } catch (error) {
       if (error instanceof SubscriptionError) {
         set.status = error.status;

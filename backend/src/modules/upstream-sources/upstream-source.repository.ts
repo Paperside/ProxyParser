@@ -218,6 +218,17 @@ export class UpstreamSourceRepository {
       );
   }
 
+  updateUploadedMetadata(id: string, uploadedFileName: string | null) {
+    const sourceUrl = `uploaded://${uploadedFileName ?? "config.yaml"}`;
+    this.db
+      .query(
+        `UPDATE upstream_sources
+         SET uploaded_file_name = ?, source_url = ?, updated_at = ?
+         WHERE id = ? AND source_kind = 'uploaded_yaml'`
+      )
+      .run(uploadedFileName, sourceUrl, new Date().toISOString(), id);
+  }
+
   delete(id: string) {
     this.db.query("DELETE FROM upstream_sources WHERE id = ?").run(id);
   }

@@ -73,6 +73,13 @@ export interface SourceSummary {
   updatedAt: string;
 }
 
+export interface UploadedSourceContent {
+  sourceId: string;
+  uploadedFileName: string | null;
+  yamlContent: string;
+  contentHash: string | null;
+}
+
 export interface SyncReport {
   id: string;
   upstreamSourceId: string;

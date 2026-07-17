@@ -133,12 +133,16 @@ test("发布弹窗先展示候选结果，Mihomo 通过后才允许原子发布"
   const subscriptionId = await registerAndCreateSubscription(page);
   let releaseValidation: (() => void) | null = null;
   let publishedBody: Record<string, unknown> | null = null;
+  let validationRequests = 0;
+  let validation404s = 0;
 
   await page.route(
     `**/api/subscriptions/${subscriptionId}/publish-candidates/*/validate`,
     async (route) => {
+      validationRequests += 1;
       await new Promise<void>((resolve) => { releaseValidation = resolve; });
       const response = await route.fetch();
+      if (response.status() === 404) validation404s += 1;
       await route.fulfill({ response });
     }
   );
@@ -162,6 +166,9 @@ test("发布弹窗先展示候选结果，Mihomo 通过后才允许原子发布"
   await expect.poll(() => publishedBody).not.toBeNull();
   expect(typeof publishedBody?.candidateId).toBe("string");
   expect(publishedBody?.expectedRenderedHash).toMatch(/^[a-f0-9]{64}$/);
+  await expect(page.getByRole("button", { name: "预览并发布" })).toBeVisible();
+  expect(validationRequests).toBe(1);
+  expect(validation404s).toBe(0);
 });
 
 test("单节点测速互不禁用，第三个请求在客户端排队且认证刷新只执行一次", async ({ page }) => {
@@ -239,6 +246,62 @@ test("单节点测速互不禁用，第三个请求在客户端排队且认证�
   await expect(firstRow.getByRole("button", { name: "42 ms" })).toBeEnabled();
   await expect(secondRow.getByRole("button", { name: "42 ms" })).toBeEnabled();
   await expect(thirdRow.getByRole("button", { name: "42 ms" })).toBeEnabled();
+});
+
+test("上传 YAML 创建订阅源，并可用文件或编辑器更新", async ({ page }) => {
+  await registerAndCreateSubscription(page);
+  await page.goto("/sources");
+  await page.getByRole("button", { name: "添加订阅源" }).click();
+  await page.getByRole("button", { name: "上传或编辑 YAML" }).click();
+  await page.getByLabel("选择 YAML 文件").setInputFiles({
+    name: "e2e-upload.yaml",
+    mimeType: "text/yaml",
+    buffer: Buffer.from([
+      "proxies:",
+      "  - name: Upload-1",
+      "    type: ss",
+      "    server: upload.test",
+      "    port: 443",
+      "    cipher: aes-128-gcm",
+      "    password: fixture",
+      "proxy-groups: []",
+      "rules: []"
+    ].join("\n"))
+  });
+  await expect(page.getByLabel("YAML 内容")).toContainText("Upload-1");
+  await expect(page.getByText("已解析：1 节点 · 0 组 · 0 规则")).toBeVisible();
+  await page.getByRole("button", { name: "添加并同步" }).click();
+
+  const updateButton = page.getByRole("button", { name: "更新 YAML" }).last();
+  const card = updateButton.locator("xpath=ancestor::div[contains(@class, 'rounded')][1]");
+  await expect(updateButton).toBeVisible();
+  await updateButton.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("YAML 内容")).toContainText("Upload-1");
+  await dialog.getByLabel("选择 YAML 文件").setInputFiles({
+    name: "e2e-replacement.yml",
+    mimeType: "text/yaml",
+    buffer: Buffer.from([
+      "proxies:",
+      "  - name: Upload-1",
+      "    type: ss",
+      "    server: upload.test",
+      "    port: 443",
+      "    cipher: aes-128-gcm",
+      "    password: fixture",
+      "  - name: Upload-2",
+      "    type: ss",
+      "    server: upload2.test",
+      "    port: 443",
+      "    cipher: aes-128-gcm",
+      "    password: fixture",
+      "proxy-groups: []",
+      "rules: []"
+    ].join("\n"))
+  });
+  await expect(dialog.getByText("已解析：2 节点 · 0 组 · 0 规则")).toBeVisible();
+  await dialog.getByRole("button", { name: "保存并更新" }).click();
+  await expect(card).toContainText("2 节点");
 });
 
 test("模板敏感信息开关显示加密与分享确认", async ({ page }) => {

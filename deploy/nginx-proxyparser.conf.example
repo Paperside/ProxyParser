@@ -1,3 +1,8 @@
+log_format proxyparser_delivery '$time_iso8601 status=$status bytes=$body_bytes_sent '
+                                'request_time=$request_time upstream_time=$upstream_response_time '
+                                'upstream_status=$upstream_status encoding=$sent_http_content_encoding '
+                                'user_agent="$http_user_agent"';
+
 server {
     listen 80;
     listen [::]:80;
@@ -20,7 +25,8 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
 
-    client_max_body_size 10m;
+    # YAML uploads are JSON-encoded, so leave headroom above the 10 MiB file cap.
+    client_max_body_size 16m;
 
     # Compress dynamic API/subscription payloads at the TLS edge. The frontend
     # container also compresses static assets; already encoded responses are
@@ -68,8 +74,11 @@ server {
     }
 
     location /s/ {
+        gzip off;
+        access_log /var/log/nginx/proxyparser-delivery.log proxyparser_delivery;
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
+        proxy_set_header Accept-Encoding $http_accept_encoding;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
