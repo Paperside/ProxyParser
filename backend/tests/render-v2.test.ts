@@ -266,6 +266,37 @@ describe("evaluate（rebuild）", () => {
     expect((result.document as Record<string, unknown>)["unified-delay"]).toBe(true);
   });
 
+  test("全局规则交付模式覆盖旧快照项的 emit", () => {
+    const inlineConfig = structuredClone(buildConfig);
+    inlineConfig.rules.deliveryMode = "inline";
+    const inline = evaluate(createInput({ buildConfig: inlineConfig }));
+    expect(inline.document.rules).toContain("DOMAIN-SUFFIX,openai.com,AI");
+    expect(inline.document["rule-providers"]).toBeUndefined();
+
+    const providerConfig = structuredClone(buildConfig);
+    providerConfig.rules.deliveryMode = "provider";
+    const provider = evaluate(createInput({ buildConfig: providerConfig }));
+    expect(provider.document.rules).toContain("RULE-SET,cn-small,DIRECT");
+    expect(provider.document["rule-providers"]).toHaveProperty("cn-small");
+  });
+
+  test("内联模式遇到无法表达的通配符时阻止发布", () => {
+    const config = structuredClone(buildConfig);
+    config.rules.deliveryMode = "inline";
+    const snapshots = new Map(createInput().rulesetSnapshots);
+    snapshots.set("hash_openai", {
+      hash: "hash_openai",
+      slug: "geosite-openai",
+      behavior: "domain",
+      content: "payload:\n  - 'foo.*.example.com'\n",
+      isPublic: true
+    });
+    const result = evaluate(createInput({ buildConfig: config, rulesetSnapshots: snapshots }));
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({ kind: "inline-unsupported", severity: "error" })
+    );
+  });
+
   test("classical 快照内联时把目标放在 no-resolve/src 修饰符之前", () => {
     const input = createInput();
     input.rulesetSnapshots.set("hash_cn", {

@@ -6,8 +6,10 @@ import type {
   CreateSubscriptionResponse,
   EventEntry,
   InstanceHealth,
+  LatencyTestResponse,
   IssuedToken,
   PasteParseReportDto,
+  ParsedNodeUriDto,
   PreviewResult,
   ReleaseDetail,
   ReleaseMutationResult,
@@ -43,8 +45,8 @@ const keys = {
   rulesets: ["rulesets"] as const,
   templates: ["templates"] as const,
   template: (id: string) => ["templates", id] as const,
-  templateExtractPreview: (subscriptionId: string) =>
-    ["template-extract-preview", subscriptionId] as const,
+  templateExtractPreview: (subscriptionId: string, retainSensitive: boolean) =>
+    ["template-extract-preview", subscriptionId, retainSensitive] as const,
   events: ["events"] as const,
   instance: ["instance"] as const
 };
@@ -133,7 +135,7 @@ export const useSubscriptionMutations = (id?: string) => {
       mutationFn: (body: {
         displayName: string;
         sourceIds: string[];
-        start: { kind: string; templateId?: string };
+        start: { kind: string; templateId?: string; confirmSensitive?: boolean };
       }) =>
         authorizedRequest<CreateSubscriptionResponse>("/api/subscriptions", {
           method: "POST",
@@ -486,10 +488,10 @@ export const useTemplate = (id: string | null) => {
   });
 };
 
-export const useTemplateExtractPreview = (subscriptionId: string) => {
+export const useTemplateExtractPreview = (subscriptionId: string, retainSensitive = false) => {
   const { authorizedRequest } = useAuth();
   return useQuery({
-    queryKey: keys.templateExtractPreview(subscriptionId),
+    queryKey: keys.templateExtractPreview(subscriptionId, retainSensitive),
     queryFn: () =>
       authorizedRequest<{
         payload: unknown;
@@ -497,7 +499,7 @@ export const useTemplateExtractPreview = (subscriptionId: string) => {
         draftRevision: number;
       }>(
         "/api/templates/extract-preview",
-        { method: "POST", body: JSON.stringify({ subscriptionId }) }
+        { method: "POST", body: JSON.stringify({ subscriptionId, retainSensitive }) }
       ),
     // 每次打开都重新分析当前草稿；React Query 会复用同一轮仍在进行的请求。
     staleTime: 0,
@@ -518,6 +520,9 @@ export const useTemplateMutations = () => {
         displayName: string;
         description?: string;
         visibility?: string;
+        retainSensitive?: boolean;
+        confirmSensitive?: boolean;
+        confirmShareSensitive?: boolean;
       }) =>
         authorizedRequest<TemplateDetail>("/api/templates", {
           method: "POST",
@@ -526,7 +531,7 @@ export const useTemplateMutations = () => {
       onSuccess: invalidate
     }),
     instantiate: useMutation({
-      mutationFn: ({ id, ...body }: { id: string; displayName: string; sourceIds: string[] }) =>
+      mutationFn: ({ id, ...body }: { id: string; displayName: string; sourceIds: string[]; confirmSensitive?: boolean }) =>
         authorizedRequest<CreateSubscriptionResponse>(`/api/templates/${id}/instantiate`, {
           method: "POST",
           body: JSON.stringify(body)
@@ -561,6 +566,28 @@ export const useSecretMutations = () => {
         authorizedRequest<{ fields: Record<string, unknown> }>(`/api/secrets/${id}`)
     })
   };
+};
+
+export const useNodeUriParser = () => {
+  const { authorizedRequest } = useAuth();
+  return useMutation({
+    mutationFn: (uri: string) =>
+      authorizedRequest<ParsedNodeUriDto>("/api/nodes/parse-uri", {
+        method: "POST",
+        body: JSON.stringify({ uri })
+      })
+  });
+};
+
+export const useLatencyTest = (subscriptionId: string) => {
+  const { authorizedRequest } = useAuth();
+  return useMutation({
+    mutationFn: (nodeIds?: string[]) =>
+      authorizedRequest<LatencyTestResponse>(`/api/subscriptions/${subscriptionId}/latency-tests`, {
+        method: "POST",
+        body: JSON.stringify(nodeIds ? { nodeIds } : {})
+      })
+  });
 };
 
 export const useEvents = () => {

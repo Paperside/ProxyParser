@@ -618,14 +618,15 @@ export const assembleRules = (
         continue;
       }
 
-      if (item.emit === "inline" || !snapshot.isPublic) {
+      const deliveryMode = buildConfig.rules.deliveryMode ?? item.emit;
+      if (deliveryMode === "inline" || !snapshot.isPublic) {
         const { rules: inlined, unsupported } = inlineRulesFromSnapshot(snapshot, block.target);
         rules.push(...inlined);
         if (unsupported.length > 0) {
           issues.push({
             kind: "inline-unsupported",
-            severity: "warn",
-            message: `规则快照 ${item.slug} 有 ${unsupported.length} 条通配符条目无法内联，已跳过。建议以 provider 方式引用。`,
+            severity: "error",
+            message: `规则快照 ${item.slug} 有 ${unsupported.length} 条通配符条目无法安全内联。请改用远程规则文件，或修正规则源后再发布。`,
             refs: { hash: item.hash, entries: unsupported.slice(0, 5) }
           });
         }

@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { X } from "lucide-react";
+import { Activity, Zap, X } from "lucide-react";
+import { toast } from "sonner";
 
 import type { CustomNode, NodeTransform } from "../../lib/build-config-types";
 import { REGION_CODES, regionLabel } from "../../lib/regions";
 import type { NodeIndexEntry } from "../../lib/types";
+import { useLatencyTest } from "../../lib/hooks";
 import { SectionTitle } from "../shared";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -58,6 +60,9 @@ export const NodesTab = () => {
   // "new"：新增弹窗；CustomNode：编辑该节点；null：不显示
   const [customDialog, setCustomDialog] = useState<"new" | CustomNode | null>(null);
   const [renaming, setRenaming] = useState<NodeIndexEntry | null>(null);
+  const latencyTest = useLatencyTest(detail.id);
+  const [latencies, setLatencies] = useState<Record<string, { delayMs: number | null; status: string }>>({});
+  const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
 
   const nodes = preview?.nodeIndex ?? [];
 
@@ -102,13 +107,53 @@ export const NodesTab = () => {
     });
   };
 
+  const testNodes = async (nodeIds?: string[]) => {
+    const ids = nodeIds ?? nodes.filter((node) => !node.disabled).map((node) => node.id);
+    if (ids.length === 0) return;
+    setTestingIds(new Set(ids));
+    try {
+      const response = await latencyTest.mutateAsync(nodeIds);
+      setLatencies((current) => ({
+        ...current,
+        ...Object.fromEntries(response.results.map((result) => [result.nodeId, {
+          delayMs: result.delayMs,
+          status: result.status
+        }]))
+      }));
+      const reachable = response.results.filter((result) => result.status === "ok").length;
+      toast.success(`服务端延迟测试完成：${reachable}/${response.results.length} 个节点可用`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "延迟测试失败");
+    } finally {
+      setTestingIds(new Set());
+    }
+  };
+
   return (
     <div>
       <SectionTitle
         title="节点"
         desc={`${nodes.filter((n) => n.sourceId !== null).length} 个原生节点（${detail.sourceNames.join("、")}）+ ${config.nodes.custom.length} 个自建。默认原样展示，只有你主动添加的转换会生效。`}
-        actions={<Button size="sm" onClick={() => setCustomDialog("new")}>新增自建节点</Button>}
+        actions={
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={latencyTest.isPending || nodes.every((node) => node.disabled)}
+              title="从 ProxyParser 服务端测试当前草稿中的全部节点"
+              onClick={() => void testNodes()}
+            >
+              <Activity className={`size-3 ${latencyTest.isPending ? "animate-pulse" : ""}`} />
+              {latencyTest.isPending ? "测试中…" : "测试全部"}
+            </Button>
+            <Button size="sm" onClick={() => setCustomDialog("new")}>新增自建节点</Button>
+          </>
+        }
       />
+
+      <div className="mb-3 rounded-[10px] border border-warn/30 bg-warn/5 px-3.5 py-2 text-[11.5px] text-muted">
+        延迟测试由 ProxyParser 服务端发起，只代表服务器所在网络能否连通节点及其延迟，不代表你的浏览器或最终客户端网络。
+      </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[10px] border border-line bg-surface px-3.5 py-2.5">
         <span className="text-xs text-faint">持续转换（自动作用于未来新节点）：</span>
@@ -194,6 +239,20 @@ export const NodesTab = () => {
                   </td>
                   <td className="border-b border-line px-3 py-1.5">
                     <div className="flex justify-end gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={node.disabled || latencyTest.isPending}
+                        title={node.disabled ? "已禁用节点不能测试" : "从服务端测试此节点连通性"}
+                        onClick={() => void testNodes([node.id])}
+                      >
+                        <Zap className={`size-3 ${testingIds.has(node.id) ? "animate-pulse" : ""}`} />
+                        {latencies[node.id]?.status === "ok"
+                          ? `${latencies[node.id]!.delayMs} ms`
+                          : latencies[node.id]
+                            ? "不可用"
+                            : "测试"}
+                      </Button>
                       {!isCustom ? (
                         <>
                           <Button size="sm" variant="ghost" onClick={() => setRenaming(node)}>

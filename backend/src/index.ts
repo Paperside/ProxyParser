@@ -21,6 +21,7 @@ import { AuditLogService } from "./modules/audit/audit-log.service";
 import { AuthService } from "./modules/auth/auth.service";
 import { createAuthRoutes } from "./modules/auth/routes";
 import { EventRepository } from "./modules/events/event.repository";
+import { createNodeRoutes } from "./modules/nodes/routes";
 import { RulesetRepository } from "./modules/rulesets/ruleset.repository";
 import { RulesetService } from "./modules/rulesets/ruleset.service";
 import { createRulesetRoutes } from "./modules/rulesets/routes";
@@ -66,7 +67,7 @@ const main = async () => {
   const rulesetRepository = new RulesetRepository(db);
   const rulesetService = new RulesetService(rulesetRepository, events);
 
-  const templateRepository = new TemplateRepository(db);
+  const templateRepository = new TemplateRepository(db, secretBox);
   const subscriptionRepository = new SubscriptionRepository(db);
   const subscriptionService = new SubscriptionService(
     subscriptionRepository,
@@ -79,6 +80,8 @@ const main = async () => {
     {
       publicBaseUrl: runtimeConfig.publicBaseUrl,
       tempTokenTtlSeconds: runtimeConfig.subscriptionTempTokenTtlSeconds,
+      latencyTestUrl: runtimeConfig.latencyTestUrl,
+      latencyTimeoutMs: runtimeConfig.latencyTimeoutMs,
       mihomo: {
         mihomoPath: runtimeConfig.mihomoPath,
         dataDir: runtimeConfig.mihomoDataDir,
@@ -114,13 +117,16 @@ const main = async () => {
     .use(createAuthRoutes(authService, auditLogService, rateLimiter))
     .use(createUpstreamSourceRoutes(authService, sourceService))
     .use(createRulesetRoutes(authService, rulesetService))
-    .use(createSubscriptionRoutes(authService, subscriptionService, secretStore))
+    .use(createNodeRoutes(authService))
+    .use(createSubscriptionRoutes(authService, subscriptionService, secretStore, rateLimiter))
     .use(
       createTemplateRoutes(
         authService,
         templateRepository,
         subscriptionRepository,
-        subscriptionService
+        subscriptionService,
+        secretStore,
+        auditLogService
       )
     )
     .use(createDeliveryRoutes(subscriptionService, rulesetService, rateLimiter))

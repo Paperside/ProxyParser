@@ -17,6 +17,11 @@ import {
 import { diffDocuments } from "../../lib/render-v2/release-diff";
 import { traceQuery, type TraceResult } from "../../lib/trace/rule-tracer";
 import {
+  MihomoLatencyError,
+  runMihomoLatencyTests,
+  type LatencyResult
+} from "../../lib/latency/mihomo-latency";
+import {
   isMihomoAvailable,
   validateWithMihomo,
   type MihomoGateOptions
@@ -57,6 +62,8 @@ export interface SubscriptionServiceOptions {
   publicBaseUrl: string;
   mihomo: MihomoGateOptions;
   tempTokenTtlSeconds?: number;
+  latencyTestUrl?: string;
+  latencyTimeoutMs?: number;
 }
 
 export interface SyncLatestRulesetsResult {
@@ -96,6 +103,7 @@ const blankBuildConfig = (sourceIds: string[], mode: "rebuild" | "patch"): Build
         }
       : { generators: [], custom: [], order: [] },
   rules: {
+    deliveryMode: "provider",
     targets: [],
     order: [],
     prelude: [],
@@ -105,6 +113,7 @@ const blankBuildConfig = (sourceIds: string[], mode: "rebuild" | "patch"): Build
 });
 
 export class SubscriptionService {
+  private latencyRunsInFlight = 0;
   constructor(
     private readonly repository: SubscriptionRepository,
     private readonly sourceRepository: UpstreamSourceRepository,
@@ -210,7 +219,7 @@ export class SubscriptionService {
     input: {
       displayName: string;
       sourceIds: string[];
-      start: { kind: StartKind; templateId?: string };
+      start: { kind: StartKind; templateId?: string; confirmSensitive?: boolean };
     }
   ) {
     if (input.sourceIds.length === 0) {
@@ -239,14 +248,26 @@ export class SubscriptionService {
         if (!input.start.templateId) {
           throw new SubscriptionError("缺少模板 ID。");
         }
-        const payload = this.templateRepository.findLatestPayloadVisibleTo(
+        const detail = this.templateRepository.findDetailVisibleTo(
           input.start.templateId,
           ownerUserId
         );
-        if (!payload) {
+        if (!detail?.payload) {
           throw new SubscriptionError("模板不存在或无权访问。", 404);
         }
-        draft = instantiateTemplate(payload, input.sourceIds);
+        if (detail.embeddedSecrets && !input.start.confirmSensitive) {
+          throw new SubscriptionError("该模板包含加密保存的节点凭据，应用前需要明确确认。", 409);
+        }
+        const secretRefs = new Map<string, string>();
+        if (detail.embeddedSecrets) {
+          for (const [nodeId, fields] of this.templateRepository.resolveLatestSecretsVisibleTo(
+            input.start.templateId,
+            ownerUserId
+          )) {
+            secretRefs.set(nodeId, this.secretStore.create(ownerUserId, fields));
+          }
+        }
+        draft = instantiateTemplate(detail.payload, input.sourceIds, secretRefs);
         break;
       }
       case "patch":
@@ -349,6 +370,54 @@ export class SubscriptionService {
       diffVsActive,
       activeReleaseSeq: activeRelease?.seq ?? null
     };
+  }
+
+  async testLatency(ownerUserId: string, id: string, nodeIds?: string[]): Promise<{
+    testUrl: string;
+    timeoutMs: number;
+    testedAt: string;
+    results: LatencyResult[];
+  }> {
+    if (this.latencyRunsInFlight >= 2) {
+      throw new SubscriptionError("服务端正在执行其他延迟测试，请稍后再试。", 429);
+    }
+    const record = this.requireOwned(ownerUserId, id);
+    const config = record.draftBuildConfig ?? record.buildConfig;
+    if (!config) throw new SubscriptionError("尚无可测试的构建配置。", 409);
+    this.assertConfigReferencesOwned(ownerUserId, config);
+    const evaluation = this.evaluateConfig(config, ownerUserId);
+    const requested = nodeIds ? new Set(nodeIds) : null;
+    if (requested && requested.size > 200) throw new SubscriptionError("单次最多测试 200 个节点。", 400);
+    const proxiesByName = new Map(evaluation.document.proxies.map((proxy) => [proxy.name, proxy]));
+    const targets = evaluation.nodeIndex
+      .filter((node) => !node.disabled && (!requested || requested.has(node.id)))
+      .flatMap((node) => {
+        const proxy = proxiesByName.get(node.renderedName);
+        return proxy ? [{ nodeId: node.id, name: node.renderedName, proxy }] : [];
+      });
+    if (requested) {
+      const found = new Set(targets.map((target) => target.nodeId));
+      if ([...requested].some((nodeId) => !found.has(nodeId))) {
+        throw new SubscriptionError("请求包含不存在或已禁用的节点。", 400);
+      }
+    }
+    this.latencyRunsInFlight += 1;
+    try {
+      const testUrl = this.options.latencyTestUrl ?? "https://cp.cloudflare.com/generate_204";
+      const timeoutMs = this.options.latencyTimeoutMs ?? 5_000;
+      const results = await runMihomoLatencyTests(targets, {
+        ...this.options.mihomo,
+        testUrl,
+        timeoutMs,
+        concurrency: 4
+      });
+      return { testUrl, timeoutMs, testedAt: new Date().toISOString(), results };
+    } catch (error) {
+      if (error instanceof MihomoLatencyError) throw new SubscriptionError(error.message, error.status);
+      throw error;
+    } finally {
+      this.latencyRunsInFlight -= 1;
+    }
   }
 
   // ── 发布管线（技术方案 §6.1） ─────────────────────────────────

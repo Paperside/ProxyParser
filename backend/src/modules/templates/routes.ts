@@ -6,6 +6,8 @@ import type { UserRecord } from "../users/user.repository";
 import type { SubscriptionRepository } from "../subscriptions/subscription.repository";
 import { SubscriptionError, SubscriptionService } from "../subscriptions/subscription.service";
 import type { TemplateRepository } from "./template.repository";
+import type { SecretStore } from "../subscriptions/secret-store";
+import type { AuditLogService } from "../audit/audit-log.service";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -28,7 +30,9 @@ export const createTemplateRoutes = (
   authService: AuthService,
   templateRepository: TemplateRepository,
   subscriptionRepository: SubscriptionRepository,
-  subscriptionService: SubscriptionService
+  subscriptionService: SubscriptionService,
+  secretStore: SecretStore,
+  auditLog: AuditLogService
 ) => {
   return new Elysia({ prefix: "/api/templates" })
     .derive(({ headers }) => ({
@@ -61,12 +65,13 @@ export const createTemplateRoutes = (
         set.status = 404;
         return { message: "订阅不存在或尚无构建配置。" };
       }
-      const result = extractTemplate(config);
+      const retainSensitive = body.retainSensitive === true;
+      const result = extractTemplate(config, { retainSensitive });
       if ("error" in result) {
         set.status = 422;
         return { message: result.error };
       }
-      return { ...result, draftRevision: subscription.draftRevision };
+      return { ...result, draftRevision: subscription.draftRevision, retainSensitive };
     })
 
     // 确认保存模板
@@ -94,21 +99,52 @@ export const createTemplateRoutes = (
         set.status = 409;
         return { message: "草稿已在预览后变化。请重新分析后再保存模板。" };
       }
-      const result = extractTemplate(config);
+      const retainSensitive = body.retainSensitive === true;
+      if (retainSensitive && body.confirmSensitive !== true) {
+        set.status = 400;
+        return { message: "保留敏感信息前必须明确确认其会随模板复制。" };
+      }
+      const result = extractTemplate(config, { retainSensitive });
       if ("error" in result) {
         set.status = 422;
         return { message: result.error };
       }
       const visibility = str(body, "visibility");
+      const selectedVisibility =
+        visibility === "public" || visibility === "unlisted" ? visibility : "private";
+      if (retainSensitive && selectedVisibility !== "private" && body.confirmShareSensitive !== true) {
+        set.status = 400;
+        return { message: "公开或链接分享含凭据模板前，必须再次确认任何可访问者都能复制这些凭据。" };
+      }
+      const embeddedSecrets = new Map<string, Record<string, unknown>>();
+      if (retainSensitive) {
+        for (const node of config.nodes.custom) {
+          if (!node.secretRef) continue;
+          const fields = secretStore.resolveForOwner(currentUser.id, node.secretRef);
+          if (!fields) {
+            set.status = 409;
+            return { message: `自建节点「${node.name}」的敏感字段已失效，请重新保存节点后再提炼。` };
+          }
+          embeddedSecrets.set(node.id, fields);
+        }
+      }
       const created = templateRepository.create({
         ownerUserId: currentUser.id,
         displayName: str(body, "displayName") ?? `${subscription.displayName} 的模板`,
         description: str(body, "description") ?? null,
-        visibility:
-          visibility === "public" || visibility === "unlisted" ? visibility : "private",
+        visibility: selectedVisibility,
         payload: result.payload,
         extractionReport: result.report,
-        versionNote: str(body, "versionNote") ?? null
+        versionNote: str(body, "versionNote") ?? null,
+        embeddedSecrets
+      });
+      auditLog.record({
+        actorUserId: currentUser.id,
+        entityType: "template",
+        entityId: created.id,
+        action: "template.created",
+        summary: retainSensitive ? "创建含加密敏感信息的模板" : "创建不含敏感信息的模板",
+        after: { retainSensitive, visibility: selectedVisibility, secretNodeCount: embeddedSecrets.size }
       });
       set.status = 201;
       return created;
@@ -127,9 +163,21 @@ export const createTemplateRoutes = (
         const created = subscriptionService.create(currentUser.id, {
           displayName: str(body, "displayName") ?? "",
           sourceIds,
-          start: { kind: "template", templateId: params.id! }
+          start: {
+            kind: "template",
+            templateId: params.id!,
+            confirmSensitive: body.confirmSensitive === true
+          }
         });
         set.status = 201;
+        auditLog.record({
+          actorUserId: currentUser.id,
+          entityType: "template",
+          entityId: params.id!,
+          action: "template.instantiated",
+          summary: "应用模板创建订阅",
+          after: { subscriptionId: created.subscription.id }
+        });
         return created;
       } catch (error) {
         if (error instanceof SubscriptionError) {
@@ -145,19 +193,43 @@ export const createTemplateRoutes = (
         return { message: "请求体格式错误。" };
       }
       const visibility = str(body, "visibility");
+      const existing = templateRepository.findDetailVisibleTo(params.id!, currentUser.id);
+      const requestedVisibility =
+        visibility === "public" || visibility === "unlisted" || visibility === "private"
+          ? visibility
+          : undefined;
+      if (
+        existing?.ownerUserId === currentUser.id &&
+        existing.embeddedSecrets &&
+        requestedVisibility !== undefined &&
+        requestedVisibility !== "private" &&
+        body.confirmShareSensitive !== true
+      ) {
+        set.status = 400;
+        return { message: "共享含凭据模板前，必须确认任何可访问者都能复制这些凭据。" };
+      }
       const updated = templateRepository.updateMeta(params.id!, currentUser.id, {
         displayName: str(body, "displayName"),
         description: str(body, "description"),
-        visibility:
-          visibility === "public" || visibility === "unlisted" || visibility === "private"
-            ? visibility
-            : undefined
+        visibility: requestedVisibility
       });
       if (!updated) {
         set.status = 404;
         return { message: "模板不存在或无权修改。" };
       }
-      return templateRepository.findDetailVisibleTo(params.id!, currentUser.id);
+      const detail = templateRepository.findDetailVisibleTo(params.id!, currentUser.id);
+      if (requestedVisibility && requestedVisibility !== existing?.visibility) {
+        auditLog.record({
+          actorUserId: currentUser.id,
+          entityType: "template",
+          entityId: params.id!,
+          action: "template.visibility_changed",
+          summary: "修改模板可见范围",
+          before: { visibility: existing?.visibility ?? null },
+          after: { visibility: requestedVisibility, embeddedSecrets: detail?.embeddedSecrets ?? false }
+        });
+      }
+      return detail;
     })
     .delete("/:id", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       const deleted = templateRepository.deleteOwned(params.id!, currentUser.id);

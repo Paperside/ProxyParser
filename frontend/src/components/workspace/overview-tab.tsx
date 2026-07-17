@@ -13,13 +13,19 @@ import { Button } from "../ui/button";
 import { Card, CardTitle } from "../ui/card";
 import { Dialog, DialogContent, DialogFooter } from "../ui/dialog";
 import { Field, Input } from "../ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Switch } from "../ui/switch";
 import { useWorkspace } from "./context";
 
 // 提炼模板：先看报告，确认后保存（对应产品文档 §9.5）
 const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
   const { detail, editingLocked } = useWorkspace();
   const navigate = useNavigate();
-  const preview = useTemplateExtractPreview(detail.id);
+  const [retainSensitive, setRetainSensitive] = useState(false);
+  const [visibility, setVisibility] = useState<"private" | "unlisted" | "public">("private");
+  const [confirmedSensitive, setConfirmedSensitive] = useState(false);
+  const [confirmedShare, setConfirmedShare] = useState(false);
+  const preview = useTemplateExtractPreview(detail.id, retainSensitive);
   const mutations = useTemplateMutations();
   const [name, setName] = useState(`${detail.displayName} 方案`);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -33,7 +39,11 @@ const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
       const created = await mutations.create.mutateAsync({
         subscriptionId: detail.id,
         expectedDraftRevision: preview.data.draftRevision,
-        displayName: normalizedName
+        displayName: normalizedName,
+        visibility,
+        retainSensitive,
+        confirmSensitive: !retainSensitive || confirmedSensitive,
+        confirmShareSensitive: !retainSensitive || visibility === "private" || confirmedShare
       });
       toast.success(`模板「${created.displayName}」已保存`);
       onClose();
@@ -50,6 +60,17 @@ const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
   return (
     <Dialog open onOpenChange={(open) => !open && requestClose()}>
       <DialogContent title="提炼为模板" description="模板与订阅源脱钩：换机场时套用即可。以下是将被记录与剔除的内容。">
+        <div className="mb-3 flex items-start justify-between gap-4 rounded-md border border-line bg-surface2 px-3 py-2.5">
+          <div>
+            <p className="text-xs font-medium">保留自建节点敏感信息</p>
+            <p className="mt-0.5 text-[11px] leading-4 text-muted">关闭时凭据会变成占位符；开启后凭据以独立密文保存，应用模板的人将得到可用凭据副本。</p>
+          </div>
+          <Switch checked={retainSensitive} onCheckedChange={(checked) => {
+            setRetainSensitive(checked);
+            setConfirmedSensitive(false);
+            setConfirmedShare(false);
+          }} />
+        </div>
         {preview.isFetching ? (
           <p className="text-xs text-muted">正在分析当前草稿…</p>
         ) : preview.isError ? (
@@ -86,6 +107,31 @@ const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
                 }}
               />
             </Field>
+            <Field label="可见范围">
+              <Select value={visibility} onValueChange={(value) => {
+                setVisibility(value as typeof visibility);
+                setConfirmedShare(false);
+              }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="private">仅自己</SelectItem>
+                  <SelectItem value="unlisted">持链接者可访问</SelectItem>
+                  <SelectItem value="public">公开</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            {retainSensitive ? (
+              <label className="flex items-start gap-2 rounded-md bg-warn-bg px-3 py-2 text-xs text-warn">
+                <input type="checkbox" checked={confirmedSensitive} onChange={(event) => setConfirmedSensitive(event.target.checked)} />
+                我确认模板会携带自建节点凭据；任何成功应用此模板的人都将获得一份独立、可用的加密凭据副本。
+              </label>
+            ) : null}
+            {retainSensitive && visibility !== "private" ? (
+              <label className="flex items-start gap-2 rounded-md border border-err/30 bg-err-bg px-3 py-2 text-xs text-err">
+                <input type="checkbox" checked={confirmedShare} onChange={(event) => setConfirmedShare(event.target.checked)} />
+                我确认这是含凭据的共享模板；公开或拿到链接的用户可以复制并使用这些节点凭据。
+              </label>
+            ) : null}
             {!normalizedName ? <p className="text-xs text-err">模板名称不能为空。</p> : null}
             {saveError ? (
               <p className="rounded-md bg-err-bg px-3 py-2 text-xs text-err">{saveError}</p>
@@ -105,6 +151,8 @@ const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
               !normalizedName ||
               preview.isFetching ||
               mutations.create.isPending ||
+              (retainSensitive && !confirmedSensitive) ||
+              (retainSensitive && visibility !== "private" && !confirmedShare) ||
               editingLocked
             }
             onClick={() => void submit()}

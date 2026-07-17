@@ -330,6 +330,29 @@ export interface PasteParseReportDto {
   invalid: Array<{ line: string; reason: string }>;
 }
 
+export interface ParsedNodeUriDto {
+  name: string;
+  type: string;
+  server: string;
+  port: number;
+  fields: Record<string, unknown>;
+  warnings: string[];
+  scheme: string;
+}
+
+export interface LatencyTestResponse {
+  testUrl: string;
+  timeoutMs: number;
+  testedAt: string;
+  results: Array<{
+    nodeId: string;
+    name: string;
+    status: "ok" | "unreachable" | "error";
+    delayMs: number | null;
+    message?: string;
+  }>;
+}
+
 // ── 模板 ─────────────────────────────────────────────────────
 
 export interface TemplateSummary {
@@ -341,6 +364,7 @@ export interface TemplateSummary {
   visibility: "private" | "unlisted" | "public";
   isOfficial: boolean;
   latestVersion: number;
+  embeddedSecrets: boolean;
   createdAt: string;
   updatedAt: string;
 }

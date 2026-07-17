@@ -125,6 +125,7 @@ export const NewSubscriptionPage = () => {
   const [sourceName, setSourceName] = useState("");
   const [startKind, setStartKind] = useState<StartKind>("recommended");
   const [templateId, setTemplateId] = useState<string | null>(null);
+  const [confirmedTemplateSensitive, setConfirmedTemplateSensitive] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [result, setResult] = useState<IssuedToken | null>(null);
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
@@ -158,7 +159,9 @@ export const NewSubscriptionPage = () => {
         sourceIds: [sourceId],
         start: {
           kind: startKind,
-          ...(startKind === "template" && templateId ? { templateId } : {})
+          ...(startKind === "template" && templateId
+            ? { templateId, confirmSensitive: confirmedTemplateSensitive }
+            : {})
         }
       });
       setSubscriptionId(created.subscription.id);
@@ -270,10 +273,12 @@ export const NewSubscriptionPage = () => {
                           onClick={(event) => {
                             event.stopPropagation();
                             setTemplateId(template.id);
+                            setConfirmedTemplateSensitive(false);
                           }}
                         >
                           {template.displayName}
                           {template.isOfficial ? " · 官方" : ""}
+                          {template.embeddedSecrets ? " · 含凭据" : ""}
                         </span>
                       ))}
                   </span>
@@ -281,13 +286,28 @@ export const NewSubscriptionPage = () => {
               </button>
             ))}
           </div>
+          {startKind === "template" &&
+          (templates.data ?? []).find((template) => template.id === templateId)?.embeddedSecrets ? (
+            <label className="mt-3 flex items-start gap-2 rounded-md bg-warn-bg px-2.5 py-2 text-xs text-warn">
+              <input
+                type="checkbox"
+                checked={confirmedTemplateSensitive}
+                onChange={(event) => setConfirmedTemplateSensitive(event.target.checked)}
+              />
+              我确认该模板会复制可用的节点凭据到新订阅。
+            </label>
+          ) : null}
           <div className="mt-6 flex justify-between">
             <Button variant="ghost" onClick={() => setStep(1)}>
               上一步
             </Button>
             <Button
               variant="primary"
-              disabled={startKind === "template" && !templateId}
+              disabled={startKind === "template" && (
+                !templateId ||
+                ((templates.data ?? []).find((template) => template.id === templateId)?.embeddedSecrets === true &&
+                  !confirmedTemplateSensitive)
+              )}
               onClick={() => setStep(3)}
             >
               继续

@@ -382,6 +382,14 @@ const parseGroups = (value: unknown, c: Collector): GroupsSection => {
 
 const parseRules = (value: unknown, c: Collector): RulesSection => {
   const section = isRecord(value) ? value : {};
+  let deliveryMode: RulesSection["deliveryMode"];
+  if (section.deliveryMode !== undefined) {
+    if (section.deliveryMode === "provider" || section.deliveryMode === "inline") {
+      deliveryMode = section.deliveryMode;
+    } else {
+      c.fail("rules.deliveryMode：必须是 provider / inline");
+    }
+  }
   const targets: RuleTargetBlock[] = [];
 
   for (const [index, block] of (Array.isArray(section.targets) ? section.targets : []).entries()) {
@@ -423,7 +431,7 @@ const parseRules = (value: unknown, c: Collector): RulesSection => {
   }
 
   const order = Array.isArray(section.order) ? section.order.filter(isNonEmptyString) : [];
-  return { targets, order, prelude, final };
+  return { ...(deliveryMode ? { deliveryMode } : {}), targets, order, prelude, final };
 };
 
 const RAW_PATCH_FORBIDDEN_KEYS = ["proxies", "proxy-groups", "rules", "rule-providers"];

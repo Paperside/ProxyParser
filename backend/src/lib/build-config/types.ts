@@ -104,6 +104,8 @@ export type NodeSelector =
 // ── 规则 ─────────────────────────────────────────────────────
 
 export interface RulesSection {
+  /** 缺省表示兼容旧配置，继续尊重每个快照项的 emit。 */
+  deliveryMode?: "provider" | "inline";
   targets: RuleTargetBlock[];
   order: string[]; // 块级输出顺序（target 名列表）
   prelude: PreludeRule[]; // 前置规则（恒在所有块之前），必须自带目标
@@ -178,6 +180,7 @@ export interface TemplatePayloadV2 {
 
 export interface TemplateCustomNode extends Omit<CustomNode, "secretRef"> {
   secretPlaceholder: boolean; // 应用模板时要求补全敏感字段
+  embeddedSecret?: boolean; // 仅表示模板版本有配套密文；密文本身绝不进入 payload/API
 }
 
 export interface TemplateExtractionReport {

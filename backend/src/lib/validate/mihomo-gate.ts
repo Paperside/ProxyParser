@@ -23,7 +23,7 @@ export interface MihomoValidation {
   durationMs: number | null;
 }
 
-const resolveBinary = (options: MihomoGateOptions): string | null => {
+export const resolveMihomoBinary = (options: MihomoGateOptions): string | null => {
   if (options.mihomoPath && existsSync(options.mihomoPath)) {
     return options.mihomoPath;
   }
@@ -44,7 +44,7 @@ let cachedBinary: { key: string; path: string | null } | null = null;
 export const isMihomoAvailable = (options: MihomoGateOptions): boolean => {
   const key = `${options.mihomoPath ?? ""}|${options.dataDir}`;
   if (!cachedBinary || cachedBinary.key !== key) {
-    cachedBinary = { key, path: resolveBinary(options) };
+    cachedBinary = { key, path: resolveMihomoBinary(options) };
   }
   return cachedBinary.path !== null;
 };
@@ -55,7 +55,7 @@ export const validateWithMihomo = (
 ): MihomoValidation => {
   const key = `${options.mihomoPath ?? ""}|${options.dataDir}`;
   if (!cachedBinary || cachedBinary.key !== key) {
-    cachedBinary = { key, path: resolveBinary(options) };
+    cachedBinary = { key, path: resolveMihomoBinary(options) };
   }
   const binary = cachedBinary.path;
   if (!binary) {

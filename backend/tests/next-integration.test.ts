@@ -80,9 +80,9 @@ const createTestContext = (options: { mihomo?: boolean } = {}) => {
   const sourceService = new UpstreamSourceService(sourceRepository, events);
   const rulesetRepository = new RulesetRepository(db);
   const rulesetService = new RulesetService(rulesetRepository, events);
-  const templateRepository = new TemplateRepository(db);
-  const subscriptionRepository = new SubscriptionRepository(db);
   const secretBox = new SecretBox(randomBytes(32));
+  const templateRepository = new TemplateRepository(db, secretBox);
+  const subscriptionRepository = new SubscriptionRepository(db);
   const secretStore = new SecretStore(db, secretBox);
   const backendDataDir = resolve(import.meta.dir, "..", "data");
   const subscriptionService = new SubscriptionService(
@@ -1321,6 +1321,62 @@ describe("模板 v2", () => {
     const record = ctx.subscriptionRepository.findById(subscription.id)!;
     const result = extractTemplate(record.draftBuildConfig!);
     expect("error" in result && result.error).toContain("patch");
+  });
+
+  test("含敏感信息模板只在独立密文表保存，并在确认后复制给应用者", () => {
+    const ctx = createTestContext();
+    const base = instantiateTemplate(
+      ctx.templateRepository.findLatestPayload(RECOMMENDED_TEMPLATE_ID)!,
+      [ctx.source.id]
+    );
+    base.nodes.custom.push({
+      id: "cn_shared",
+      name: "Shared VPS",
+      type: "trojan",
+      server: "shared.test",
+      port: 443,
+      secretRef: ctx.secretStore.create(ctx.userId, { password: "template-secret" }),
+      extra: {}
+    });
+    const extracted = extractTemplate(base, { retainSensitive: true });
+    if (!("payload" in extracted)) throw new Error("extract failed");
+    const template = ctx.templateRepository.create({
+      ownerUserId: ctx.userId,
+      displayName: "含凭据模板",
+      description: null,
+      visibility: "public",
+      payload: extracted.payload,
+      extractionReport: extracted.report,
+      versionNote: null,
+      embeddedSecrets: new Map([["cn_shared", { password: "template-secret" }]])
+    });
+    expect(template.embeddedSecrets).toBe(true);
+    expect(JSON.stringify(template)).not.toContain("template-secret");
+
+    const bob = createUser(ctx.db, "template-bob");
+    const bobSource = ctx.sourceService.createFromUpload(bob, {
+      displayName: "Bob source",
+      yamlContent: sourceYaml(defaultNodes)
+    });
+    expect(() => ctx.subscriptionService.create(bob, {
+      displayName: "未确认",
+      sourceIds: [bobSource.id],
+      start: { kind: "template", templateId: template.id }
+    })).toThrow("需要明确确认");
+
+    const created = ctx.subscriptionService.create(bob, {
+      displayName: "已确认",
+      sourceIds: [bobSource.id],
+      start: { kind: "template", templateId: template.id, confirmSensitive: true }
+    });
+    const copiedNode = created.subscription.draftBuildConfig!.nodes.custom.find(
+      (node) => node.id === "cn_shared"
+    )!;
+    expect(copiedNode.secretRef).not.toBeNull();
+    expect(ctx.secretStore.resolveForOwner(bob, copiedNode.secretRef!)).toEqual({
+      password: "template-secret"
+    });
+    expect(ctx.secretStore.resolveForOwner(ctx.userId, copiedNode.secretRef!)).toBeNull();
   });
 });
 

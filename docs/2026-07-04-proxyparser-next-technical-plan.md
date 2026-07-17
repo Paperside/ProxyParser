@@ -27,7 +27,7 @@ ProxyParser Next 面向 Clash/Mihomo，核心模型是“订阅源快照 + 声�
 - 默认数据库：`backend/data/proxyparser.sqlite`；生产 Compose 映射为 `/data/proxyparser.sqlite`。
 - 密钥文件：数据库所在目录的 `.secret-key`；生产环境即 `/data/.secret-key`。设置 `PP_SECRET_KEY` 时不生成文件。
 - 数据库启动参数：WAL、foreign keys、5 秒 busy timeout。
-- 迁移：`backend/migrations/*.sql` 按文件名排序、逐个事务执行，并记录到 `_schema_migrations`。当前为 `0001_schema.sql`、`0002_token_ciphertext.sql` 与 `0003_subscription_draft_revision.sql`。
+- 迁移：`backend/migrations/*.sql` 按文件名排序、逐个事务执行，并记录到 `_schema_migrations`。当前为 `0001_schema.sql`、`0002_token_ciphertext.sql`、`0003_subscription_draft_revision.sql` 与只增表/索引的 `0004_template_version_secrets.sql`。
 - 已有用户表但缺少 `_schema_migrations` 的数据库视为 legacy/未知 schema，必须在写入任何 Next 表或迁移标记前 fail-fast；空库才允许自动初始化。
 
 主要环境变量：
@@ -41,6 +41,8 @@ ProxyParser Next 面向 Clash/Mihomo，核心模型是“订阅源快照 + 声�
 | `PROXYPARSER_MIHOMO_PATH` | 显式指定 mihomo 二进制 |
 | `JWT_ACCESS_TTL_SECONDS` / `JWT_REFRESH_TTL_SECONDS` | 登录 token 有效期 |
 | `RULESET_CHECK_INTERVAL_MINUTES` | 规则集后台检查间隔，默认 1440 分钟 |
+| `LATENCY_TEST_URL` | 服务端节点延迟测试的固定目标，默认 Cloudflare 204 |
+| `LATENCY_TIMEOUT_MS` | 单节点延迟测试超时，默认 5000 ms，范围 1000–30000 ms |
 
 ## 2. 架构与数据流
 
@@ -77,7 +79,7 @@ Next schema 直接定义当前最终表结构：
 | 订阅源 | `upstream_sources`, `upstream_source_snapshots`, `upstream_source_sync_logs`, `source_sync_reports` | URL/上传源、成功快照、同步审计与节点变化报告 |
 | 订阅与发布 | `subscriptions`, `subscription_sources`, `releases`, `subscription_issues` | 草稿/已发布 BuildConfig、源反向索引、不可变版本、待处理问题 |
 | 访问 | `subscription_tokens`, `subscription_temp_tokens`, `subscription_pull_logs` | 长期/短期链接及拉取审计 |
-| 密钥 | `custom_node_secrets` | 自建节点敏感字段密文 |
+| 密钥 | `custom_node_secrets`, `template_version_secrets` | 自建节点敏感字段密文、模板版本按节点隔离的敏感字段密文 |
 | 规则 | `ruleset_catalog`, `ruleset_snapshots` | 可变目录元数据 + 内容寻址不可变快照 |
 | 模板 | `templates`, `template_versions` | 模板元数据、版本化 payload 与提炼报告 |
 | 事件与审计 | `events`, `audit_logs` | 工作台事件流与账号操作审计 |
@@ -94,7 +96,7 @@ Next schema 直接定义当前最终表结构：
 - `sources`：一个或多个源引用；多源只允许 `rebuild`。
 - `nodes`：持续 transforms、按稳定 ID 的 overrides、自建节点。
 - `groups`：代理组生成器、自定义组与显式顺序。
-- `rules`：前置规则、按目标组织的规则块、块顺序与最终 MATCH。
+- `rules`：全局交付模式（provider / inline）、前置规则、按目标组织的规则块、块顺序与最终 MATCH。旧配置缺少全局字段时继续尊重逐项 `emit`，避免迁移改变输出。
 - `config`：结构化字段及 raw YAML patch。
 
 模式语义：
@@ -112,7 +114,7 @@ raw patch 不能覆盖 `proxies`、`proxy-groups`、`rules` 或 `rule-providers`
 
 1. `collectNodes`：读取启用源，计算稳定 ID，执行 transforms/overrides，解密并追加自建节点，处理输出名冲突。
 2. `generateGroups`：求值 Proxies/地区/Auto 生成器，展开 selector 与自定义成员，按 `groups.order` 排序。
-3. `assembleRules`：输出 prelude、按目标排序的手动规则或快照规则，最后输出 MATCH。公开大规则集可生成无 `interval` 的托管 provider；私有或显式 inline 的快照展开为普通规则。
+3. `assembleRules`：输出 prelude、按目标排序的手动规则或快照规则，最后输出 MATCH。全局 `deliveryMode` 可让公开快照统一走托管 provider 或内联；私有快照始终内联。无法等价内联的通配符是阻断发布的 error，不会静默丢弃。
 4. `applyConfig`：写入结构化配置，并深合并经过限制的 raw patch。
 5. patch 支路：保留源文档，传播节点改名/禁用，插入自定义组与规则，并保留源 MATCH。
 6. `validateStructural`：检查名称、成员、规则目标、provider 引用与 MATCH 位置，输出结构化 issues。
@@ -170,7 +172,7 @@ URL 源同步成功后生成节点增删、改名和凭据变化报告，并回�
 
 订阅工作台规则区还提供 `POST /api/subscriptions/:id/rulesets/sync-latest` 一键入口：服务端按唯一 catalog 将当前配置已有的 snapshot 引用对齐到规则库的 `latest_snapshot_hash`，保留目标、顺序、emit 方式及其他草稿修改。该操作不抓取远端、不新增规则、不清更新徽章且不发布；同步期间工作台锁定编辑，完成后重新载入服务端草稿，仍需用户预览并显式发布。
 
-公开快照可由 `/rs/*` 托管；私有快照只能 inline，避免内容泄露。粘贴规则接口只解析、去重和报告，不直接落库，前端确认后才写 BuildConfig。
+公开快照可由 `/rs/*` 托管；私有快照只能 inline，避免内容泄露。工作台提供订阅级交付开关，新订阅默认 provider；开启 inline 会增大主 YAML，规则更新仍需同步草稿并重新发布。粘贴规则接口只解析、去重和报告，不直接落库，前端确认后才写 BuildConfig。
 
 更新仓库内全部离线副本使用 `bun backend/scripts/fetch-rulesets.ts`；也可追加 slug（例如 `chinamax anthropic`）只更新指定规则集。该脚本根据 manifest 合并 domain/classical 来源及 `extraRules`，再生成规范化 YAML。
 
@@ -208,6 +210,8 @@ mihomo -t -f <config> -d <temp-dir>
 - `.secret-key` 或 `PP_SECRET_KEY` 同时保护自建节点 secrets 与长期 token 明文密文；丢失后已有密文无法恢复。
 - 密钥不进入 SQLite，也不得提交 Git；备份必须同时包含 `proxyparser.sqlite` 与匹配的 `.secret-key`，或外部保存的 `PP_SECRET_KEY`。
 - 自建节点密文采用 copy-on-write：编辑会创建新 `secretRef`，不原地覆盖或删除可能被已发布/历史 BuildConfig 引用的密文。
+- 节点分享 URI 由认证后的 `POST /api/nodes/parse-uri` 纯解析；限制 16 KiB，不联网且不记录原始链接。支持当前表单协议的通用分享 scheme，Snell 因无通用标准保持手填。
+- 延迟测试在服务端启动一次性 Mihomo：随机 loopback controller、随机 secret、固定管理员配置的测试 URL、5 秒默认超时、4 并发、每用户限流与全局进程上限。结果不持久化，配置临时文件权限为 0600，进程结束后删除工作目录。
 - 公开交付和规则快照端点有独立的内存限流；认证注册、登录与刷新也有限流。
 - 公开 `/rs/*` 只读取 `is_public=1` 的快照。
 - `backend/data/mock-subscriptions/` 可能包含真实节点，禁止提交或在日志/测试输出中打印。
@@ -218,7 +222,7 @@ mihomo -t -f <config> -d <temp-dir>
 
 - transforms、生成器、自定义组、规则与配置保留。
 - 原生节点 overrides 和原生节点 ID 成员被剔除并写入提炼报告。
-- 自建节点结构保留，secret 变为占位符；应用后 `secretRef=null`，由用户在节点页补全。
+- 自建节点结构保留。默认把 secret 变为占位符；用户也可明确选择保留，此时敏感字段只进入 `template_version_secrets` 密文表，payload/API 仅携带 `embeddedSecret` 标记。应用含凭据模板必须确认，并为接收者创建独立的 `custom_node_secrets` 引用。公开/链接分享含凭据模板需要二次确认并写审计记录，审计不含秘密内容。
 - patch 模式因绑定单一源，明确禁止提炼。
 
 `extractTemplate` 与 `instantiateTemplate` 都是纯函数，往返收敛由测试锁定。官方“推荐方案”由 `seed-builtin-templates.ts` 根据 17 个内置规则集生成，因而首启不依赖网络。
@@ -237,7 +241,8 @@ mihomo -t -f <config> -d <temp-dir>
 |---|---|
 | 认证 | `/api/auth/*`, `/api/me`：注册、登录、刷新、退出、资料 |
 | 订阅源 | `/api/sources/*`：URL/上传源 CRUD、同步、同步报告 |
-| 订阅 | `/api/subscriptions/*`：CRUD、草稿、规则快照同步、预览、发布、回滚、版本、追踪、问题、访问 |
+| 订阅 | `/api/subscriptions/*`：CRUD、草稿、规则快照同步、预览、发布、回滚、版本、追踪、问题、访问、服务端节点延迟测试 |
+| 节点 URI | `/api/nodes/parse-uri`：分享链接纯解析与规范化表单字段 |
 | 自建节点 secrets | `/api/secrets/*`：按协议拆分/加密字段、owner 校验后的编辑回显 |
 | 规则库 | `/api/rulesets/*`：目录、导入、快照、更新、diff、解析、应用更新 |
 | 模板 | `/api/templates/*`：列表、提炼预览、保存、实例化、元数据、删除 |
@@ -248,7 +253,7 @@ API 的精确请求体和响应体以各模块 `routes.ts` 及 Swagger `/swagger
 
 ## 16. 验证与变更检查
 
-当前自动化基线为 59 个后端测试，覆盖稳定 ID、BuildConfig 校验、确定性/golden 渲染、发布与回滚、断网交付、上游自动/确认吸收、规则更新与后处理、订阅级 latest 快照同步、追踪、模板往返、token 生命周期、secrets 拆分、规则更新工具及运行时持久化路径。
+自动化包含后端单元/集成/golden 测试与 Playwright 浏览器 E2E，覆盖稳定 ID、BuildConfig 校验、规则全局交付、分享 URI、确定性渲染、发布与回滚、断网交付、上游吸收、规则更新、追踪、模板加密凭据跨用户复制、token 生命周期、secrets 拆分、运行时持久化，以及关键工作台交互。延迟 runner 另以仓库内真实 Mihomo + 本地 204 fixture 验证。
 
 提交前至少运行：
 

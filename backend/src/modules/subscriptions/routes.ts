@@ -3,6 +3,7 @@ import { Elysia } from "elysia";
 import type { AuthService } from "../auth/auth.service";
 import type { UserRecord } from "../users/user.repository";
 import type { SecretStore } from "./secret-store";
+import { applyRateLimitHeaders, type InMemoryRateLimiter } from "../../lib/security/rate-limiter";
 import { SubscriptionError, SubscriptionService, type StartKind } from "./subscription.service";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -25,7 +26,10 @@ const sendError = (error: unknown, set: { status?: number | string }) => {
 
 type Ctx = {
   currentUser: UserRecord;
-  set: { status?: number | string };
+  set: {
+    status?: number | string;
+    headers?: Record<string, string | number | string[] | undefined>;
+  };
   params: Record<string, string>;
   body: unknown;
 };
@@ -33,7 +37,8 @@ type Ctx = {
 export const createSubscriptionRoutes = (
   authService: AuthService,
   service: SubscriptionService,
-  secretStore: SecretStore
+  secretStore: SecretStore,
+  rateLimiter: InMemoryRateLimiter
 ) => {
   return new Elysia({ prefix: "/api" })
     .derive(({ headers }) => ({
@@ -55,7 +60,11 @@ export const createSubscriptionRoutes = (
         const created = service.create(currentUser.id, {
           displayName: str(body, "displayName") ?? "",
           sourceIds,
-          start: { kind, templateId: str(startRaw, "templateId") }
+          start: {
+            kind,
+            templateId: str(startRaw, "templateId"),
+            confirmSensitive: startRaw.confirmSensitive === true
+          }
         });
         set.status = 201;
         return created;
@@ -141,6 +150,23 @@ export const createSubscriptionRoutes = (
     .post("/subscriptions/:id/preview", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
       try {
         return service.preview(currentUser.id, params.id!);
+      } catch (error) {
+        return sendError(error, set);
+      }
+    })
+    .post("/subscriptions/:id/latency-tests", async ({ params, body, currentUser, set }: Ctx) => {
+      try {
+        const limit = rateLimiter.consume(currentUser.id, {
+          keyPrefix: "latency-test",
+          limit: 10,
+          windowMs: 60_000
+        });
+        applyRateLimitHeaders(set, limit);
+        if (!limit.allowed) throw new SubscriptionError("延迟测试过于频繁，请稍后再试。", 429);
+        const nodeIds = isRecord(body) && Array.isArray(body.nodeIds)
+          ? body.nodeIds.filter((value): value is string => typeof value === "string")
+          : undefined;
+        return await service.testLatency(currentUser.id, params.id!, nodeIds);
       } catch (error) {
         return sendError(error, set);
       }

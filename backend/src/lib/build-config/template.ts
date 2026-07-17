@@ -15,7 +15,8 @@ const isNativeNodeRef = (member: GroupMember): boolean =>
   member.kind === "node" && member.nodeId.startsWith("n_");
 
 export const extractTemplate = (
-  config: BuildConfig
+  config: BuildConfig,
+  options: { retainSensitive?: boolean } = {}
 ): { payload: TemplatePayloadV2; report: TemplateExtractionReport } | { error: string } => {
   if (config.mode !== "rebuild") {
     return { error: "保留源配置（patch）模式与源订阅绑定，不能提炼为通用模板。请使用重组模式。" };
@@ -26,16 +27,25 @@ export const extractTemplate = (
   // 自建节点：敏感字段变为占位符
   const custom: TemplateCustomNode[] = config.nodes.custom.map((node) => {
     const { secretRef, ...rest } = node;
-    if (secretRef) {
+    if (secretRef && !options.retainSensitive) {
       report.dropped.push({
         reason: "secret-placeholder",
         detail: `自建节点「${node.name}」的敏感字段不进入模板，应用时需补全。`
       });
     }
-    return { ...rest, secretPlaceholder: secretRef !== null };
+    if (secretRef && options.retainSensitive) {
+      report.recorded.push(`自建节点「${node.name}」的敏感字段将以加密密文随模板版本保存。`);
+    }
+    return {
+      ...rest,
+      secretPlaceholder: Boolean(secretRef) && !options.retainSensitive,
+      ...(secretRef && options.retainSensitive ? { embeddedSecret: true } : {})
+    };
   });
   if (custom.length > 0) {
-    report.recorded.push(`${custom.length} 个自建节点（敏感字段为占位符）`);
+    report.recorded.push(
+      `${custom.length} 个自建节点（${options.retainSensitive ? "选择保留的敏感字段使用独立密文" : "敏感字段为占位符"}）`
+    );
   }
 
   // overrides 绑定原生节点稳定 ID，源无关模板无法携带
@@ -95,7 +105,8 @@ export const extractTemplate = (
 
 export const instantiateTemplate = (
   payload: TemplatePayloadV2,
-  sourceIds: string[]
+  sourceIds: string[],
+  secretRefs: Map<string, string> = new Map()
 ): BuildConfig => {
   return {
     version: 1,
@@ -105,9 +116,9 @@ export const instantiateTemplate = (
       transforms: structuredClone(payload.nodes.transforms),
       overrides: [],
       // 占位符节点带回；secretRef 置空，用户需在节点页补全敏感字段
-      custom: payload.nodes.custom.map(({ secretPlaceholder, ...node }) => ({
+      custom: payload.nodes.custom.map(({ secretPlaceholder: _placeholder, embeddedSecret: _embedded, ...node }) => ({
         ...structuredClone(node),
-        secretRef: null
+        secretRef: secretRefs.get(node.id) ?? null
       }))
     },
     groups: structuredClone(payload.groups),

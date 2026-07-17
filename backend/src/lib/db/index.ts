@@ -221,8 +221,13 @@ export const getDatabaseHealth = (): DatabaseHealth => {
 
 // 单条查询取得所有依赖 SecretBox 的密文，避免“先 count、后 sample”间的观察窗口，
 // 并让启动门禁覆盖自建节点与长期订阅 token 的每一条记录。
-export const listEncryptedSecretRecords = (db: Database): EncryptedSecretRecord[] =>
-  db
+export const listEncryptedSecretRecords = (db: Database): EncryptedSecretRecord[] => {
+  const hasTemplateSecrets = Boolean(
+    db.query<{ present: number }>(
+      "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'template_version_secrets'"
+    ).get()
+  );
+  return db
     .query<EncryptedSecretRecord>(`
       SELECT 'custom_node_secret' AS kind, id, ciphertext
       FROM custom_node_secrets
@@ -230,9 +235,13 @@ export const listEncryptedSecretRecords = (db: Database): EncryptedSecretRecord[
       SELECT 'subscription_token' AS kind, id, token_ciphertext AS ciphertext
       FROM subscription_tokens
       WHERE token_ciphertext IS NOT NULL
+      ${hasTemplateSecrets ? `UNION ALL
+        SELECT 'template_version_secret' AS kind, template_version_id || ':' || node_id AS id, ciphertext
+        FROM template_version_secrets` : ""}
       ORDER BY kind ASC, id ASC
     `)
     .all();
+};
 
 export const getBackendDataDir = () => {
   return dirname(getRuntimeConfig().databasePath);

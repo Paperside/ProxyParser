@@ -21,6 +21,8 @@ export interface RuntimeConfig {
   subscriptionTempTokenTtlSeconds: number;
   sourceSyncDefaultIntervalMinutes: number;
   rulesetCheckIntervalMinutes: number;
+  latencyTestUrl: string;
+  latencyTimeoutMs: number;
 }
 
 const runtimeDir = dirname(fileURLToPath(import.meta.url));
@@ -132,7 +134,9 @@ export const getRuntimeConfig = (): RuntimeConfig => {
       15,
       7 * 24 * 60
     ),
-    rulesetCheckIntervalMinutes: readNumberEnv("RULESET_CHECK_INTERVAL_MINUTES", 24 * 60)
+    rulesetCheckIntervalMinutes: readNumberEnv("RULESET_CHECK_INTERVAL_MINUTES", 24 * 60),
+    latencyTestUrl: process.env.LATENCY_TEST_URL ?? "https://cp.cloudflare.com/generate_204",
+    latencyTimeoutMs: readNumberEnvInRange("LATENCY_TIMEOUT_MS", 5_000, 1_000, 30_000)
   };
 };
 
