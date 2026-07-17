@@ -186,6 +186,39 @@ export const createSubscriptionRoutes = (
         }
       }
     )
+    .post(
+      "/subscriptions/:id/publish-candidates",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          const limit = rateLimiter.consume(currentUser.id, {
+            keyPrefix: "publish-candidate",
+            limit: 6,
+            windowMs: 60_000
+          });
+          applyRateLimitHeaders(set, limit);
+          if (!limit.allowed) {
+            throw new SubscriptionError("发布候选生成过于频繁，请稍后再试。", 429);
+          }
+          return service.preparePublishCandidate(currentUser.id, params.id!);
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
+    .post(
+      "/subscriptions/:id/publish-candidates/:candidateId/validate",
+      async ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          return await service.validatePublishCandidate(
+            currentUser.id,
+            params.id!,
+            params.candidateId!
+          );
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
     .post("/subscriptions/:id/latency-tests", async ({ params, body, currentUser, set }: Ctx) => {
       try {
         const limit = rateLimiter.consume(currentUser.id, {
@@ -207,6 +240,8 @@ export const createSubscriptionRoutes = (
       try {
         if (
           !isRecord(body) ||
+          typeof body.candidateId !== "string" ||
+          body.candidateId.length === 0 ||
           typeof body.expectedDraftRevision !== "number" ||
           !Number.isInteger(body.expectedDraftRevision) ||
           body.expectedDraftRevision < 0 ||
@@ -214,12 +249,12 @@ export const createSubscriptionRoutes = (
           !/^[a-f0-9]{64}$/.test(body.expectedRenderedHash)
         ) {
           throw new SubscriptionError(
-            "缺少有效的 expectedDraftRevision 或 expectedRenderedHash。",
+            "缺少有效的 candidateId、expectedDraftRevision 或 expectedRenderedHash。",
             422
           );
         }
-        const release = service.publish(currentUser.id, params.id!, {
-          trigger: "manual",
+        const release = service.publishPreparedCandidate(currentUser.id, params.id!, {
+          candidateId: body.candidateId,
           expectedDraftRevision: body.expectedDraftRevision,
           expectedRenderedHash: body.expectedRenderedHash
         });

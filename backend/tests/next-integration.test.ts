@@ -75,7 +75,11 @@ const defaultNodes = [
 ];
 
 const createTestContext = (
-  options: { mihomo?: boolean; latencyRunner?: SubscriptionServiceOptions["latencyRunner"] } = {}
+  options: {
+    mihomo?: boolean;
+    latencyRunner?: SubscriptionServiceOptions["latencyRunner"];
+    mihomoValidator?: SubscriptionServiceOptions["mihomoValidator"];
+  } = {}
 ) => {
   const db = new Database(":memory:");
   db.exec("PRAGMA foreign_keys = ON;");
@@ -110,7 +114,8 @@ const createTestContext = (
             assetsDir: resolve(import.meta.dir, "..", "assets")
           }
         : { mihomoPath: null, dataDir: "/nonexistent-dir", assetsDir: "/nonexistent-dir" },
-      latencyRunner: options.latencyRunner
+      latencyRunner: options.latencyRunner,
+      mihomoValidator: options.mihomoValidator
     }
   );
   sourceService.registerOnSynced((source, report) =>
@@ -736,6 +741,131 @@ describe("上游吸收", () => {
     expect(release.renderedYaml).toContain("JP-Preview");
   });
 
+  test("发布候选只渲染一次、Mihomo 只校验一次，并原子发布同一份字节", async () => {
+    let validationCalls = 0;
+    let validatedYaml = "";
+    const ctx = createTestContext({
+      mihomoValidator: async (yamlText) => {
+        validationCalls += 1;
+        validatedYaml = yamlText;
+        return {
+          available: true,
+          passed: true,
+          exitCode: 0,
+          output: "configuration test is successful",
+          durationMs: 12
+        };
+      }
+    });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "候选原子发布",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+
+    let rulesetSnapshotReads = 0;
+    const originalFindSnapshot = ctx.rulesetRepository.findSnapshot.bind(ctx.rulesetRepository);
+    ctx.rulesetRepository.findSnapshot = (hash: string) => {
+      rulesetSnapshotReads += 1;
+      return originalFindSnapshot(hash);
+    };
+
+    const candidate = ctx.subscriptionService.preparePublishCandidate(
+      ctx.userId,
+      subscription.id
+    );
+    const readsAfterRender = rulesetSnapshotReads;
+    expect(readsAfterRender).toBeGreaterThan(0);
+    expect(candidate.phase).toBe("rendered");
+    expect(candidate).not.toHaveProperty("renderedYaml");
+
+    const [validated, duplicateValidation] = await Promise.all([
+      ctx.subscriptionService.validatePublishCandidate(
+        ctx.userId,
+        subscription.id,
+        candidate.candidateId
+      ),
+      ctx.subscriptionService.validatePublishCandidate(
+        ctx.userId,
+        subscription.id,
+        candidate.candidateId
+      )
+    ]);
+    expect(validated.phase).toBe("validated");
+    expect(duplicateValidation).toEqual(validated);
+    expect(validated.mihomo?.passed).toBe(true);
+    expect(validationCalls).toBe(1);
+    expect(rulesetSnapshotReads).toBe(readsAfterRender);
+
+    const cachedValidation = await ctx.subscriptionService.validatePublishCandidate(
+      ctx.userId,
+      subscription.id,
+      candidate.candidateId
+    );
+    expect(cachedValidation).toEqual(validated);
+    expect(validationCalls).toBe(1);
+
+    const release = ctx.subscriptionService.publishPreparedCandidate(
+      ctx.userId,
+      subscription.id,
+      {
+        candidateId: candidate.candidateId,
+        expectedDraftRevision: candidate.draftRevision,
+        expectedRenderedHash: candidate.renderedHash
+      }
+    );
+    expect(release.renderedYaml).toBe(validatedYaml);
+    expect(release.renderedHash).toBe(candidate.renderedHash);
+    expect(release.validation.mihomo?.durationMs).toBe(12);
+    expect(validationCalls).toBe(1);
+    expect(rulesetSnapshotReads).toBe(readsAfterRender);
+  });
+
+  test("发布候选校验后上游快照变化时拒绝提升旧候选", async () => {
+    const ctx = createTestContext({
+      mihomoValidator: async () => ({
+        available: true,
+        passed: true,
+        exitCode: 0,
+        output: null,
+        durationMs: 1
+      })
+    });
+    let servedNodes = defaultNodes;
+    globalThis.fetch = (async () =>
+      new Response(sourceYaml(servedNodes), { status: 200 })) as unknown as typeof fetch;
+    const urlSource = await ctx.sourceService.create(ctx.userId, {
+      displayName: "候选快照源",
+      sourceUrl: "https://candidate-snapshot.test/sub"
+    });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "候选快照保护",
+      sourceIds: [urlSource.id],
+      start: { kind: "recommended" }
+    });
+    const candidate = ctx.subscriptionService.preparePublishCandidate(ctx.userId, subscription.id);
+    await ctx.subscriptionService.validatePublishCandidate(
+      ctx.userId,
+      subscription.id,
+      candidate.candidateId
+    );
+
+    servedNodes = [
+      ...defaultNodes,
+      { name: "New", type: "ss", server: "new.test", port: 443, cipher: "aes-128-gcm", password: "new" }
+    ];
+    await ctx.sourceService.sync(urlSource.id);
+
+    expect(() =>
+      ctx.subscriptionService.publishPreparedCandidate(ctx.userId, subscription.id, {
+        candidateId: candidate.candidateId,
+        expectedDraftRevision: candidate.draftRevision,
+        expectedRenderedHash: candidate.renderedHash
+      })
+    ).toThrow("上游订阅已在候选版本生成后变化");
+    expect(ctx.subscriptionRepository.listReleases(subscription.id)).toHaveLength(0);
+  });
+
   test("工作区索引不读取规则正文，完整 YAML 仅由按需预览返回", () => {
     const ctx = createTestContext();
     const { subscription } = ctx.subscriptionService.create(ctx.userId, {
@@ -798,7 +928,15 @@ describe("上游吸收", () => {
   });
 
   test("预览路由默认返回轻量 JSON，YAML 路由返回带校验头的原始正文", async () => {
-    const ctx = createTestContext();
+    const ctx = createTestContext({
+      mihomoValidator: async () => ({
+        available: true,
+        passed: true,
+        exitCode: 0,
+        output: null,
+        durationMs: 3
+      })
+    });
     const { subscription } = ctx.subscriptionService.create(ctx.userId, {
       displayName: "预览路由",
       sourceIds: [ctx.source.id],
@@ -867,6 +1005,40 @@ describe("上游吸收", () => {
     const yamlText = await yamlResponse.text();
     expect(Buffer.byteLength(yamlText, "utf8")).toBe(previewPayload.yamlBytes);
     expect(yamlText).toContain("proxy-groups:");
+
+    const candidateResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/publish-candidates`, {
+        method: "POST"
+      })
+    );
+    expect(candidateResponse.status).toBe(200);
+    const candidate = await candidateResponse.json() as {
+      candidateId: string;
+      phase: string;
+      draftRevision: number;
+      renderedHash: string;
+    };
+    expect(candidate.phase).toBe("rendered");
+    const validationResponse = await app.handle(
+      new Request(
+        `http://localhost/api/subscriptions/${subscription.id}/publish-candidates/${candidate.candidateId}/validate`,
+        { method: "POST" }
+      )
+    );
+    expect(validationResponse.status).toBe(200);
+    expect((await validationResponse.json() as { phase: string }).phase).toBe("validated");
+    const publishResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateId: candidate.candidateId,
+          expectedDraftRevision: candidate.draftRevision,
+          expectedRenderedHash: candidate.renderedHash
+        })
+      })
+    );
+    expect(publishResponse.status).toBe(200);
   });
 
   test("auto 策略遇到未发布草稿时只标记变化，不夹带草稿发布", async () => {

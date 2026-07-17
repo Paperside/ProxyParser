@@ -35,9 +35,12 @@ export const SettingsPage = () => {
               <dt className="text-faint">mihomo 内核校验</dt>
               <dd>
                 <StatusBadge
-                  ok={health.data.mihomoGate.available}
+                  ok={
+                    health.data.mihomoGate.available &&
+                    health.data.mihomoGate.offlineAssetsReady
+                  }
                   okText="已启用（发布前会用真实内核校验配置）"
-                  failText="未启用（降级为结构校验；运行 bun backend/scripts/fetch-mihomo.ts 启用）"
+                  failText="未就绪（需要 Mihomo 内核及完整离线 geodata）"
                 />
               </dd>
               <dt className="text-faint">后台调度器</dt>

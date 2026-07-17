@@ -129,6 +129,41 @@ test("工作区不自动生成完整预览，大 YAML 仅按需下载", async ({
   await expect(page.locator("aside pre")).toHaveCount(0);
 });
 
+test("发布弹窗先展示候选结果，Mihomo 通过后才允许原子发布", async ({ page }) => {
+  const subscriptionId = await registerAndCreateSubscription(page);
+  let releaseValidation: (() => void) | null = null;
+  let publishedBody: Record<string, unknown> | null = null;
+
+  await page.route(
+    `**/api/subscriptions/${subscriptionId}/publish-candidates/*/validate`,
+    async (route) => {
+      await new Promise<void>((resolve) => { releaseValidation = resolve; });
+      const response = await route.fetch();
+      await route.fulfill({ response });
+    }
+  );
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === `/api/subscriptions/${subscriptionId}/publish`) {
+      publishedBody = request.postDataJSON() as Record<string, unknown>;
+    }
+  });
+
+  await page.goto(`/subscriptions/${subscriptionId}/overview`);
+  await page.getByRole("button", { name: "预览并发布" }).click();
+  await expect.poll(() => releaseValidation).not.toBeNull();
+  await expect(page.getByText("渲染完成，Mihomo 内核正在校验", { exact: false })).toBeVisible();
+  await expect(page.getByText(/节点/).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "确认发布" })).toBeDisabled();
+
+  releaseValidation?.();
+  await expect(page.getByText("Mihomo 内核校验通过", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "确认发布" })).toBeEnabled();
+  await page.getByRole("button", { name: "确认发布" }).click();
+  await expect.poll(() => publishedBody).not.toBeNull();
+  expect(typeof publishedBody?.candidateId).toBe("string");
+  expect(publishedBody?.expectedRenderedHash).toMatch(/^[a-f0-9]{64}$/);
+});
+
 test("单节点测速互不禁用，第三个请求在客户端排队且认证刷新只执行一次", async ({ page }) => {
   const subscriptionId = await registerAndCreateSubscription(page);
   const firstUnauthorized: Array<{ route: Route; release: () => void }> = [];

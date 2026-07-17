@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "name": "geosite.dat",
+      "sourceUrl": "https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geosite.dat",
+      "sha256": "b1b7df40eb4875866bc667fb818525365cee85d8e64d29c339799794c6c84917",
+      "size": 4211278
+    },
+    {
+      "name": "country.mmdb",
+      "sourceUrl": "https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/country.mmdb",
+      "sha256": "7b3ab19d9af7a6253c06b8444f0c9b143d3e188a54c1bab8991ddb113bd54b9f",
+      "size": 8075521
+    },
+    {
+      "name": "ASN.mmdb",
+      "sourceUrl": "https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/GeoLite2-ASN.mmdb",
+      "sha256": "d6535df17b3026a3a0c91f07632ff258fb833d6f1140a02460754c3182c81b57",
+      "size": 12094326
+    }
+  ]
+}

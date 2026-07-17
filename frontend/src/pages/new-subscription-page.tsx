@@ -13,9 +13,10 @@ import { usageSummary } from "../lib/format";
 import {
   useSourceMutations,
   useSources,
-  usePreview,
+  usePreparePublishCandidate,
   useSubscriptionMutations,
-  useTemplates
+  useTemplates,
+  useValidatePublishCandidate
 } from "../lib/hooks";
 import type { IssuedToken, SourceSummary } from "../lib/types";
 
@@ -374,20 +375,43 @@ const PublishAndFinish = ({
   onDone: () => void;
 }) => {
   const mutations = useSubscriptionMutations(subscriptionId);
-  const preview = usePreview(subscriptionId, true);
+  const prepareCandidate = usePreparePublishCandidate(subscriptionId);
+  const candidateForValidation =
+    prepareCandidate.data?.phase === "rendered"
+      ? prepareCandidate.data.candidateId
+      : null;
+  const validateCandidate = useValidatePublishCandidate(
+    subscriptionId,
+    candidateForValidation
+  );
   const [published, setPublished] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const publishAttempted = useRef(false);
 
   useEffect(() => {
-    if (publishAttempted.current || !preview.data) return;
+    const candidate = prepareCandidate.data;
+    if (!candidate) return;
+    if (candidate.phase === "structural_failed") {
+      setError("首次发布的结构校验未通过，请进入工作台处理提示后重试。");
+    }
+  }, [prepareCandidate.data]);
+
+  useEffect(() => {
+    const candidate = validateCandidate.data;
+    if (!candidate || publishAttempted.current) return;
+    if (candidate.phase === "validation_failed" || candidate.mihomo?.passed !== true) {
+      setError(candidate.mihomo?.output ?? "Mihomo 内核校验未通过。");
+      return;
+    }
+    if (candidate.phase !== "validated") return;
     publishAttempted.current = true;
     setError(null);
     mutations.publish
       .mutateAsync({
         subscriptionId,
-        expectedDraftRevision: preview.data.draftRevision,
-        expectedRenderedHash: preview.data.renderedHash
+        candidateId: candidate.candidateId,
+        expectedDraftRevision: candidate.draftRevision,
+        expectedRenderedHash: candidate.renderedHash
       })
       .then(() => {
         setError(null);
@@ -395,13 +419,14 @@ const PublishAndFinish = ({
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "发布失败"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preview.data]);
+  }, [mutations.publish, subscriptionId, validateCandidate.data]);
 
   useEffect(() => {
-    if (preview.isError && !publishAttempted.current) {
-      setError(preview.error instanceof Error ? preview.error.message : "预览失败");
+    const failure = prepareCandidate.error ?? validateCandidate.error;
+    if (failure && !publishAttempted.current) {
+      setError(failure instanceof Error ? failure.message : "首次发布准备失败");
     }
-  }, [preview.error, preview.isError]);
+  }, [prepareCandidate.error, validateCandidate.error]);
 
   if (error) {
     return (
@@ -419,9 +444,15 @@ const PublishAndFinish = ({
   }
 
   if (!published) {
+    const candidate = validateCandidate.data ?? prepareCandidate.data;
+    const status = !candidate
+      ? "正在生成首个不可变候选版本…"
+      : candidate.phase === "rendered" || candidate.phase === "validating"
+        ? "候选版本已生成，正在运行 Mihomo 内核校验…"
+        : "Mihomo 校验已通过，正在原子发布…";
     return (
       <Card>
-        <p className="text-sm text-muted">正在渲染并校验首个版本…（含 mihomo 内核校验）</p>
+        <p className="text-sm text-muted">{status}</p>
       </Card>
     );
   }

@@ -20,7 +20,7 @@ import {
   BoundedFifoSemaphore,
   SemaphoreQueueFullError
 } from "../../lib/concurrency/bounded-fifo-semaphore";
-import { diffDocuments } from "../../lib/render-v2/release-diff";
+import { diffDocuments, type DiffSummary } from "../../lib/render-v2/release-diff";
 import { traceQuery, type TraceResult } from "../../lib/trace/rule-tracer";
 import {
   MihomoLatencyError,
@@ -30,6 +30,8 @@ import {
 import {
   isMihomoAvailable,
   validateWithMihomo,
+  validateWithMihomoAsync,
+  type MihomoValidation,
   type MihomoGateOptions
 } from "../../lib/validate/mihomo-gate";
 import type { SecretStore } from "./secret-store";
@@ -73,6 +75,41 @@ export interface SubscriptionServiceOptions {
   latencyTestUrl?: string;
   latencyTimeoutMs?: number;
   latencyRunner?: typeof runMihomoLatencyTests;
+  mihomoValidator?: typeof validateWithMihomoAsync;
+  publishCandidateTtlMs?: number;
+}
+
+export type PublishCandidatePhase =
+  | "rendered"
+  | "structural_failed"
+  | "validating"
+  | "validated"
+  | "validation_failed";
+
+export interface PublishCandidateResult {
+  candidateId: string;
+  expiresAt: string;
+  phase: PublishCandidatePhase;
+  draftRevision: number;
+  renderedHash: string;
+  yamlBytes: number;
+  issues: EvaluateIssue[];
+  stats: EvaluateResult["stats"];
+  nodeIndex: EvaluateResult["nodeIndex"];
+  groupIndex: EvaluateResult["groupIndex"];
+  diffVsActive: DiffSummary | null;
+  activeReleaseSeq: number | null;
+  mihomo: MihomoValidation | null;
+}
+
+interface PublishCandidate extends PublishCandidateResult {
+  ownerUserId: string;
+  subscriptionId: string;
+  buildConfig: BuildConfig;
+  sourceSnapshotIds: Record<string, string>;
+  renderedYaml: string;
+  diffSummary: DiffSummary;
+  createdAtMs: number;
 }
 
 export interface SyncLatestRulesetsResult {
@@ -94,6 +131,8 @@ export interface SyncLatestRulesetsResult {
 }
 
 const sha256Hex = (input: string) => createHash("sha256").update(input).digest("hex");
+const MAX_PUBLISH_CANDIDATE_BYTES = 64 * 1024 * 1024;
+const MAX_PUBLISH_CANDIDATES = 4;
 
 const blankBuildConfig = (sourceIds: string[], mode: "rebuild" | "patch"): BuildConfig => ({
   version: 1,
@@ -123,6 +162,9 @@ const blankBuildConfig = (sourceIds: string[], mode: "rebuild" | "patch"): Build
 
 export class SubscriptionService {
   private readonly latencySemaphore = new BoundedFifoSemaphore(2, 8);
+  private readonly publishCandidates = new Map<string, PublishCandidate>();
+  private readonly candidateValidations = new Map<string, Promise<PublishCandidateResult>>();
+  private publishCandidateBytes = 0;
   constructor(
     private readonly repository: SubscriptionRepository,
     private readonly sourceRepository: UpstreamSourceRepository,
@@ -411,6 +453,179 @@ export class SubscriptionService {
     };
   }
 
+  preparePublishCandidate(ownerUserId: string, id: string): PublishCandidateResult {
+    const record = this.requireOwned(ownerUserId, id);
+    const config = record.draftBuildConfig ?? record.buildConfig;
+    if (!config) {
+      throw new SubscriptionError("尚无可发布的构建配置。", 409);
+    }
+    this.assertConfigReferencesOwned(record.ownerUserId, config);
+
+    const result = this.evaluateConfig(config, record.ownerUserId);
+    const activeRelease = record.activeReleaseId
+      ? this.repository.findReleaseArtifactById(record.activeReleaseId)
+      : null;
+    const diffSummary = diffDocuments(
+      activeRelease ? this.parseReleaseDocument(activeRelease) : null,
+      result.document
+    );
+    const now = Date.now();
+    const ttlMs = this.options.publishCandidateTtlMs ?? 10 * 60_000;
+    const candidate: PublishCandidate = {
+      candidateId: createId("pubc"),
+      ownerUserId,
+      subscriptionId: id,
+      createdAtMs: now,
+      expiresAt: new Date(now + ttlMs).toISOString(),
+      phase: result.issues.some((issue) => issue.severity === "error")
+        ? "structural_failed"
+        : "rendered",
+      draftRevision: record.draftRevision,
+      buildConfig: structuredClone(config),
+      sourceSnapshotIds: this.collectSourceSnapshotIds(config),
+      renderedYaml: result.yamlText,
+      renderedHash: result.renderedHash,
+      yamlBytes: Buffer.byteLength(result.yamlText, "utf8"),
+      issues: result.issues,
+      stats: result.stats,
+      nodeIndex: result.nodeIndex,
+      groupIndex: result.groupIndex,
+      diffSummary,
+      diffVsActive: activeRelease ? diffSummary : null,
+      activeReleaseSeq: activeRelease?.seq ?? null,
+      mihomo: null
+    };
+    this.storePublishCandidate(candidate);
+    return this.toPublishCandidateResult(candidate);
+  }
+
+  validatePublishCandidate(
+    ownerUserId: string,
+    id: string,
+    candidateId: string
+  ): Promise<PublishCandidateResult> {
+    const candidate = this.requirePublishCandidate(ownerUserId, id, candidateId);
+    if (candidate.phase === "structural_failed") {
+      return Promise.resolve(this.toPublishCandidateResult(candidate));
+    }
+    if (candidate.phase === "validated" || candidate.phase === "validation_failed") {
+      return Promise.resolve(this.toPublishCandidateResult(candidate));
+    }
+    const existing = this.candidateValidations.get(candidateId);
+    if (existing) return existing;
+
+    this.assertPublishCandidateInputsCurrent(candidate);
+    candidate.phase = "validating";
+    const validationPromise = (async () => {
+      let mihomo: MihomoValidation;
+      try {
+        mihomo = await (this.options.mihomoValidator ?? validateWithMihomoAsync)(
+          candidate.renderedYaml,
+          this.options.mihomo
+        );
+      } catch (error) {
+        mihomo = {
+          available: true,
+          passed: false,
+          exitCode: null,
+          output: error instanceof Error ? error.message : "Mihomo 内核校验异常终止。",
+          durationMs: null
+        };
+      }
+      candidate.mihomo = mihomo;
+      candidate.phase = mihomo.available && mihomo.passed === true
+        ? "validated"
+        : "validation_failed";
+      return this.toPublishCandidateResult(candidate);
+    })().finally(() => {
+      this.candidateValidations.delete(candidateId);
+    });
+    this.candidateValidations.set(candidateId, validationPromise);
+    return validationPromise;
+  }
+
+  publishPreparedCandidate(
+    ownerUserId: string,
+    id: string,
+    input: {
+      candidateId: string;
+      expectedDraftRevision: number;
+      expectedRenderedHash: string;
+    }
+  ) {
+    const record = this.requireOwned(ownerUserId, id);
+    const candidate = this.requirePublishCandidate(ownerUserId, id, input.candidateId);
+    if (
+      candidate.phase !== "validated" ||
+      !candidate.mihomo?.available ||
+      candidate.mihomo.passed !== true
+    ) {
+      throw new SubscriptionError("Mihomo 内核校验尚未通过，不能发布该候选版本。", 409);
+    }
+    if (
+      candidate.draftRevision !== input.expectedDraftRevision ||
+      record.draftRevision !== input.expectedDraftRevision
+    ) {
+      throw new SubscriptionError("草稿已在候选版本生成后变化，请重新预览并校验。", 409);
+    }
+    if (candidate.renderedHash !== input.expectedRenderedHash) {
+      throw new SubscriptionError("候选版本 hash 不匹配，请重新预览并校验。", 409);
+    }
+    this.assertPublishCandidateInputsCurrent(candidate);
+    this.repository.replaceIssues(id, candidate.issues);
+
+    let release: ReleaseRecord;
+    try {
+      release = this.repository.createRelease({
+        subscriptionId: id,
+        buildConfig: candidate.buildConfig,
+        sourceSnapshotIds: candidate.sourceSnapshotIds,
+        renderedYaml: candidate.renderedYaml,
+        renderedHash: candidate.renderedHash,
+        diffSummary: candidate.diffSummary,
+        trigger: "manual",
+        triggerDetail: null,
+        validation: { structuralErrors: 0, mihomo: candidate.mihomo },
+        createdBy: ownerUserId,
+        expectedDraftRevision: candidate.draftRevision
+      });
+    } catch (error) {
+      if (error instanceof DraftRevisionConflictError) {
+        throw new SubscriptionError("草稿已在发布过程中变化，请重新预览并校验。", 409);
+      }
+      throw error;
+    }
+
+    const primarySource = candidate.buildConfig.sources[0]
+      ? this.sourceRepository.findById(candidate.buildConfig.sources[0].sourceId)
+      : null;
+    if (primarySource) {
+      this.repository.setUsage(id, primarySource.headers, primarySource.usage);
+    }
+    this.events.insert({
+      ownerUserId: record.ownerUserId,
+      entityKind: "subscription",
+      entityId: id,
+      kind: "release.published",
+      payload: {
+        displayName: record.displayName,
+        seq: release.seq,
+        trigger: "manual",
+        triggerDetail: null,
+        diff: {
+          nodesAdded: candidate.diffSummary.nodes.added.length,
+          nodesRemoved: candidate.diffSummary.nodes.removed.length,
+          nodesRenamed: candidate.diffSummary.nodes.renamed.length,
+          nodesUpdated: candidate.diffSummary.nodes.updated.length,
+          ruleCountDelta: candidate.diffSummary.ruleCountDelta
+        }
+      }
+    });
+    this.removePublishCandidate(candidate.candidateId);
+    this.refreshHealth(id);
+    return release;
+  }
+
   async testLatency(ownerUserId: string, id: string, nodeIds?: string[]): Promise<{
     testUrl: string;
     timeoutMs: number;
@@ -559,13 +774,7 @@ export class SubscriptionService {
       result.document
     );
 
-    const sourceSnapshotIds: Record<string, string> = {};
-    for (const sourceRef of config.sources) {
-      const source = this.sourceRepository.findById(sourceRef.sourceId);
-      if (source?.lastSuccessfulSnapshotId) {
-        sourceSnapshotIds[sourceRef.sourceId] = source.lastSuccessfulSnapshotId;
-      }
-    }
+    const sourceSnapshotIds = this.collectSourceSnapshotIds(config);
 
     let release: ReleaseRecord;
     try {
@@ -1196,6 +1405,105 @@ export class SubscriptionService {
         displayName: record.displayName,
         draftRevision: record.draftRevision
       }));
+  }
+
+  private collectSourceSnapshotIds(config: BuildConfig): Record<string, string> {
+    const sourceSnapshotIds: Record<string, string> = {};
+    for (const sourceRef of config.sources) {
+      const source = this.sourceRepository.findById(sourceRef.sourceId);
+      if (source?.lastSuccessfulSnapshotId) {
+        sourceSnapshotIds[sourceRef.sourceId] = source.lastSuccessfulSnapshotId;
+      }
+    }
+    return sourceSnapshotIds;
+  }
+
+  private prunePublishCandidates() {
+    const now = Date.now();
+    for (const candidate of [...this.publishCandidates.values()]) {
+      if (new Date(candidate.expiresAt).getTime() <= now) {
+        this.removePublishCandidate(candidate.candidateId);
+      }
+    }
+  }
+
+  private removePublishCandidate(candidateId: string) {
+    const candidate = this.publishCandidates.get(candidateId);
+    if (!candidate) return;
+    this.publishCandidateBytes = Math.max(0, this.publishCandidateBytes - candidate.yamlBytes);
+    this.publishCandidates.delete(candidateId);
+    this.candidateValidations.delete(candidateId);
+  }
+
+  private storePublishCandidate(candidate: PublishCandidate) {
+    this.prunePublishCandidates();
+    if (candidate.yamlBytes > MAX_PUBLISH_CANDIDATE_BYTES) {
+      throw new SubscriptionError("候选订阅文件超过 64 MiB，无法安全保留待发布产物。", 413);
+    }
+    for (const existing of [...this.publishCandidates.values()]) {
+      if (
+        existing.ownerUserId === candidate.ownerUserId &&
+        existing.subscriptionId === candidate.subscriptionId
+      ) {
+        this.removePublishCandidate(existing.candidateId);
+      }
+    }
+    while (
+      this.publishCandidates.size >= MAX_PUBLISH_CANDIDATES ||
+      this.publishCandidateBytes + candidate.yamlBytes > MAX_PUBLISH_CANDIDATE_BYTES
+    ) {
+      const oldest = this.publishCandidates.values().next().value as PublishCandidate | undefined;
+      if (!oldest) break;
+      this.removePublishCandidate(oldest.candidateId);
+    }
+    this.publishCandidates.set(candidate.candidateId, candidate);
+    this.publishCandidateBytes += candidate.yamlBytes;
+  }
+
+  private requirePublishCandidate(
+    ownerUserId: string,
+    subscriptionId: string,
+    candidateId: string
+  ): PublishCandidate {
+    this.prunePublishCandidates();
+    const candidate = this.publishCandidates.get(candidateId);
+    if (
+      !candidate ||
+      candidate.ownerUserId !== ownerUserId ||
+      candidate.subscriptionId !== subscriptionId
+    ) {
+      throw new SubscriptionError("发布候选不存在或已过期，请重新生成。", 404);
+    }
+    return candidate;
+  }
+
+  private assertPublishCandidateInputsCurrent(candidate: PublishCandidate) {
+    const record = this.requireOwned(candidate.ownerUserId, candidate.subscriptionId);
+    if (record.draftRevision !== candidate.draftRevision) {
+      throw new SubscriptionError("草稿已在候选版本生成后变化，请重新预览并校验。", 409);
+    }
+    const currentSourceSnapshotIds = this.collectSourceSnapshotIds(candidate.buildConfig);
+    if (JSON.stringify(currentSourceSnapshotIds) !== JSON.stringify(candidate.sourceSnapshotIds)) {
+      throw new SubscriptionError("上游订阅已在候选版本生成后变化，请重新预览并校验。", 409);
+    }
+  }
+
+  private toPublishCandidateResult(candidate: PublishCandidate): PublishCandidateResult {
+    return {
+      candidateId: candidate.candidateId,
+      expiresAt: candidate.expiresAt,
+      phase: candidate.phase,
+      draftRevision: candidate.draftRevision,
+      renderedHash: candidate.renderedHash,
+      yamlBytes: candidate.yamlBytes,
+      issues: candidate.issues,
+      stats: candidate.stats,
+      nodeIndex: candidate.nodeIndex,
+      groupIndex: candidate.groupIndex,
+      diffVsActive: candidate.diffVsActive,
+      activeReleaseSeq: candidate.activeReleaseSeq,
+      mihomo: candidate.mihomo
+    };
   }
 
   // ── 求值输入组装 ────────────────────────────────────────────

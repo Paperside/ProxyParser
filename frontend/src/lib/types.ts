@@ -175,6 +175,18 @@ export interface PreviewResult {
   activeReleaseSeq: number | null;
 }
 
+export interface PublishCandidateResult extends PreviewResult {
+  candidateId: string;
+  expiresAt: string;
+  phase:
+    | "rendered"
+    | "structural_failed"
+    | "validating"
+    | "validated"
+    | "validation_failed";
+  mihomo: MihomoValidationDto | null;
+}
+
 export interface WorkspaceIndexResult {
   draftRevision: number;
   issues: EvaluateIssueDto[];
@@ -402,6 +414,6 @@ export interface EventEntry {
 export interface InstanceHealth {
   database: { path: string; migrationCount: number; tableCount: number; rulesetCatalogCount: number };
   scheduler: { lastTickAt: string | null };
-  mihomoGate: { available: boolean };
+  mihomoGate: { available: boolean; offlineAssetsReady: boolean };
   publicBaseUrl: string;
 }

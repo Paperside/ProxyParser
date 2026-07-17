@@ -15,7 +15,7 @@ import {
   verifySecretBoxCiphertexts
 } from "./lib/security/secret-box";
 import { Scheduler } from "./lib/scheduler/scheduler";
-import { isMihomoAvailable } from "./lib/validate/mihomo-gate";
+import { isMihomoAvailable, verifyMihomoGeodata } from "./lib/validate/mihomo-gate";
 import { AuditLogRepository } from "./modules/audit/audit-log.repository";
 import { AuditLogService } from "./modules/audit/audit-log.service";
 import { AuthService } from "./modules/auth/auth.service";
@@ -104,6 +104,9 @@ const main = async () => {
     dataDir: runtimeConfig.mihomoDataDir,
     assetsDir: runtimeConfig.assetsDir
   });
+  // 离线 geodata 是发布门禁的一部分。缺失或被篡改时启动即失败，
+  // 让部署健康检查回滚，而不是等到用户确认发布时才暴露问题。
+  verifyMihomoGeodata(runtimeConfig.assetsDir);
 
   const app = new Elysia()
     .use(cors({ origin: true }))
@@ -140,7 +143,7 @@ const main = async () => {
       return {
         database: getDatabaseHealth(),
         scheduler: { lastTickAt: scheduler.lastTickAt },
-        mihomoGate: { available: mihomoAvailable },
+        mihomoGate: { available: mihomoAvailable, offlineAssetsReady: true },
         publicBaseUrl: runtimeConfig.publicBaseUrl
       };
     })

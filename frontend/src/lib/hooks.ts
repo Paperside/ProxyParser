@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "../providers/auth-provider";
@@ -12,6 +13,7 @@ import type {
   ParsedNodeUriDto,
   PreviewResult,
   PreviewYamlResult,
+  PublishCandidateResult,
   ReleaseDetail,
   ReleaseMutationResult,
   ReleaseSummary,
@@ -194,16 +196,18 @@ export const useSubscriptionMutations = (id?: string) => {
     publish: useMutation({
       mutationFn: ({
         subscriptionId,
+        candidateId,
         expectedDraftRevision,
         expectedRenderedHash
       }: {
         subscriptionId: string;
+        candidateId: string;
         expectedDraftRevision: number;
         expectedRenderedHash: string;
       }) =>
         authorizedRequest<ReleaseMutationResult>(`/api/subscriptions/${subscriptionId}/publish`, {
           method: "POST",
-          body: JSON.stringify({ expectedDraftRevision, expectedRenderedHash })
+          body: JSON.stringify({ candidateId, expectedDraftRevision, expectedRenderedHash })
         }),
       onSuccess: (_release, { subscriptionId }) => {
         void qc.invalidateQueries({ queryKey: keys.subscriptions });
@@ -275,6 +279,45 @@ export const usePreview = (id: string, enabled: boolean) => {
     enabled,
     staleTime: 0,
     refetchOnMount: "always"
+  });
+};
+
+export const usePreparePublishCandidate = (id: string) => {
+  const { authorizedRequest } = useAuth();
+  // Each mounted publish flow gets a unique key. React Query can therefore
+  // deduplicate Strict Mode's effect replay without ever reusing a candidate
+  // from an earlier dialog/session.
+  const flowId = useRef(crypto.randomUUID()).current;
+  return useQuery({
+    queryKey: [...keys.subscription(id), "publish-candidate", flowId],
+    queryFn: () =>
+      authorizedRequest<PublishCandidateResult>(
+        `/api/subscriptions/${id}/publish-candidates`,
+        { method: "POST" }
+      ),
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
+  });
+};
+
+export const useValidatePublishCandidate = (id: string, candidateId: string | null) => {
+  const { authorizedRequest } = useAuth();
+  return useQuery({
+    queryKey: [...keys.subscription(id), "publish-candidate", candidateId, "validation"],
+    queryFn: () => {
+      if (!candidateId) throw new Error("缺少发布候选版本");
+      return authorizedRequest<PublishCandidateResult>(
+        `/api/subscriptions/${id}/publish-candidates/${candidateId}/validate`,
+        { method: "POST" }
+      );
+    },
+    enabled: candidateId !== null,
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
   });
 };
 

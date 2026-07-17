@@ -1,14 +1,18 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import { randomUUID } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 import yaml from "js-yaml";
 
 import type { ProxyNode } from "../../types";
-import { resolveMihomoBinary, type MihomoGateOptions } from "../validate/mihomo-gate";
+import {
+  copyVerifiedMihomoGeodata,
+  resolveMihomoBinary,
+  type MihomoGateOptions
+} from "../validate/mihomo-gate";
 
 export interface LatencyTarget {
   nodeId: string;
@@ -90,9 +94,13 @@ export const runMihomoLatencyTests = async (
   const port = await reserveLoopbackPort();
   const baseUrl = `http://127.0.0.1:${port}`;
   mkdirSync(workDir, { recursive: true, mode: 0o700 });
-  for (const file of ["geosite.dat", "country.mmdb"]) {
-    const source = resolve(options.assetsDir, "geodata", file);
-    if (existsSync(source)) copyFileSync(source, resolve(workDir, file));
+  try {
+    copyVerifiedMihomoGeodata(options.assetsDir, workDir);
+  } catch (error) {
+    rmSync(workDir, { recursive: true, force: true });
+    throw new MihomoLatencyError(
+      error instanceof Error ? error.message : "Mihomo 离线 geodata 校验失败。"
+    );
   }
   writeFileSync(resolve(workDir, "config.yaml"), yaml.dump({
     "external-controller": `127.0.0.1:${port}`,

@@ -16,7 +16,7 @@ ProxyParser Next 面向 Clash/Mihomo，核心模型是“订阅源快照 + 声�
 2. 相同 `EvaluateInput` 必须生成字节级相同的 YAML；配置 YAML 只能由 `emitClashYaml` 输出。
 3. Release 与规则快照不可变；回滚生成新 Release，不改写历史。
 4. 规则源更新只生成新快照与更新提示，不静默改写 BuildConfig。
-5. 发布必须先通过结构校验；mihomo 可用时还必须通过真实内核校验。
+5. 发布必须先通过结构校验；手动发布必须取得真实 mihomo 内核通过结果，后台自动发布在内核可用时同样经过门禁。
 6. 运行所需 geodata、17 个内置规则集及官方推荐模板均有仓库内离线资产，联网只用于更新。
 7. 自建节点敏感字段与长期 token 明文只以 AES-256-GCM 密文落库；匹配的密钥必须与数据库一起持久化和备份。
 
@@ -86,10 +86,10 @@ Next schema 直接定义当前最终表结构：
 
 `subscription_share_grants` 已在 schema 中预留，但当前公开产品链路使用按订阅长期 token 与短期分享 token，尚无指定用户授权 API/UI。
 
-整份草稿写入以 `draft_revision` 做乐观并发控制；`subscription_sources` 物化索引始终覆盖「已发布 BuildConfig ∪ 草稿 BuildConfig」的源，避免编辑草稿时丢失对线上源的变化跟踪。草稿行与该索引在同一事务更新；发布时 Release 插入、revision CAS、active 切换与源索引更新也属于同一事务。手动发布还需同时校验预览返回的 `renderedHash`，防止预览后上游快照变化导致发布未经确认的产物。
-手动发布使用“本次预览”返回的 revision；回滚只允许在没有未发布草稿时执行，并同样以 revision CAS 防止旧标签页清掉较新的状态。
+整份草稿写入以 `draft_revision` 做乐观并发控制；`subscription_sources` 物化索引始终覆盖「已发布 BuildConfig ∪ 草稿 BuildConfig」的源，避免编辑草稿时丢失对线上源的变化跟踪。草稿行与该索引在同一事务更新；发布时 Release 插入、revision CAS、active 切换与源索引更新也属于同一事务。手动发布使用服务端内存中的短期不可变候选版本，候选冻结 BuildConfig、源快照 ID、完整 YAML 与 `renderedHash`；校验后发布的是同一份字节，不再次求值。发布前再次核对 revision、hash 与源快照 ID，防止预览后草稿或上游变化导致发布未经确认的产物。
+手动发布使用候选版本返回的 revision；回滚只允许在没有未发布草稿时执行，并同样以 revision CAS 防止旧标签页清掉较新的状态。
 
-工作区读取拆成三层，避免 inline 规则把编辑页放大成十几 MB 响应：`workspace-index` 自动生成节点/分组索引，不读规则正文、不组装规则、不输出 YAML；`preview` 只在用户主动预览或打开发布确认时做完整确定性求值，响应只含统计、issues、diff、hash 与 YAML 字节数；`preview/yaml` 再以 `Cache-Control: no-store` 按需返回原始 YAML。发布门禁始终使用完整预览的 revision + hash。
+工作区读取拆成三层，避免 inline 规则把编辑页放大成十几 MB 响应：`workspace-index` 自动生成节点/分组索引，不读规则正文、不组装规则、不输出 YAML；`preview` 只在用户主动预览时做完整确定性求值，响应只含统计、issues、diff、hash 与 YAML 字节数；`preview/yaml` 再以 `Cache-Control: no-store` 按需返回原始 YAML。发布确认走独立候选版本接口，完整 YAML 只保留在服务端短期内存中，不进入浏览器响应。
 
 ## 4. BuildConfig 与稳定引用
 
@@ -131,15 +131,15 @@ raw patch 不能覆盖 `proxies`、`proxy-groups`、`rules` 或 `rule-providers`
 ```text
 draft_build_config ?? build_config
   → 组装最新成功源快照、钉住的规则快照与自建节点 secrets
-  → evaluate
-  → error issues 阻断并落 subscription_issues / event
-  → mihomo 可用时执行内核校验
-  → 与 active Release 计算结构化 diff
-  → 事务创建 seq+1 Release，以预览时 draft revision 做 CAS，切换 active_release_id，清空草稿
+  → evaluate 一次，生成短期不可变候选版本并展示结构化 diff / 统计 / issues
+  → error issues 阻断；否则对候选 YAML 异步执行 mihomo 内核校验
+  → 校验通过后启用确认发布
+  → 再核对 draft revision、rendered hash 与源快照 ID
+  → 事务直接写入候选中的同一份 YAML 创建 seq+1 Release，CAS 后切换 active_release_id 并清空草稿
   → 刷新健康状态
 ```
 
-Release 冻结 BuildConfig、源快照 ID、渲染 YAML、内容 hash、diff、触发原因与校验结果。回滚直接复用目标历史 Release 的冻结产物创建一个新的 `trigger=rollback` Release，不重渲染也不改写旧版本。
+候选版本默认保留 10 分钟，按用户和订阅隔离，并受数量与总字节上限约束；重复校验同一候选会复用同一个进行中的任务。Release 冻结 BuildConfig、源快照 ID、渲染 YAML、内容 hash、diff、触发原因与校验结果。回滚直接复用目标历史 Release 的冻结产物创建一个新的 `trigger=rollback` Release，不重渲染也不改写旧版本。
 
 URL 源同步成功后生成节点增删、改名和凭据变化报告，并回调订阅服务：
 
@@ -197,15 +197,17 @@ URL 源同步成功后生成节点增删、改名和凭据变化报告，并回�
 
 ## 11. mihomo 发布门禁
 
-二进制解析顺序：`PROXYPARSER_MIHOMO_PATH` → 数据目录的 `bin/mihomo` → `$PATH`。不可用时发布降级为结构校验，并在实例健康与 Release validation 中标明。
+二进制解析顺序：`PROXYPARSER_MIHOMO_PATH` → 数据目录的 `bin/mihomo` → `$PATH`。手动发布必须取得真实内核通过结果；二进制不可用或执行异常时关闭发布门禁，不允许降级发布。内核校验使用异步子进程，不阻塞 Bun 的 HTTP 事件循环。
 
-校验时创建临时工作目录，把 `backend/assets/geodata/geosite.dat` 与 `country.mmdb` 复制进去，写入候选配置，再执行：
+校验时创建权限为 0700 的临时工作目录，把 `backend/assets/geodata/geosite.dat`、`country.mmdb` 与 `ASN.mmdb` 的仓库离线副本复制进去，写入权限为 0600 的候选配置，再执行：
 
 ```text
 mihomo -t -f <config> -d <temp-dir>
 ```
 
-默认超时 10 秒，结果记录 exit code、耗时与最后若干行输出；失败阻断发布。`bun backend/scripts/fetch-mihomo.ts` 和 `fetch-geodata.ts` 分别更新本地内核与离线 geodata。
+三份 geodata 的大小与 SHA-256 记录在 `backend/assets/geodata/manifest.json`。进程启动时必须完整核验，任一资产缺失或损坏都会使健康部署失败；每次启动内核前再核验并复制。即使 Mihomo 退出码为 0，只要输出出现联网下载 geodata 的尝试也按失败处理，因此发布校验不依赖外网。
+
+默认超时 30 秒，结果记录 exit code、耗时与末尾输出，输出有 64 KiB 上限；超时会终止子进程并阻断发布。`bun backend/scripts/fetch-mihomo.ts` 和 `fetch-geodata.ts` 分别更新本地内核与三份离线 geodata，后者只在全部下载成功后原子替换并重建清单。
 
 ## 12. 密钥与安全边界
 
@@ -245,7 +247,7 @@ mihomo -t -f <config> -d <temp-dir>
 |---|---|
 | 认证 | `/api/auth/*`, `/api/me`：注册、登录、刷新、退出、资料 |
 | 订阅源 | `/api/sources/*`：URL/上传源 CRUD、同步、同步报告 |
-| 订阅 | `/api/subscriptions/*`：CRUD、草稿、规则快照同步、轻量 `workspace-index`、预览元数据、按需原始 YAML、发布、回滚、版本、追踪、问题、访问、服务端节点延迟测试 |
+| 订阅 | `/api/subscriptions/*`：CRUD、草稿、规则快照同步、轻量 `workspace-index`、预览元数据、按需原始 YAML、短期发布候选的生成/校验/原子发布、回滚、版本、追踪、问题、访问、服务端节点延迟测试 |
 | 节点 URI | `/api/nodes/parse-uri`：分享链接纯解析与规范化表单字段 |
 | 自建节点 secrets | `/api/secrets/*`：按协议拆分/加密字段、owner 校验后的编辑回显 |
 | 规则库 | `/api/rulesets/*`：目录、导入、快照、更新、diff、解析、应用更新 |
@@ -257,7 +259,7 @@ API 的精确请求体和响应体以各模块 `routes.ts` 及 Swagger `/swagger
 
 ## 16. 验证与变更检查
 
-自动化包含后端单元/集成/golden 测试与 Playwright 浏览器 E2E，覆盖稳定 ID、BuildConfig 校验、规则全局交付、分享 URI、确定性渲染、发布与回滚、断网交付、上游吸收、规则更新、追踪、模板加密凭据跨用户复制、token 生命周期、secrets 拆分、运行时持久化，以及关键工作台交互。性能回归还要锁定 workspace-index 不读规则正文、自动进工作区不请求完整 preview、preview 不内嵌 YAML、大 YAML 不进 DOM，以及多节点测速的独立状态/FIFO 边界。延迟 runner 另以仓库内真实 Mihomo + 本地 204 fixture 验证。
+自动化包含后端单元/集成/golden 测试与 Playwright 浏览器 E2E，覆盖稳定 ID、BuildConfig 校验、规则全局交付、分享 URI、确定性渲染、发布与回滚、断网交付、上游吸收、规则更新、追踪、模板加密凭据跨用户复制、token 生命周期、secrets 拆分、运行时持久化，以及关键工作台交互。性能回归还要锁定 workspace-index 不读规则正文、自动进工作区不请求完整 preview、preview 不内嵌 YAML、大 YAML 不进 DOM、多节点测速的独立状态/FIFO 边界，以及候选只求值一次、Mihomo 只校验一次、发布复用完全相同字节。离线门禁测试覆盖 geodata 清单完整性、缺失 ASN 时不得启动内核、任何下载尝试必须失败；发布前还用真实生产数据库副本和生产同款 Mihomo 做隔离验证。
 
 提交前至少运行：
 
