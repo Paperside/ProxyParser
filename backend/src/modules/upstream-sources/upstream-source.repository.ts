@@ -42,6 +42,12 @@ export interface ParsedSourceSnapshotRecord {
   parsed: ClashProxyDocument | null;
 }
 
+interface WorkspaceSnapshotRow {
+  id: string;
+  proxies_json: string | null;
+  proxy_groups_json: string | null;
+}
+
 export interface SyncReportRecord {
   id: string;
   upstreamSourceId: string;
@@ -369,6 +375,31 @@ export class UpstreamSourceRepository {
       )
       .get(id);
     return row ? { id: row.id, parsed: parseJson<ClashProxyDocument | null>(row.parsed_json, null) } : null;
+  }
+
+  // 工作区、节点测速和 rebuild 渲染只需要节点与策略组。用 SQLite JSON
+  // 投影避免把可能很大的上游 rules 正文读进 JS 堆并再次 JSON.parse。
+  findWorkspaceSnapshotById(id: string): ParsedSourceSnapshotRecord | null {
+    const row = this.db
+      .query<WorkspaceSnapshotRow>(
+        `SELECT id,
+                json_extract(parsed_json, '$.proxies') AS proxies_json,
+                json_extract(parsed_json, '$."proxy-groups"') AS proxy_groups_json
+           FROM upstream_source_snapshots
+          WHERE id = ?`
+      )
+      .get(id);
+    if (!row) return null;
+    return {
+      id: row.id,
+      parsed: {
+        proxies: parseJson<ClashProxyDocument["proxies"]>(row.proxies_json, []),
+        "proxy-groups": parseJson<ClashProxyDocument["proxy-groups"]>(
+          row.proxy_groups_json,
+          []
+        )
+      }
+    };
   }
 
   findLatestSuccessfulSnapshot(sourceId: string): SourceSnapshotRecord | null {

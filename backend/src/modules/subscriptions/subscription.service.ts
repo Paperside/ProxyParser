@@ -56,7 +56,10 @@ import {
   type SubscriptionRepository
 } from "./subscription.repository";
 import { RECOMMENDED_TEMPLATE_ID } from "../../lib/db/seed-builtin-templates";
-import { DeliveryArtifactStore } from "./delivery-artifact-store";
+import {
+  DeliveryArtifactStore,
+  type GzipDeliveryArtifact
+} from "./delivery-artifact-store";
 
 export class SubscriptionError extends Error {
   constructor(
@@ -76,9 +79,11 @@ export interface SubscriptionServiceOptions {
   tempTokenTtlSeconds?: number;
   latencyTestUrl?: string;
   latencyTimeoutMs?: number;
+  latencyJobTimeoutMs?: number;
   latencyRunner?: typeof runMihomoLatencyTests;
   mihomoValidator?: typeof validateWithMihomoAsync;
   publishCandidateTtlMs?: number;
+  publishCandidateMaxTotalBytes?: number;
   deliveryArtifactDir?: string;
 }
 
@@ -135,6 +140,7 @@ export interface SyncLatestRulesetsResult {
 
 const sha256Hex = (input: string) => createHash("sha256").update(input).digest("hex");
 const MAX_PUBLISH_CANDIDATES = 4;
+const MAX_PUBLISH_CANDIDATE_TOTAL_BYTES = 64 * 1024 * 1024;
 
 const blankBuildConfig = (sourceIds: string[], mode: "rebuild" | "patch"): BuildConfig => ({
   version: 1,
@@ -178,8 +184,13 @@ const blankBuildConfig = (sourceIds: string[], mode: "rebuild" | "patch"): Build
 
 export class SubscriptionService {
   private readonly latencySemaphore = new BoundedFifoSemaphore(2, 8);
+  private readonly publishValidationSemaphore = new BoundedFifoSemaphore(2, 2);
   private readonly publishCandidates = new Map<string, PublishCandidate>();
   private readonly candidateValidations = new Map<string, Promise<PublishCandidateResult>>();
+  private readonly candidateExpiryTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
   private readonly deliveryArtifactStore: DeliveryArtifactStore | null;
   constructor(
     private readonly repository: SubscriptionRepository,
@@ -584,39 +595,69 @@ export class SubscriptionService {
       ...observeResources()
     });
     const validationPromise = (async () => {
-      let mihomo: MihomoValidation;
+      let release: (() => void) | null = null;
       try {
-        mihomo = await (this.options.mihomoValidator ?? validateWithMihomoAsync)(
-          candidate.renderedYaml,
-          this.options.mihomo
-        );
+        try {
+          release = await this.publishValidationSemaphore.acquire();
+        } catch (error) {
+          candidate.phase = "rendered";
+          if (error instanceof SemaphoreQueueFullError) {
+            throw new SubscriptionError("发布校验队列已满，请稍后再试。", 429);
+          }
+          throw error;
+        }
+        if (this.isPublishCandidateExpired(candidate)) {
+          throw new SubscriptionError("发布候选不存在或已过期，请重新生成。", 404);
+        }
+        this.assertPublishCandidateInputsCurrent(candidate);
+
+        let mihomo: MihomoValidation;
+        try {
+          mihomo = await (this.options.mihomoValidator ?? validateWithMihomoAsync)(
+            candidate.renderedYaml,
+            this.options.mihomo
+          );
+        } catch (error) {
+          mihomo = {
+            available: true,
+            passed: false,
+            exitCode: null,
+            output: error instanceof Error ? error.message : "Mihomo 内核校验异常终止。",
+            durationMs: null
+          };
+        }
+        if (this.isPublishCandidateExpired(candidate)) {
+          throw new SubscriptionError("发布候选不存在或已过期，请重新生成。", 404);
+        }
+        candidate.mihomo = mihomo;
+        candidate.phase = mihomo.available && mihomo.passed === true
+          ? "validated"
+          : "validation_failed";
+        logger.info({
+          event: "publish.candidate.mihomo.finished",
+          subscriptionId: id,
+          candidateId,
+          renderedHash: candidate.renderedHash,
+          passed: mihomo.passed,
+          available: mihomo.available,
+          mihomoDurationMs: mihomo.durationMs,
+          durationMs: Math.round(performance.now() - startedAt),
+          ...observeResources()
+        });
+        return this.toPublishCandidateResult(candidate);
       } catch (error) {
-        mihomo = {
-          available: true,
-          passed: false,
-          exitCode: null,
-          output: error instanceof Error ? error.message : "Mihomo 内核校验异常终止。",
-          durationMs: null
-        };
+        if (!this.isPublishCandidateExpired(candidate) && candidate.phase === "validating") {
+          candidate.phase = "rendered";
+        }
+        throw error;
+      } finally {
+        release?.();
       }
-      candidate.mihomo = mihomo;
-      candidate.phase = mihomo.available && mihomo.passed === true
-        ? "validated"
-        : "validation_failed";
-      logger.info({
-        event: "publish.candidate.mihomo.finished",
-        subscriptionId: id,
-        candidateId,
-        renderedHash: candidate.renderedHash,
-        passed: mihomo.passed,
-        available: mihomo.available,
-        mihomoDurationMs: mihomo.durationMs,
-        durationMs: Math.round(performance.now() - startedAt),
-        ...observeResources()
-      });
-      return this.toPublishCandidateResult(candidate);
     })().finally(() => {
       this.candidateValidations.delete(candidateId);
+      if (this.isPublishCandidateExpired(candidate)) {
+        this.removePublishCandidate(candidateId);
+      }
     });
     this.candidateValidations.set(candidateId, validationPromise);
     return validationPromise;
@@ -720,49 +761,67 @@ export class SubscriptionService {
     return release;
   }
 
-  async testLatency(ownerUserId: string, id: string, nodeIds?: string[]): Promise<{
+  async testLatency(
+    ownerUserId: string,
+    id: string,
+    nodeIds: string[],
+    signal?: AbortSignal
+  ): Promise<{
     testUrl: string;
     timeoutMs: number;
     testedAt: string;
     results: LatencyResult[];
   }> {
+    if (
+      !Array.isArray(nodeIds) ||
+      nodeIds.length === 0 ||
+      nodeIds.length > 200 ||
+      nodeIds.some((nodeId) => typeof nodeId !== "string" || nodeId.trim().length === 0)
+    ) {
+      throw new SubscriptionError("nodeIds 必须包含 1 至 200 个有效节点 ID。", 422);
+    }
+    if (signal?.aborted) throw new SubscriptionError("延迟测试请求已取消。", 499);
     const record = this.requireOwned(ownerUserId, id);
     const config = record.draftBuildConfig ?? record.buildConfig;
     if (!config) throw new SubscriptionError("尚无可测试的构建配置。", 409);
     this.assertConfigReferencesOwned(ownerUserId, config);
     // 延迟测试只需要节点本身；不要加载/内联规则或 emit 完整订阅 YAML。
     const pool = collectNodes(this.buildWorkspaceEvaluateInput(config, ownerUserId), []);
-    const requested = nodeIds ? new Set(nodeIds) : null;
-    if (requested && requested.size > 200) throw new SubscriptionError("单次最多测试 200 个节点。", 400);
+    const requested = new Set(nodeIds);
     const targets = pool
-      .filter((node) => !node.disabled && (!requested || requested.has(node.id)))
+      .filter((node) => !node.disabled && requested.has(node.id))
       .map((node) => ({ nodeId: node.id, name: node.renderedName, proxy: node.document }));
-    if (requested) {
-      const found = new Set(targets.map((target) => target.nodeId));
-      if ([...requested].some((nodeId) => !found.has(nodeId))) {
-        throw new SubscriptionError("请求包含不存在或已禁用的节点。", 400);
-      }
+    if (targets.length > 200) {
+      throw new SubscriptionError("单次最多测试 200 个节点。", 422);
+    }
+    const found = new Set(targets.map((target) => target.nodeId));
+    if ([...requested].some((nodeId) => !found.has(nodeId))) {
+      throw new SubscriptionError("请求包含不存在或已禁用的节点。", 400);
     }
     let release: (() => void) | null = null;
     try {
       try {
-        release = await this.latencySemaphore.acquire();
+        release = await this.latencySemaphore.acquire(signal);
       } catch (error) {
         if (error instanceof SemaphoreQueueFullError) {
           throw new SubscriptionError("服务端延迟测试等待队列已满，请稍后再试。", 429);
         }
         throw error;
       }
+      if (signal?.aborted) throw new SubscriptionError("延迟测试请求已取消。", 499);
       const testUrl = this.options.latencyTestUrl ?? "https://cp.cloudflare.com/generate_204";
       const timeoutMs = this.options.latencyTimeoutMs ?? 5_000;
       const results = await (this.options.latencyRunner ?? runMihomoLatencyTests)(targets, {
         ...this.options.mihomo,
         testUrl,
         timeoutMs,
-        concurrency: 4
+        concurrency: 4,
+        totalTimeoutMs: this.options.latencyJobTimeoutMs ?? 60_000,
+        signal
       });
       return { testUrl, timeoutMs, testedAt: new Date().toISOString(), results };
     } catch (error) {
+      if (signal?.aborted) throw new SubscriptionError("延迟测试请求已取消。", 499);
       if (error instanceof MihomoLatencyError) throw new SubscriptionError(error.message, error.status);
       throw error;
     } finally {
@@ -990,6 +1049,7 @@ export class SubscriptionService {
       validation: release.validation,
       createdBy: release.createdBy,
       createdAt: release.createdAt,
+      yamlBytes: release.yamlBytes,
       isActive: record.activeReleaseId === release.id
     }));
   }
@@ -1158,13 +1218,12 @@ export class SubscriptionService {
     return { token, url: `${this.options.publicBaseUrl}/s/${id}/${token}` };
   }
 
-  // 工作台卡片 / 订阅列表的「复制链接」快捷按钮：优先复用最早创建的长期链接（通常就是「默认设备」），
-  // 一条都没有时（比如都被删除了）就地补建一条，始终保证点一下就能拿到可用链接。
-  getOrCreatePrimaryLink(ownerUserId: string, id: string) {
+  // GET 快捷入口严格只读：复用最早创建的长期链接，不因悬停/聚焦等读取行为签发 bearer token。
+  getPrimaryLink(ownerUserId: string, id: string) {
     this.requireOwned(ownerUserId, id);
     const tokens = this.repository.listTokens(id);
     if (tokens.length === 0) {
-      return this.issueToken(id, "默认设备", null);
+      throw new SubscriptionError("当前没有长期链接，请到“访问”页显式创建。", 404);
     }
     const oldest = [...tokens].sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]!;
     return this.revealToken(ownerUserId, id, oldest.id);
@@ -1240,13 +1299,15 @@ export class SubscriptionService {
     token: string,
     kind: "token" | "temp_token",
     clientIp: string | null,
-    userAgent: string | null
+    userAgent: string | null,
+    recordSuccess = true
   ): {
     yamlText: string;
     fileName: string;
     headers: Record<string, string>;
     releaseId: string;
     renderedHash: string;
+    tokenId: string;
   } {
     const record = this.repository.findById(subscriptionId);
     if (!record || !record.isEnabled) {
@@ -1291,17 +1352,19 @@ export class SubscriptionService {
       throw new SubscriptionError("该订阅还没有已发布的版本。", 503);
     }
 
-    this.repository.createPullLog({
-      subscriptionId,
-      tokenKind: kind,
-      tokenId: tokenRecord.id,
-      status: "success",
-      httpStatus: 200,
-      servedReleaseId: release.id,
-      clientIp,
-      userAgent,
-      errorMessage: null
-    });
+    if (recordSuccess) {
+      this.repository.createPullLog({
+        subscriptionId,
+        tokenKind: kind,
+        tokenId: tokenRecord.id,
+        status: "success",
+        httpStatus: 200,
+        servedReleaseId: release.id,
+        clientIp,
+        userAgent,
+        errorMessage: null
+      });
+    }
 
     const headers: Record<string, string> = {
       "profile-update-interval": "24"
@@ -1323,7 +1386,8 @@ export class SubscriptionService {
       fileName: `${record.displayName}.yaml`,
       headers,
       releaseId: release.id,
-      renderedHash: release.renderedHash
+      renderedHash: release.renderedHash,
+      tokenId: tokenRecord.id
     };
   }
 
@@ -1343,8 +1407,19 @@ export class SubscriptionService {
       acceptsGzip,
       ...observeResources()
     });
-    const result = this.deliver(subscriptionId, token, kind, clientIp, userAgent);
+    const result = this.deliver(subscriptionId, token, kind, clientIp, userAgent, false);
     if (!acceptsGzip || !this.deliveryArtifactStore) {
+      this.repository.createPullLog({
+        subscriptionId,
+        tokenKind: kind,
+        tokenId: result.tokenId,
+        status: "success",
+        httpStatus: 200,
+        servedReleaseId: result.releaseId,
+        clientIp,
+        userAgent,
+        errorMessage: null
+      });
       logger.info({
         event: "delivery.finished",
         subscriptionId,
@@ -1363,10 +1438,37 @@ export class SubscriptionService {
       };
     }
 
-    const artifact = await this.deliveryArtifactStore.getOrCreate(
-      result.renderedHash,
-      result.yamlText
-    );
+    let artifact: GzipDeliveryArtifact;
+    try {
+      artifact = await this.deliveryArtifactStore.getOrCreate(
+        result.renderedHash,
+        result.yamlText
+      );
+    } catch (error) {
+      this.repository.createPullLog({
+        subscriptionId,
+        tokenKind: kind,
+        tokenId: result.tokenId,
+        status: "failed",
+        httpStatus: 500,
+        servedReleaseId: result.releaseId,
+        clientIp,
+        userAgent,
+        errorMessage: error instanceof Error ? error.message.slice(0, 500) : "gzip 交付产物生成失败"
+      });
+      throw error;
+    }
+    this.repository.createPullLog({
+      subscriptionId,
+      tokenKind: kind,
+      tokenId: result.tokenId,
+      status: "success",
+      httpStatus: 200,
+      servedReleaseId: result.releaseId,
+      clientIp,
+      userAgent,
+      errorMessage: null
+    });
     logger.info({
       event: "delivery.finished",
       subscriptionId,
@@ -1608,38 +1710,93 @@ export class SubscriptionService {
     return sourceSnapshotIds;
   }
 
+  private isPublishCandidateExpired(candidate: PublishCandidate) {
+    return Date.parse(candidate.expiresAt) <= Date.now();
+  }
+
   private prunePublishCandidates() {
-    const now = Date.now();
     for (const candidate of [...this.publishCandidates.values()]) {
-      if (new Date(candidate.expiresAt).getTime() <= now) {
+      if (
+        this.isPublishCandidateExpired(candidate) &&
+        !this.candidateValidations.has(candidate.candidateId)
+      ) {
         this.removePublishCandidate(candidate.candidateId);
       }
     }
   }
 
-  private removePublishCandidate(candidateId: string) {
+  private removePublishCandidate(candidateId: string): boolean {
     const candidate = this.publishCandidates.get(candidateId);
-    if (!candidate) return;
+    if (!candidate || this.candidateValidations.has(candidateId)) return false;
+    const timer = this.candidateExpiryTimers.get(candidateId);
+    if (timer) clearTimeout(timer);
+    this.candidateExpiryTimers.delete(candidateId);
     this.publishCandidates.delete(candidateId);
-    this.candidateValidations.delete(candidateId);
+    return true;
+  }
+
+  private schedulePublishCandidateExpiry(candidate: PublishCandidate) {
+    const delayMs = Math.max(0, Date.parse(candidate.expiresAt) - Date.now());
+    const timer = setTimeout(() => {
+      this.candidateExpiryTimers.delete(candidate.candidateId);
+      if (!this.candidateValidations.has(candidate.candidateId)) {
+        this.removePublishCandidate(candidate.candidateId);
+      }
+    }, delayMs);
+    timer.unref?.();
+    this.candidateExpiryTimers.set(candidate.candidateId, timer);
   }
 
   private storePublishCandidate(candidate: PublishCandidate) {
     this.prunePublishCandidates();
-    for (const existing of [...this.publishCandidates.values()]) {
-      if (
+    const maxTotalBytes = Math.max(
+      1,
+      this.options.publishCandidateMaxTotalBytes ?? MAX_PUBLISH_CANDIDATE_TOTAL_BYTES
+    );
+    if (candidate.yamlBytes > maxTotalBytes) {
+      throw new SubscriptionError("发布候选过大，无法放入安全校验缓存。", 413);
+    }
+
+    const removals = new Set<string>();
+    const current = [...this.publishCandidates.values()];
+    const sameSubscription = current.filter(
+      (existing) =>
         existing.ownerUserId === candidate.ownerUserId &&
         existing.subscriptionId === candidate.subscriptionId
-      ) {
-        this.removePublishCandidate(existing.candidateId);
+    );
+    if (
+      sameSubscription.some((existing) =>
+        this.candidateValidations.has(existing.candidateId)
+      )
+    ) {
+      throw new SubscriptionError("该订阅已有候选正在校验，请等待完成后重试。", 409);
+    }
+    for (const existing of sameSubscription) removals.add(existing.candidateId);
+
+    let retained = current.filter((existing) => !removals.has(existing.candidateId));
+    const evictable = retained.filter(
+      (existing) =>
+        existing.ownerUserId === candidate.ownerUserId &&
+        !this.candidateValidations.has(existing.candidateId)
+    );
+    const retainedBytes = () =>
+      retained.reduce((total, existing) => total + existing.yamlBytes, 0);
+    while (
+      retained.length + 1 > MAX_PUBLISH_CANDIDATES ||
+      retainedBytes() + candidate.yamlBytes > maxTotalBytes
+    ) {
+      const oldest = evictable.shift();
+      if (!oldest) {
+        throw new SubscriptionError("发布候选缓存繁忙，请稍后再试。", 429);
       }
+      removals.add(oldest.candidateId);
+      retained = retained.filter((existing) => existing.candidateId !== oldest.candidateId);
     }
-    while (this.publishCandidates.size >= MAX_PUBLISH_CANDIDATES) {
-      const oldest = this.publishCandidates.values().next().value as PublishCandidate | undefined;
-      if (!oldest) break;
-      this.removePublishCandidate(oldest.candidateId);
-    }
+
+    // 先完整规划容量，再统一修改 Map，避免最终放不下新候选时误删旧候选。
+    for (const candidateId of removals) this.removePublishCandidate(candidateId);
     this.publishCandidates.set(candidate.candidateId, candidate);
+    this.schedulePublishCandidateExpiry(candidate);
   }
 
   private requirePublishCandidate(
@@ -1654,6 +1811,10 @@ export class SubscriptionService {
       candidate.ownerUserId !== ownerUserId ||
       candidate.subscriptionId !== subscriptionId
     ) {
+      throw new SubscriptionError("发布候选不存在或已过期，请重新生成。", 404);
+    }
+    if (this.isPublishCandidateExpired(candidate)) {
+      if (!this.candidateValidations.has(candidateId)) this.removePublishCandidate(candidateId);
       throw new SubscriptionError("发布候选不存在或已过期，请重新生成。", 404);
     }
     return candidate;
@@ -1695,7 +1856,11 @@ export class SubscriptionService {
   }
 
   private buildEvaluateInput(config: BuildConfig, ownerUserId: string): EvaluateInput {
-    const input = this.buildWorkspaceEvaluateInput(config, ownerUserId);
+    const input = this.buildWorkspaceEvaluateInput(
+      config,
+      ownerUserId,
+      config.mode === "patch"
+    );
     const rulesetSnapshots = input.rulesetSnapshots;
     for (const block of config.rules.targets) {
       for (const item of block.items) {
@@ -1719,7 +1884,11 @@ export class SubscriptionService {
     return input;
   }
 
-  private buildWorkspaceEvaluateInput(config: BuildConfig, ownerUserId: string): EvaluateInput {
+  private buildWorkspaceEvaluateInput(
+    config: BuildConfig,
+    ownerUserId: string,
+    includeSourceRules = false
+  ): EvaluateInput {
     const sourceSnapshots = new Map<string, ClashProxyDocument>();
     const sourceLabels = new Map<string, string>();
     for (const ref of config.sources) {
@@ -1727,7 +1896,9 @@ export class SubscriptionService {
       if (!source) continue;
       sourceLabels.set(ref.sourceId, source.displayName);
       const snapshot = source.lastSuccessfulSnapshotId
-        ? this.sourceRepository.findParsedSnapshotById(source.lastSuccessfulSnapshotId)
+        ? includeSourceRules
+          ? this.sourceRepository.findParsedSnapshotById(source.lastSuccessfulSnapshotId)
+          : this.sourceRepository.findWorkspaceSnapshotById(source.lastSuccessfulSnapshotId)
         : null;
       if (snapshot?.parsed) {
         sourceSnapshots.set(ref.sourceId, snapshot.parsed);

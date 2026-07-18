@@ -482,7 +482,7 @@ export const AsyncCopyButton = ({
   );
 };
 
-// 工作台卡片 / 订阅列表通用的「复制链接」快捷按钮：不需要先进访问页，一步拿到可复制的长期链接。
+// 工作台卡片 / 订阅列表通用的「复制链接」快捷按钮：一步读取已有长期链接。
 export const CopyLinkButton = ({
   subscriptionId,
   size,

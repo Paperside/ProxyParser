@@ -139,7 +139,7 @@ draft_build_config ?? build_config
   → 刷新健康状态
 ```
 
-候选版本默认保留 10 分钟，按用户和订阅隔离，并受数量与总字节上限约束；重复校验同一候选会复用同一个进行中的任务。Release 冻结 BuildConfig、源快照 ID、渲染 YAML、内容 hash、diff、触发原因与校验结果。回滚直接复用目标历史 Release 的冻结产物创建一个新的 `trigger=rollback` Release，不重渲染也不改写旧版本。
+候选版本默认保留 10 分钟，过期后由主动定时器释放；进程内最多保存 4 个候选、合计最多 64 MiB 渲染 YAML。容量回收只淘汰同一用户未在校验的旧候选，不跨用户破坏已生成候选；单候选超限或无法安全腾出容量时显式拒绝。Mihomo 候选校验最多 2 个并行、2 个排队，校验中的候选不会被过期或容量回收遗留为无界孤儿任务；重复校验同一候选会复用同一个进行中的任务。Release 冻结 BuildConfig、源快照 ID、渲染 YAML、内容 hash、diff、触发原因与校验结果。回滚直接复用目标历史 Release 的冻结产物创建一个新的 `trigger=rollback` Release，不重渲染也不改写旧版本。
 
 URL 源同步成功后生成节点增删、改名和凭据变化报告，并回调订阅服务：
 
@@ -207,7 +207,7 @@ mihomo -t -f <config> -d <temp-dir>
 
 三份 geodata 的大小与 SHA-256 记录在 `backend/assets/geodata/manifest.json`。进程启动时必须完整核验，任一资产缺失或损坏都会使健康部署失败；每次启动内核前再核验并复制。即使 Mihomo 退出码为 0，只要输出出现联网下载 geodata 的尝试也按失败处理，因此发布校验不依赖外网。
 
-默认超时 30 秒，结果记录 exit code、耗时与末尾输出，输出有 64 KiB 上限；超时会终止子进程并阻断发布。`bun backend/scripts/fetch-mihomo.ts` 和 `fetch-geodata.ts` 分别更新本地内核与三份离线 geodata，后者只在全部下载成功后原子替换并重建清单。
+默认超时 30 秒，结果记录 exit code、耗时与末尾输出，输出有 64 KiB 上限；超时会终止子进程并阻断发布。`bun backend/scripts/fetch-mihomo.ts` 下载固定的官方 Mihomo `v1.19.28` 资产；Linux/Darwin 的 amd64/arm64 压缩包均固定文件名、大小与 GitHub Release API 提供的 SHA-256，校验通过后才解压替换，生产镜像构建不会跟随 `latest` 漂移。`fetch-geodata.ts` 更新三份离线 geodata，只在全部下载成功后原子替换并重建清单。
 
 ## 12. 密钥与安全边界
 

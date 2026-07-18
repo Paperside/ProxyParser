@@ -32,6 +32,7 @@ type Ctx = {
   };
   params: Record<string, string>;
   body: unknown;
+  request: Request;
 };
 
 const preventBearerCaching = (set: Ctx["set"]) => {
@@ -231,7 +232,7 @@ export const createSubscriptionRoutes = (
         }
       }
     )
-    .post("/subscriptions/:id/latency-tests", async ({ params, body, currentUser, set }: Ctx) => {
+    .post("/subscriptions/:id/latency-tests", async ({ params, body, currentUser, set, request }: Ctx) => {
       try {
         const limit = rateLimiter.consume(currentUser.id, {
           keyPrefix: "latency-test",
@@ -240,16 +241,33 @@ export const createSubscriptionRoutes = (
         });
         applyRateLimitHeaders(set, limit);
         if (!limit.allowed) throw new SubscriptionError("延迟测试过于频繁，请稍后再试。", 429);
-        const nodeIds = isRecord(body) && Array.isArray(body.nodeIds)
-          ? body.nodeIds.filter((value): value is string => typeof value === "string")
-          : undefined;
-        return await service.testLatency(currentUser.id, params.id!, nodeIds);
+        const nodeIds = isRecord(body) ? body.nodeIds : null;
+        if (
+          !Array.isArray(nodeIds) ||
+          nodeIds.length === 0 ||
+          nodeIds.length > 200 ||
+          nodeIds.some((value) => typeof value !== "string" || value.trim().length === 0)
+        ) {
+          throw new SubscriptionError("nodeIds 必须包含 1 至 200 个有效节点 ID。", 422);
+        }
+        return await service.testLatency(
+          currentUser.id,
+          params.id!,
+          nodeIds as string[],
+          request.signal
+        );
       } catch (error) {
         return sendError(error, set);
       }
     })
     .post("/subscriptions/:id/publish", ({ params, body, currentUser, set }: Ctx) => {
       try {
+        if (isRecord(body) && !("candidateId" in body)) {
+          throw new SubscriptionError(
+            "发布流程已升级，请刷新页面后重新预览并发布。",
+            409
+          );
+        }
         if (
           !isRecord(body) ||
           typeof body.candidateId !== "string" ||
@@ -313,6 +331,29 @@ export const createSubscriptionRoutes = (
       }
     })
     .get(
+      "/subscriptions/:id/releases/:releaseId/yaml",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        try {
+          const release = service.getRelease(currentUser.id, params.id!, params.releaseId!);
+          set.headers = {
+            ...set.headers,
+            "Content-Type": "application/yaml; charset=utf-8",
+            "Content-Length": String(Buffer.byteLength(release.renderedYaml, "utf8")),
+            "Content-Disposition": `attachment; filename="subscription-v${release.seq}.yaml"`,
+            "Cache-Control": "no-store",
+            "Access-Control-Expose-Headers":
+              "X-Rendered-Hash, X-Yaml-Bytes, ETag, Content-Length, Content-Disposition",
+            "X-Rendered-Hash": release.renderedHash,
+            "X-Yaml-Bytes": String(Buffer.byteLength(release.renderedYaml, "utf8")),
+            ETag: `"${release.renderedHash}"`
+          };
+          return release.renderedYaml;
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
+    .get(
       "/subscriptions/:id/releases/:releaseId",
       ({ params, currentUser, set }: Omit<Ctx, "body">) => {
         try {
@@ -325,6 +366,7 @@ export const createSubscriptionRoutes = (
             diffSummary: release.diffSummary,
             validation: release.validation,
             renderedYaml: release.renderedYaml,
+            yamlBytes: Buffer.byteLength(release.renderedYaml, "utf8"),
             createdBy: release.createdBy,
             createdAt: release.createdAt
           };
@@ -390,19 +432,20 @@ export const createSubscriptionRoutes = (
         return sendError(error, set);
       }
     })
-    // 工作台卡片 / 订阅列表「复制链接」快捷按钮：一次请求拿到可直接复制的 URL
+    // 工作台卡片 / 订阅列表「复制链接」快捷按钮：只读取已有长期链接，不隐式签发 token。
     .get(
       "/subscriptions/:id/primary-link",
       ({ params, currentUser, set }: Omit<Ctx, "body">) => {
         preventBearerCaching(set);
         try {
-          return service.getOrCreatePrimaryLink(currentUser.id, params.id!);
+          return service.getPrimaryLink(currentUser.id, params.id!);
         } catch (error) {
           return sendError(error, set);
         }
       }
     )
     .post("/subscriptions/:id/tokens", ({ params, body, currentUser, set }: Ctx) => {
+      preventBearerCaching(set);
       try {
         const label = isRecord(body) ? (str(body, "label") ?? null) : null;
         return service.createToken(currentUser.id, params.id!, label);
@@ -413,6 +456,7 @@ export const createSubscriptionRoutes = (
     .post(
       "/subscriptions/:id/tokens/:tokenId/rotate",
       ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        preventBearerCaching(set);
         try {
           return service.rotateToken(currentUser.id, params.id!, params.tokenId!);
         } catch (error) {
@@ -461,6 +505,7 @@ export const createSubscriptionRoutes = (
       }
     )
     .post("/subscriptions/:id/temp-tokens", ({ params, body, currentUser, set }: Ctx) => {
+      preventBearerCaching(set);
       try {
         const record = isRecord(body) ? body : {};
         const ttlSeconds =
@@ -486,6 +531,7 @@ export const createSubscriptionRoutes = (
 
     // ── 自建节点字段拆分（用户只填一张表单，敏感/非敏感由后端按协议 schema 拆分）──
     .post("/secrets/split", ({ body, currentUser, set }: Omit<Ctx, "params">) => {
+      preventBearerCaching(set);
       try {
         if (!isRecord(body) || typeof body.type !== "string" || !isRecord(body.fields)) {
           throw new SubscriptionError("缺少 type 或 fields 对象。");
@@ -501,6 +547,7 @@ export const createSubscriptionRoutes = (
     })
     // 仅用于打开编辑弹窗时回显：解密后的敏感字段（owner 校验）
     .get("/secrets/:id", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+      preventBearerCaching(set);
       try {
         const fields = secretStore.resolveForOwner(currentUser.id, params.id!);
         if (!fields) {

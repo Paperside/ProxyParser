@@ -1,17 +1,18 @@
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
-import { gzip } from "node:zlib";
+import { gzip, gunzip } from "node:zlib";
 
 import { logger } from "../../lib/logging/logger";
 import { observeResources } from "../../lib/logging/resource-observation";
 
 export interface GzipDeliveryArtifact {
   bytes: Uint8Array;
-  cacheStatus: "hit" | "generated";
+  cacheStatus: "hit" | "generated" | "repaired";
 }
 
 const gzipAsync = promisify(gzip);
+const gunzipAsync = promisify(gunzip);
 
 export class DeliveryArtifactStore {
   private readonly pending = new Map<string, Promise<GzipDeliveryArtifact>>();
@@ -35,9 +36,24 @@ export class DeliveryArtifactStore {
   ): Promise<GzipDeliveryArtifact> {
     await mkdir(this.directory, { recursive: true });
     const artifactPath = resolve(this.directory, `${renderedHash}.yaml.gz`);
+    let repaired = false;
     try {
       const bytes = await readFile(artifactPath);
-      return { bytes, cacheStatus: "hit" };
+      try {
+        const restored = await gunzipAsync(bytes);
+        if (restored.equals(Buffer.from(yamlText, "utf8"))) {
+          return { bytes, cacheStatus: "hit" };
+        }
+        throw new Error("解压后的内容与发布版本不一致");
+      } catch (error) {
+        repaired = true;
+        logger.warn({
+          event: "delivery.artifact.corrupt",
+          renderedHash,
+          reason: error instanceof Error ? error.message : "gzip 产物校验失败"
+        });
+        await unlink(artifactPath).catch(() => undefined);
+      }
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
@@ -66,6 +82,6 @@ export class DeliveryArtifactStore {
       durationMs: Math.round(performance.now() - startedAt),
       ...observeResources()
     });
-    return { bytes: compressed, cacheStatus: "generated" };
+    return { bytes: compressed, cacheStatus: repaired ? "repaired" : "generated" };
   }
 }

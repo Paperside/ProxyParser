@@ -117,6 +117,21 @@ const AddSourceDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const [yamlContent, setYamlContent] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState("");
 
+  useEffect(() => {
+    if (open) return;
+    setMode("url");
+    setName("");
+    setUrl("");
+    setYamlContent("");
+    setUploadedFileName("");
+    if (!mutations.create.isPending) mutations.create.reset();
+  }, [mutations.create.isPending, open]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && mutations.create.isPending) return;
+    onOpenChange(nextOpen);
+  };
+
   const submit = async () => {
     try {
       await mutations.create.mutateAsync(
@@ -126,17 +141,13 @@ const AddSourceDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: 
       );
       toast.success("订阅源已添加并同步");
       onOpenChange(false);
-      setName("");
-      setUrl("");
-      setYamlContent("");
-      setUploadedFileName("");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "添加失败");
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent wide title="添加订阅源" description="使用机场订阅链接，或上传、粘贴一份 Clash/Mihomo YAML。">
         <div className="mb-4 flex gap-1 rounded-md border border-line p-0.5">
           {(
@@ -175,7 +186,11 @@ const AddSourceDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: 
           )}
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="ghost"
+            disabled={mutations.create.isPending}
+            onClick={() => handleOpenChange(false)}
+          >
             取消
           </Button>
           <Button
@@ -206,10 +221,23 @@ const UpdateUploadDialog = ({
   const [uploadedFileName, setUploadedFileName] = useState(source.uploadedFileName ?? "");
 
   useEffect(() => {
-    if (!content.data) return;
+    if (!open || !content.data) return;
     setYamlContent(content.data.yamlContent);
     setUploadedFileName(content.data.uploadedFileName ?? "");
-  }, [content.data]);
+  }, [content.data, open]);
+
+  useEffect(() => {
+    if (open) return;
+    setYamlContent("");
+    setUploadedFileName("");
+    content.clear();
+    if (!mutations.update.isPending) mutations.update.reset();
+  }, [content.clear, mutations.update.isPending, open]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && mutations.update.isPending) return;
+    onOpenChange(nextOpen);
+  };
 
   const submit = async () => {
     try {
@@ -226,7 +254,7 @@ const UpdateUploadDialog = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent wide title={`更新 ${source.displayName}`} description="上传替换文件，或直接修改当前 YAML。保存后会生成同步报告并通知引用它的订阅。">
         {content.isLoading ? (
           <p className="py-8 text-center text-xs text-muted">正在读取当前 YAML…</p>
@@ -241,7 +269,13 @@ const UpdateUploadDialog = ({
           />
         )}
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>取消</Button>
+          <Button
+            variant="ghost"
+            disabled={mutations.update.isPending}
+            onClick={() => handleOpenChange(false)}
+          >
+            取消
+          </Button>
           <Button
             variant="primary"
             disabled={content.isLoading || mutations.update.isPending || !inspectYaml(yamlContent).valid}

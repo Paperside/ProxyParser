@@ -49,7 +49,7 @@ export interface ReleaseRecord {
 export type ReleaseSummaryRecord = Omit<
   ReleaseRecord,
   "buildConfig" | "sourceSnapshotIds" | "renderedYaml"
->;
+> & { yamlBytes: number };
 
 export interface ReleaseArtifactRecord {
   id: string;
@@ -133,7 +133,10 @@ interface ReleaseRow {
   created_at: string;
 }
 
-type ReleaseSummaryRow = Omit<ReleaseRow, "build_config" | "source_snapshot_ids" | "rendered_yaml">;
+type ReleaseSummaryRow = Omit<
+  ReleaseRow,
+  "build_config" | "source_snapshot_ids" | "rendered_yaml"
+> & { yaml_bytes: number };
 
 interface ReleaseArtifactRow {
   id: string;
@@ -192,6 +195,7 @@ const mapReleaseSummary = (row: ReleaseSummaryRow): ReleaseSummaryRecord => ({
   subscriptionId: row.subscription_id,
   seq: row.seq,
   renderedHash: row.rendered_hash,
+  yamlBytes: row.yaml_bytes,
   diffSummary: parseJson(row.diff_summary, {}),
   trigger: row.trigger as ReleaseTrigger,
   triggerDetail: row.trigger_detail,
@@ -466,7 +470,8 @@ export class SubscriptionRepository {
   findReleaseSummaryById(id: string): ReleaseSummaryRecord | null {
     const row = this.db
       .query<ReleaseSummaryRow>(
-        `SELECT id, subscription_id, seq, rendered_hash, diff_summary, trigger,
+        `SELECT id, subscription_id, seq, rendered_hash,
+                length(CAST(rendered_yaml AS BLOB)) AS yaml_bytes, diff_summary, trigger,
                 trigger_detail, validation, created_by, created_at
          FROM releases WHERE id = ?`
       )
@@ -496,7 +501,8 @@ export class SubscriptionRepository {
   listReleaseSummaries(subscriptionId: string, limit = 50): ReleaseSummaryRecord[] {
     return this.db
       .query<ReleaseSummaryRow>(
-        `SELECT id, subscription_id, seq, rendered_hash, diff_summary, trigger,
+        `SELECT id, subscription_id, seq, rendered_hash,
+                length(CAST(rendered_yaml AS BLOB)) AS yaml_bytes, diff_summary, trigger,
                 trigger_detail, validation, created_by, created_at
          FROM releases WHERE subscription_id = ? ORDER BY seq DESC LIMIT ?`
       )

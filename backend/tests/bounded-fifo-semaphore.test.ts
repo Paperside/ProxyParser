@@ -52,4 +52,23 @@ describe("BoundedFifoSemaphore", () => {
     releaseQueued();
     expect(semaphore.activeCount).toBe(0);
   });
+
+  test("等待中的请求取消后立即退出队列且不占用后续槽位", async () => {
+    const semaphore = new BoundedFifoSemaphore(1, 2);
+    const releaseFirst = await semaphore.acquire();
+    const controller = new AbortController();
+    const cancelled = semaphore.acquire(controller.signal);
+    const next = semaphore.acquire();
+
+    expect(semaphore.queuedCount).toBe(2);
+    controller.abort();
+    await expect(cancelled).rejects.toHaveProperty("name", "AbortError");
+    expect(semaphore.queuedCount).toBe(1);
+
+    releaseFirst();
+    const releaseNext = await next;
+    expect(semaphore.activeCount).toBe(1);
+    releaseNext();
+    expect(semaphore.activeCount).toBe(0);
+  });
 });

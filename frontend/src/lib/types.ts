@@ -224,6 +224,7 @@ export interface ReleaseSummary {
   triggerDetail: string | null;
   diffSummary: DiffSummary | Record<string, never>;
   validation: { structuralErrors: number; mihomo: MihomoValidationDto | null };
+  yamlBytes: number;
   createdBy: string | null;
   createdAt: string;
   isActive: boolean;

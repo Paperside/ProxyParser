@@ -443,13 +443,66 @@ test("发布弹窗先展示候选结果，Mihomo 通过后才允许原子发布"
   releaseValidation?.();
   await expect(page.getByText("Mihomo 内核校验通过", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "确认发布" })).toBeEnabled();
+  const publishResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === "POST" &&
+    new URL(response.url()).pathname === `/api/subscriptions/${subscriptionId}/publish`
+  );
   await page.getByRole("button", { name: "确认发布" }).click();
+  const publishedRelease = await (await publishResponsePromise).json() as { id: string };
   await expect.poll(() => publishedBody).not.toBeNull();
   expect(typeof publishedBody?.candidateId).toBe("string");
   expect(publishedBody?.expectedRenderedHash).toMatch(/^[a-f0-9]{64}$/);
   await expect(page.getByRole("button", { name: "预览并发布" })).toBeVisible();
   expect(validationRequests).toBe(1);
   expect(validation404s).toBe(0);
+
+  const largeYaml = "# release download\n" + "x".repeat(2 * 1024 * 1024);
+  const largeYamlBytes = Buffer.byteLength(largeYaml);
+  let releaseDetailRequests = 0;
+  let releaseYamlRequests = 0;
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === `/api/subscriptions/${subscriptionId}/releases/${publishedRelease.id}`) {
+      releaseDetailRequests += 1;
+    }
+    if (pathname === `/api/subscriptions/${subscriptionId}/releases/${publishedRelease.id}/yaml`) {
+      releaseYamlRequests += 1;
+    }
+  });
+  await page.route(`**/api/subscriptions/${subscriptionId}/releases`, async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json() as Array<Record<string, unknown>>;
+    await route.fulfill({
+      response,
+      json: payload.map((release) =>
+        release.id === publishedRelease.id ? { ...release, yamlBytes: largeYamlBytes } : release
+      )
+    });
+  });
+  await page.route(
+    `**/api/subscriptions/${subscriptionId}/releases/${publishedRelease.id}/yaml`,
+    (route) => route.fulfill({
+      status: 200,
+      headers: {
+        "Content-Type": "application/yaml; charset=utf-8",
+        "Content-Length": String(largeYamlBytes),
+        "Access-Control-Allow-Origin": "http://127.0.0.1:7312",
+        "Access-Control-Expose-Headers": "X-Rendered-Hash, X-Yaml-Bytes, Content-Length",
+        "X-Rendered-Hash": "a".repeat(64),
+        "X-Yaml-Bytes": String(largeYamlBytes)
+      },
+      body: largeYaml
+    })
+  );
+
+  await page.getByRole("button", { name: "版本", exact: true }).click();
+  const releaseDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "下载 YAML" }).click();
+  const releaseDownload = await releaseDownloadPromise;
+  expect(releaseDownload.suggestedFilename()).toMatch(/-v1\.yaml$/);
+  expect(releaseYamlRequests).toBe(1);
+  expect(releaseDetailRequests).toBe(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test("单节点测速互不禁用，第三个请求在客户端排队且认证刷新只执行一次", async ({ page }) => {
@@ -551,14 +604,50 @@ test("上传 YAML 创建订阅源，并可用文件或编辑器更新", async ({
   });
   await expect(page.getByLabel("YAML 内容")).toContainText("Upload-1");
   await expect(page.getByText("已解析：1 节点 · 0 组 · 0 规则")).toBeVisible();
+  await page.getByRole("button", { name: "取消" }).click();
+
+  await page.getByRole("button", { name: "添加订阅源" }).click();
+  await page.getByRole("button", { name: "上传或编辑 YAML" }).click();
+  await expect(page.getByLabel("YAML 内容")).toHaveValue("");
+  await page.getByLabel("选择 YAML 文件").setInputFiles({
+    name: "e2e-upload.yaml",
+    mimeType: "text/yaml",
+    buffer: Buffer.from([
+      "proxies:",
+      "  - name: Upload-1",
+      "    type: ss",
+      "    server: upload.test",
+      "    port: 443",
+      "    cipher: aes-128-gcm",
+      "    password: fixture",
+      "proxy-groups: []",
+      "rules: []"
+    ].join("\n"))
+  });
   await page.getByRole("button", { name: "添加并同步" }).click();
 
+  let contentRequests = 0;
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (/\/api\/sources\/[^/]+\/content$/.test(pathname)) contentRequests += 1;
+  });
   const updateButton = page.getByRole("button", { name: "更新 YAML" }).last();
   const card = updateButton.locator("xpath=ancestor::div[contains(@class, 'rounded')][1]");
   await expect(updateButton).toBeVisible();
   await updateButton.click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByLabel("YAML 内容")).toContainText("Upload-1");
+  await expect(dialog.getByLabel("YAML 内容")).toHaveValue(/Upload-1/);
+  await dialog.getByLabel("YAML 内容").fill("SENSITIVE-YAML-MUST-NOT-SURVIVE-CLOSE");
+  await dialog.getByRole("button", { name: "取消" }).click();
+  await expect(dialog).not.toBeVisible();
+
+  const requestsBeforeReopen = contentRequests;
+  await updateButton.click();
+  await expect.poll(() => contentRequests).toBeGreaterThan(requestsBeforeReopen);
+  await expect(dialog.getByLabel("YAML 内容")).toHaveValue(/Upload-1/);
+  await expect(dialog.getByLabel("YAML 内容")).not.toHaveValue(
+    /SENSITIVE-YAML-MUST-NOT-SURVIVE-CLOSE/
+  );
   await dialog.getByLabel("选择 YAML 文件").setInputFiles({
     name: "e2e-replacement.yml",
     mimeType: "text/yaml",

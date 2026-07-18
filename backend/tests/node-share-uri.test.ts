@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { Elysia } from "elysia";
 
 import { NodeUriParseError, parseNodeShareUri } from "../src/lib/nodes/share-uri";
+import type { AuthService } from "../src/modules/auth/auth.service";
+import { createNodeRoutes } from "../src/modules/nodes/routes";
 
 const b64 = (value: string) => Buffer.from(value).toString("base64url");
 
@@ -9,6 +12,26 @@ describe("节点分享链接解析", () => {
     const result = parseNodeShareUri(`ss://${b64("aes-256-gcm:secret")}@example.com:8388#东京`);
     expect(result).toMatchObject({ type: "ss", server: "example.com", port: 8388, name: "东京" });
     expect(result.fields).toMatchObject({ cipher: "aes-256-gcm", password: "secret" });
+  });
+
+  test("解析 API 对含凭据的请求与响应显式禁止缓存", async () => {
+    const authService = {
+      authenticate: () => ({})
+    } as unknown as AuthService;
+    const app = new Elysia().use(createNodeRoutes(authService));
+    const response = await app.handle(
+      new Request("http://localhost/api/nodes/parse-uri", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uri: `ss://${b64("aes-256-gcm:secret")}@example.com:8388#东京`
+        })
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
   });
 
   test("解析 VMess JSON 链接", () => {
