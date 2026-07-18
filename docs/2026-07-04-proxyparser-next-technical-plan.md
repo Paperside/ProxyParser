@@ -18,7 +18,7 @@ ProxyParser Next 面向 Clash/Mihomo，核心模型是“订阅源快照 + 声�
 4. 规则源更新只生成新快照与更新提示，不静默改写 BuildConfig。
 5. 发布必须先通过结构校验；手动发布必须取得真实 mihomo 内核通过结果，后台自动发布在内核可用时同样经过门禁。
 6. 运行所需 geodata、17 个内置规则集及官方推荐模板均有仓库内离线资产，联网只用于更新。
-7. 自建节点敏感字段与长期 token 明文只以 AES-256-GCM 密文落库；匹配的密钥必须与数据库一起持久化和备份。
+7. 自建节点与模板版本的敏感字段、长期 token 和新建短期 token 的明文只以 AES-256-GCM 密文落库；匹配的密钥必须与数据库一起持久化和备份。
 
 ## 1. 运行时基线
 
@@ -27,7 +27,7 @@ ProxyParser Next 面向 Clash/Mihomo，核心模型是“订阅源快照 + 声�
 - 默认数据库：`backend/data/proxyparser.sqlite`；生产 Compose 映射为 `/data/proxyparser.sqlite`。
 - 密钥文件：数据库所在目录的 `.secret-key`；生产环境即 `/data/.secret-key`。设置 `PP_SECRET_KEY` 时不生成文件。
 - 数据库启动参数：WAL、foreign keys、5 秒 busy timeout。
-- 迁移：`backend/migrations/*.sql` 按文件名排序、逐个事务执行，并记录到 `_schema_migrations`。当前为 `0001_schema.sql`、`0002_token_ciphertext.sql`、`0003_subscription_draft_revision.sql` 与只增表/索引的 `0004_template_version_secrets.sql`。
+- 迁移：`backend/migrations/*.sql` 按文件名排序、逐个事务执行，并记录到 `_schema_migrations`。当前为 `0001_schema.sql`、`0002_token_ciphertext.sql`、`0003_subscription_draft_revision.sql`、只增表/索引的 `0004_template_version_secrets.sql`，以及为短期 token 增加可空密文字段的 `0005_temp_token_ciphertext.sql`。
 - 已有用户表但缺少 `_schema_migrations` 的数据库视为 legacy/未知 schema，必须在写入任何 Next 表或迁移标记前 fail-fast；空库才允许自动初始化。
 
 主要环境变量：
@@ -159,7 +159,7 @@ URL 源同步成功后生成节点增删、改名和凭据变化报告，并回�
 
 订阅拉取先做内存限流与 token SHA-256 比对，只读取 active Release。无 Release 返回 503；无效 token 返回 403；成功响应包含 YAML、下载文件名、`profile-update-interval`，并在有缓存用量时透传 `subscription-userinfo`。每次成功、拒绝或失败均记录 pull log。
 
-长期 token 的 hash 用于鉴权，明文密文用于用户按需再次复制；轮换会立即删除旧 token。短期 token 明文只在创建响应中返回。
+长期 token 的 hash 用于鉴权，明文密文用于用户按需再次复制；轮换会立即删除旧 token。新建短期 token 同样只以 hash 鉴权、以密文支持有效期内按需再次显示；历史 hash-only 短期 token 仍可拉取到过期或撤销，但无法恢复明文。显示接口会再次校验归属、撤销与过期状态，并返回 `Cache-Control: no-store`。
 
 ## 8. 规则库
 
@@ -211,7 +211,7 @@ mihomo -t -f <config> -d <temp-dir>
 
 ## 12. 密钥与安全边界
 
-- `.secret-key` 或 `PP_SECRET_KEY` 同时保护自建节点 secrets 与长期 token 明文密文；丢失后已有密文无法恢复。
+- `.secret-key` 或 `PP_SECRET_KEY` 同时保护自建节点 secrets、模板版本凭据、长期 token 与新建短期 token 的明文密文；丢失后已有密文无法恢复。
 - 密钥不进入 SQLite，也不得提交 Git；备份必须同时包含 `proxyparser.sqlite` 与匹配的 `.secret-key`，或外部保存的 `PP_SECRET_KEY`。
 - 自建节点密文采用 copy-on-write：编辑会创建新 `secretRef`，不原地覆盖或删除可能被已发布/历史 BuildConfig 引用的密文。
 - 节点分享 URI 由认证后的 `POST /api/nodes/parse-uri` 纯解析；限制 16 KiB，不联网且不记录原始链接。支持当前表单协议的通用分享 scheme，Snell 因无通用标准保持手填。

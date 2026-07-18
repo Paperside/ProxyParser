@@ -117,8 +117,10 @@ test("新建订阅可多选来源，并阻止多来源使用机场原版配置",
   const created = await createResponse.json() as { subscription: { id: string } };
 
   await page.goto(`/subscriptions/${created.subscription.id}/nodes`);
-  await expect(page.getByText("Source Alpha Node · Source Alpha", { exact: true })).toBeVisible();
-  await expect(page.getByText("Source Beta Node · Source Beta", { exact: true })).toBeVisible();
+  const alphaRow = page.getByRole("row").filter({ hasText: "Source Alpha Node · Source Alpha" });
+  const betaRow = page.getByRole("row").filter({ hasText: "Source Beta Node · Source Beta" });
+  await expect(alphaRow.getByRole("cell").nth(1)).toHaveText("Source Alpha");
+  await expect(betaRow.getByRole("cell").nth(1)).toHaveText("Source Beta");
 });
 
 test("地区范围默认常用且 Final 兜底组可编辑", async ({ page }) => {
@@ -241,15 +243,11 @@ test("订阅快捷入口与访问页均可按需展示二维码", async ({ page 
   await positionCopyAnchor("bottom");
   await workbenchCopy.hover();
   await expect(workbenchPreview).toHaveAttribute("data-placement", "up");
-  const upGeometry = await workbenchPreview.evaluate((popover) => {
+  await expect.poll(() => workbenchPreview.evaluate((popover) => {
     const anchor = popover.parentElement;
     if (!anchor) throw new Error("二维码气泡缺少定位容器");
-    return {
-      anchorTop: anchor.getBoundingClientRect().top,
-      popoverBottom: popover.getBoundingClientRect().bottom
-    };
-  });
-  expect(upGeometry.popoverBottom).toBeLessThanOrEqual(upGeometry.anchorTop + 1);
+    return popover.getBoundingClientRect().bottom - anchor.getBoundingClientRect().top;
+  })).toBeLessThanOrEqual(1);
 
   await closeHoverPreview();
   await page.setViewportSize({ width: 900, height: 260 });
@@ -269,6 +267,23 @@ test("订阅快捷入口与访问页均可按需展示二维码", async ({ page 
   });
   expect(constrainedGeometry.spaceAbove).toBeLessThan(constrainedGeometry.requiredSpace);
   expect(constrainedGeometry.spaceBelow).toBeLessThan(constrainedGeometry.requiredSpace);
+  const constrainedBounds = await workbenchPreview.boundingBox();
+  expect(constrainedBounds).not.toBeNull();
+  expect(constrainedBounds!.y).toBeGreaterThanOrEqual(0);
+  expect(constrainedBounds!.y + constrainedBounds!.height).toBeLessThanOrEqual(260);
+
+  await closeHoverPreview();
+  await page.setViewportSize({ width: 240, height: 600 });
+  await workbenchCopy.evaluate((button) => {
+    const anchor = button.parentElement;
+    if (!anchor) throw new Error("二维码触发器缺少定位容器");
+    Object.assign(anchor.style, { position: "fixed", left: "2px", right: "auto", top: "8px" });
+  });
+  await workbenchCopy.hover();
+  const narrowBounds = await workbenchPreview.boundingBox();
+  expect(narrowBounds).not.toBeNull();
+  expect(narrowBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(narrowBounds!.x + narrowBounds!.width).toBeLessThanOrEqual(240);
 
   await closeHoverPreview();
   await page.setViewportSize({ width: 1280, height: 720 });
@@ -350,7 +365,8 @@ test("工作区不自动生成完整预览，大 YAML 仅按需下载", async ({
     });
   });
   page.on("request", (request) => {
-    if (new URL(request.url()).pathname.endsWith("/preview/yaml")) yamlRequests += 1;
+    const pathname = new URL(request.url()).pathname;
+    if (pathname.endsWith("/preview/yaml")) yamlRequests += 1;
   });
 
   await page.goto(`/subscriptions/${subscriptionId}/overview`);
@@ -366,6 +382,19 @@ test("工作区不自动生成完整预览，大 YAML 仅按需下载", async ({
   await page.getByRole("button", { name: "预览", exact: true }).click();
   await expect(page.getByText("大于 1 MiB 的内容只提供文件下载", { exact: false })).toBeVisible();
   await expect(page.locator("aside pre")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "版本", exact: true }).click();
+  const autoPolicy = page.getByRole("radio", { name: /自动发布/ });
+  const confirmPolicy = page.getByRole("radio", { name: /确认后发布/ });
+  const nextPolicy = (await autoPolicy.isChecked()) ? confirmPolicy : autoPolicy;
+  const equivalentDetailRefetch = page.waitForResponse((response) =>
+    response.request().method() === "GET" &&
+    new URL(response.url()).pathname === `/api/subscriptions/${subscriptionId}`
+  );
+  await nextPolicy.click();
+  expect((await equivalentDetailRefetch).ok()).toBe(true);
+  await expect(page.getByText("大于 1 MiB 的内容只提供文件下载", { exact: false })).toBeVisible();
+  expect(previewRequests).toBe(1);
 
   const yamlResponsePromise = page.waitForResponse((response) =>
     new URL(response.url()).pathname.endsWith("/preview/yaml")

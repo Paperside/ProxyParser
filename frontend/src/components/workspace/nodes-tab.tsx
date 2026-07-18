@@ -304,7 +304,7 @@ export const NodesTab = () => {
                     {isCustom ? <Badge variant="accent" className="ml-1.5 text-[10px]">自建</Badge> : null}
                   </td>
                   <td className="border-b border-line px-3 py-1.5 text-muted">
-                    {isCustom ? "我" : detail.sourceNames[0] ?? "源"}
+                    {node.sourceName ?? "我"}
                   </td>
                   <td className="border-b border-line px-3 py-1.5">
                     <Badge variant="mono">{node.protocol}</Badge>

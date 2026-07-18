@@ -63,6 +63,7 @@ export interface PoolNode {
   renderedName: string;
   document: ProxyNode; // 输出用文档（name 为最终名）
   sourceId: string | null; // null = 自建
+  sourceName: string | null;
   disabled: boolean;
   tags: string[];
   region: string | null; // 解析后的地区（override tag > 名称推断）
@@ -78,6 +79,7 @@ export interface EvaluateResult {
     id: string;
     renderedName: string;
     sourceId: string | null;
+    sourceName: string | null;
     disabled: boolean;
     region: string | null;
     regionInferred: boolean;
@@ -180,6 +182,7 @@ export const collectNodes = (
         renderedName,
         document: { ...deepClone(node), name: renderedName },
         sourceId: sourceRef.sourceId,
+        sourceName: sourceLabel,
         disabled: override?.disabled === true,
         tags,
         // 来源名称只用于区分合并后的节点，不应参与节点地区推断。
@@ -216,6 +219,7 @@ export const collectNodes = (
         ...(secretFields ? deepClone(secretFields) : {})
       },
       sourceId: null,
+      sourceName: null,
       disabled: false,
       tags,
       region: regionTag ?? detectRegion(custom.name),
@@ -1064,6 +1068,7 @@ const nodeIndexFromPool = (pool: PoolNode[]): EvaluateResult["nodeIndex"] =>
     id: node.id,
     renderedName: node.renderedName,
     sourceId: node.sourceId,
+    sourceName: node.sourceName,
     disabled: node.disabled,
     region: node.region,
     regionInferred: !(node.tags.find(isRegionCode) ?? null),

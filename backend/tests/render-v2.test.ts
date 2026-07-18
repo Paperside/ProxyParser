@@ -445,6 +445,7 @@ describe("evaluate（rebuild）", () => {
     ]);
     expect(new Set(result.nodeIndex.map((node) => node.id)).size).toBe(2);
     expect(result.nodeIndex.every((node) => node.id.startsWith("n_"))).toBe(true);
+    expect(result.nodeIndex.map((node) => node.sourceName)).toEqual(["机场甲", "机场乙"]);
     expect(result.document["proxy-groups"].at(-1)).toMatchObject({
       name: "Final",
       type: "select",

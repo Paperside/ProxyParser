@@ -229,7 +229,7 @@ Persistent state is stored together under:
   .secret-key
 ```
 
-The SQLite file and `.secret-key` are one recovery unit. Losing or replacing the key makes encrypted custom-node credentials and saved long-term subscription links unreadable. If `PP_SECRET_KEY` is supplied through the environment instead, back up that value in the deployment secret store rather than expecting `.secret-key`.
+The SQLite file and `.secret-key` are one recovery unit. Losing or replacing the key makes encrypted custom-node credentials, retained template credentials, saved long-term subscription links, and active encrypted short-term links unreadable. If `PP_SECRET_KEY` is supplied through the environment instead, back up that value in the deployment secret store rather than expecting `.secret-key`.
 
 The safest filesystem backup briefly stops the backend so the SQLite WAL is fully closed:
 

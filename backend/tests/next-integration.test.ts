@@ -41,6 +41,7 @@ import {
 import { TemplateRepository } from "../src/modules/templates/template.repository";
 import { UpstreamSourceRepository } from "../src/modules/upstream-sources/upstream-source.repository";
 import { UpstreamSourceService } from "../src/modules/upstream-sources/upstream-source.service";
+import { createUpstreamSourceRoutes } from "../src/modules/upstream-sources/routes";
 import type { ClashProxyDocument } from "../src/types";
 import type { AuthService } from "../src/modules/auth/auth.service";
 
@@ -179,6 +180,9 @@ describe("发布管线", () => {
     expect(workspace.nodeIndex.map((node) => node.renderedName)).toEqual(
       expect.arrayContaining(["HK-01 · 白云机场", "HK-01 · 备用机场"])
     );
+    expect(workspace.nodeIndex.map((node) => node.sourceName)).toEqual(
+      expect.arrayContaining(["白云机场", "备用机场"])
+    );
     expect(new Set(workspace.nodeIndex.map((node) => node.id)).size).toBe(
       workspace.nodeIndex.length
     );
@@ -267,10 +271,13 @@ describe("发布管线", () => {
           new InMemoryRateLimiter()
         )
       );
-      const request = () =>
+      const request = (acceptEncoding = "gzip") =>
         app.handle(
           new Request(`http://localhost/s/${subscription.id}/${token.token}`, {
-            headers: { "Accept-Encoding": "gzip", "User-Agent": "Clash-Verge-rev/e2e" }
+            headers: {
+              "Accept-Encoding": acceptEncoding,
+              "User-Agent": "Clash-Verge-rev/e2e"
+            }
           })
         );
 
@@ -284,6 +291,17 @@ describe("发布管线", () => {
       const second = await request();
       expect(new Uint8Array(await second.arrayBuffer())).toEqual(firstBytes);
       expect(readdirSync(artifactDir).filter((name) => name.endsWith(".yaml.gz"))).toHaveLength(1);
+
+      const refused = await request("br, gzip;q=0, *;q=1");
+      expect(refused.headers.get("content-encoding")).toBeNull();
+      expect(refused.headers.get("content-length")).toBeNull();
+      expect(await refused.text()).toBe(release.renderedYaml);
+
+      const wildcard = await request("br, *;q=0.5");
+      expect(wildcard.headers.get("content-encoding")).toBe("gzip");
+      expect(gunzipSync(new Uint8Array(await wildcard.arrayBuffer())).toString("utf8")).toBe(
+        release.renderedYaml
+      );
     } finally {
       rmSync(artifactDir, { recursive: true, force: true });
     }
@@ -891,6 +909,28 @@ describe("上游吸收", () => {
     expect(content.yamlContent).toBe(replacement);
     expect(content.uploadedFileName).toBe("replacement.yml");
     expect(content.contentHash).toMatch(/^[a-f0-9]{64}$/);
+
+    const now = new Date().toISOString();
+    const authService = {
+      authenticate: () => ({
+        id: ctx.userId,
+        email: "alice@test.local",
+        username: "alice",
+        displayName: "Alice",
+        locale: "zh-CN",
+        status: "active" as const,
+        isAdmin: false,
+        createdAt: now,
+        updatedAt: now
+      })
+    } as unknown as AuthService;
+    const app = new Elysia().use(createUpstreamSourceRoutes(authService, ctx.sourceService));
+    const contentResponse = await app.handle(
+      new Request(`http://localhost/api/sources/${ctx.source.id}/content`)
+    );
+    expect(contentResponse.status).toBe(200);
+    expect(contentResponse.headers.get("cache-control")).toBe("no-store");
+    expect((await contentResponse.json() as { yamlContent: string }).yamlContent).toBe(replacement);
     expect(ctx.sourceRepository.listSyncReports(ctx.source.id)[0]!.nodesAdded).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: "JP-Upload" })])
     );

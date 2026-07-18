@@ -249,6 +249,17 @@ const SubscriptionWorkspace = ({
       return;
     }
     const serverConfig = detail.data.draftBuildConfig ?? detail.data.buildConfig;
+    // 元信息更新等操作会让详情查询 refetch。服务端 revision 与配置都未变化时保留
+    // 当前对象身份，避免右侧按需生成的预览被误判为失效。
+    if (
+      loadedFor.current === subscriptionId &&
+      !dirtyRef.current &&
+      draftRevision.current === detail.data.draftRevision &&
+      serverConfig !== null &&
+      buildConfigsEqual(configRef.current, serverConfig)
+    ) {
+      return;
+    }
     // 首次载入，或服务端配置变化且本地无未保存修改时同步
     if (loadedFor.current !== subscriptionId || (!dirtyRef.current && serverConfig)) {
       const nextConfig = serverConfig ? cloneBuildConfig(serverConfig) : null;

@@ -105,7 +105,16 @@ export const CopyButton = ({ text, label = "复制链接" }: { text: string; lab
 
 type QrPopoverPlacement = "down" | "up";
 
+interface QrPopoverPosition {
+  left: number;
+  top: number;
+  arrowLeft: number;
+}
+
 const QR_POPOVER_GAP_PX = 8;
+
+const clamp = (value: number, minimum: number, maximum: number) =>
+  Math.min(Math.max(value, minimum), maximum);
 
 const chooseQrPopoverPlacement = (
   spaceAbove: number,
@@ -114,7 +123,7 @@ const chooseQrPopoverPlacement = (
 ): QrPopoverPlacement => {
   if (spaceBelow >= requiredSpace) return "down";
   if (spaceAbove >= requiredSpace) return "up";
-  return "down";
+  return spaceBelow >= spaceAbove ? "down" : "up";
 };
 
 // 订阅链接按需获取：复制、悬停二维码或弹窗首次需要时读取，气泡关闭后清理前端状态。
@@ -141,6 +150,11 @@ export const AsyncCopyButton = ({
   const [hoverOpen, setHoverOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [popoverPlacement, setPopoverPlacement] = useState<QrPopoverPlacement>("down");
+  const [popoverPosition, setPopoverPosition] = useState<QrPopoverPosition>({
+    left: 0,
+    top: 0,
+    arrowLeft: 24
+  });
   const [popoverPositionReady, setPopoverPositionReady] = useState(false);
   const hoverAnchorRef = useRef<HTMLSpanElement | null>(null);
   const hoverPopoverRef = useRef<HTMLSpanElement | null>(null);
@@ -204,8 +218,11 @@ export const AsyncCopyButton = ({
     const anchorRect = anchor.getBoundingClientRect();
     const popoverRect = popover.getBoundingClientRect();
     const visualViewport = window.visualViewport;
+    const viewportLeft = visualViewport?.offsetLeft ?? 0;
     const viewportTop = visualViewport?.offsetTop ?? 0;
+    const viewportWidth = visualViewport?.width ?? document.documentElement.clientWidth;
     const viewportHeight = visualViewport?.height ?? document.documentElement.clientHeight;
+    const viewportRight = viewportLeft + viewportWidth;
     const viewportBottom = viewportTop + viewportHeight;
     const requiredSpace = popoverRect.height + QR_POPOVER_GAP_PX;
     const nextPlacement = chooseQrPopoverPlacement(
@@ -214,8 +231,43 @@ export const AsyncCopyButton = ({
       requiredSpace
     );
 
+    const horizontalInset =
+      viewportWidth >= popoverRect.width + QR_POPOVER_GAP_PX * 2
+        ? QR_POPOVER_GAP_PX
+        : 0;
+    const verticalInset =
+      viewportHeight >= popoverRect.height + QR_POPOVER_GAP_PX * 2
+        ? QR_POPOVER_GAP_PX
+        : 0;
+    const minLeft = viewportLeft + horizontalInset;
+    const maxLeft = Math.max(
+      minLeft,
+      viewportRight - popoverRect.width - horizontalInset
+    );
+    const minTop = viewportTop + verticalInset;
+    const maxTop = Math.max(
+      minTop,
+      viewportBottom - popoverRect.height - verticalInset
+    );
+    const preferredTop =
+      nextPlacement === "down"
+        ? anchorRect.bottom + QR_POPOVER_GAP_PX
+        : anchorRect.top - popoverRect.height - QR_POPOVER_GAP_PX;
+    const left = clamp(anchorRect.right - popoverRect.width, minLeft, maxLeft);
+    const top = clamp(preferredTop, minTop, maxTop);
+    const arrowLeft = clamp(
+      anchorRect.left + anchorRect.width / 2 - left,
+      14,
+      popoverRect.width - 14
+    );
+
     setPopoverPlacement((current) =>
       current === nextPlacement ? current : nextPlacement
+    );
+    setPopoverPosition((current) =>
+      current.left === left && current.top === top && current.arrowLeft === arrowLeft
+        ? current
+        : { left, top, arrowLeft }
     );
     setPopoverPositionReady(true);
   }, []);
@@ -346,9 +398,9 @@ export const AsyncCopyButton = ({
               role="tooltip"
               data-testid="subscription-qr-popover"
               data-placement={popoverPlacement}
+              style={{ left: popoverPosition.left, top: popoverPosition.top }}
               className={cn(
-                "pointer-events-none absolute right-0 z-50 flex w-[206px] flex-col items-center gap-2 rounded-lg border border-line-strong bg-surface p-3 shadow-2xl shadow-black/60",
-                popoverPlacement === "down" ? "top-full mt-2" : "bottom-full mb-2",
+                "pointer-events-none fixed z-50 flex w-[206px] max-w-[calc(100dvw-16px)] flex-col items-center gap-2 rounded-lg border border-line-strong bg-surface p-3 shadow-2xl shadow-black/60",
                 !popoverPositionReady && "invisible"
               )}
             >
@@ -365,8 +417,9 @@ export const AsyncCopyButton = ({
                 </span>
               )}
               <span
+                style={{ left: popoverPosition.arrowLeft - 6 }}
                 className={cn(
-                  "absolute right-5 size-3 rotate-45 bg-surface",
+                  "absolute size-3 rotate-45 bg-surface",
                   popoverPlacement === "down"
                     ? "-top-1.5 border-l border-t border-line-strong"
                     : "-bottom-1.5 border-b border-r border-line-strong"

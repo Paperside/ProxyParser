@@ -157,6 +157,7 @@ export interface NodeIndexEntry {
   id: string;
   renderedName: string;
   sourceId: string | null;
+  sourceName: string | null;
   disabled: boolean;
   region: string | null;
   regionInferred: boolean;
