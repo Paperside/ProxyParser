@@ -178,12 +178,20 @@ ENV
 test_secure_data_dir_permissions() {
   local tmpdir="$1"
   local data_dir="$tmpdir/data"
+  local artifact_hash="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  local artifact_tmp="$artifact_hash.yaml.gz.123.01234567-89ab-cdef-0123-456789abcdef.tmp"
 
   mkdir -m 755 "$data_dir"
   printf 'db' > "$data_dir/proxyparser.sqlite"
   printf 'key' > "$data_dir/.secret-key"
+  mkdir -m 755 "$data_dir/delivery-artifacts"
+  printf 'gzip cache' > "$data_dir/delivery-artifacts/$artifact_hash.yaml.gz"
+  printf 'temporary cache' > "$data_dir/delivery-artifacts/$artifact_tmp"
   ensure_secure_data_dir "$data_dir"
   assert_eq "700" "$(read_path_mode "$data_dir")" "persistent data directory permissions"
+  assert_eq "700" "$(read_path_mode "$data_dir/delivery-artifacts")" "delivery artifact directory permissions"
+  assert_eq "600" "$(read_path_mode "$data_dir/delivery-artifacts/$artifact_hash.yaml.gz")" "delivery artifact permissions"
+  assert_eq "600" "$(read_path_mode "$data_dir/delivery-artifacts/$artifact_tmp")" "temporary delivery artifact permissions"
   assert_eq "600" "$(read_path_mode "$data_dir/proxyparser.sqlite")" "database permissions"
   assert_eq "600" "$(read_path_mode "$data_dir/.secret-key")" "key permissions"
   assert_eq "600" "$(read_path_mode "$data_dir/.proxyparser-data-dir")" "data directory marker permissions"
@@ -203,6 +211,41 @@ test_secure_data_dir_permissions() {
     fail "an existing unrelated directory must not be claimed as ProxyParser data"
   fi
   assert_eq "755" "$(read_path_mode "$unrelated_dir")" "unrelated directory permissions remain unchanged"
+
+  local artifact_symlink_dir="$tmpdir/artifact-symlink-data"
+  local artifact_target="$tmpdir/artifact-target"
+  mkdir -p "$artifact_symlink_dir" "$artifact_target"
+  printf 'db' > "$artifact_symlink_dir/proxyparser.sqlite"
+  ln -s "$artifact_target" "$artifact_symlink_dir/delivery-artifacts"
+  if ensure_secure_data_dir "$artifact_symlink_dir" >/dev/null 2>&1; then
+    fail "delivery-artifacts must not be accepted as a symlink"
+  fi
+
+  local artifact_file_dir="$tmpdir/artifact-file-data"
+  mkdir -p "$artifact_file_dir"
+  printf 'db' > "$artifact_file_dir/proxyparser.sqlite"
+  printf 'not a directory' > "$artifact_file_dir/delivery-artifacts"
+  if ensure_secure_data_dir "$artifact_file_dir" >/dev/null 2>&1; then
+    fail "delivery-artifacts must not be accepted as a regular file"
+  fi
+
+  local artifact_child_symlink_dir="$tmpdir/artifact-child-symlink-data"
+  local artifact_child_target="$tmpdir/artifact-child-target"
+  mkdir -p "$artifact_child_symlink_dir/delivery-artifacts"
+  printf 'db' > "$artifact_child_symlink_dir/proxyparser.sqlite"
+  printf 'do not touch' > "$artifact_child_target"
+  ln -s "$artifact_child_target" "$artifact_child_symlink_dir/delivery-artifacts/$artifact_hash.yaml.gz"
+  if ensure_secure_data_dir "$artifact_child_symlink_dir" >/dev/null 2>&1; then
+    fail "delivery artifact child symlinks must fail closed"
+  fi
+  assert_eq "do not touch" "$(cat "$artifact_child_target")" "delivery artifact symlink target remains untouched"
+
+  local malformed_artifact_dir="$tmpdir/malformed-artifact-data"
+  mkdir -p "$malformed_artifact_dir/delivery-artifacts/nested"
+  printf 'db' > "$malformed_artifact_dir/proxyparser.sqlite"
+  if ensure_secure_data_dir "$malformed_artifact_dir" >/dev/null 2>&1; then
+    fail "nested delivery artifact directories must fail closed"
+  fi
 
   local symlink_dir="$tmpdir/symlink-data"
   mkdir -p "$symlink_dir"
