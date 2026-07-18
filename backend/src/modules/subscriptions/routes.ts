@@ -34,6 +34,14 @@ type Ctx = {
   body: unknown;
 };
 
+const preventBearerCaching = (set: Ctx["set"]) => {
+  set.headers = {
+    ...(set.headers ?? {}),
+    "Cache-Control": "no-store",
+    Pragma: "no-cache"
+  };
+};
+
 export const createSubscriptionRoutes = (
   authService: AuthService,
   service: SubscriptionService,
@@ -386,6 +394,7 @@ export const createSubscriptionRoutes = (
     .get(
       "/subscriptions/:id/primary-link",
       ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        preventBearerCaching(set);
         try {
           return service.getOrCreatePrimaryLink(currentUser.id, params.id!);
         } catch (error) {
@@ -432,8 +441,20 @@ export const createSubscriptionRoutes = (
     .get(
       "/subscriptions/:id/tokens/:tokenId/reveal",
       ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        preventBearerCaching(set);
         try {
           return service.revealToken(currentUser.id, params.id!, params.tokenId!);
+        } catch (error) {
+          return sendError(error, set);
+        }
+      }
+    )
+    .get(
+      "/subscriptions/:id/temp-tokens/:tokenId/reveal",
+      ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+        preventBearerCaching(set);
+        try {
+          return service.revealTempToken(currentUser.id, params.id!, params.tokenId!);
         } catch (error) {
           return sendError(error, set);
         }

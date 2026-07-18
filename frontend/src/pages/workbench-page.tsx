@@ -91,7 +91,12 @@ export const WorkbenchPage = () => {
         {(subscriptions.data ?? []).slice(0, 4).map((sub) => {
           const usage = usageSummary(sub.usage);
           return (
-            <Card key={sub.id} className="flex flex-col gap-2">
+            <Card
+              key={sub.id}
+              role="group"
+              aria-label={`订阅 ${sub.displayName}`}
+              className="flex flex-col gap-2"
+            >
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <HealthDot health={sub.health} />
                 {sub.displayName}

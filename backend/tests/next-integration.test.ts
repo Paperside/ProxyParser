@@ -628,6 +628,161 @@ describe("Token", () => {
       ctx.subscriptionService.deliver(subscription.id, temp.token, "temp_token", null, null)
     ).toThrow("无效或已撤销");
   });
+
+  test("短期链接在有效期内可按需恢复，reveal 响应禁止缓存", async () => {
+    const ctx = createTestContext();
+    const { subscription, token } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "二维码访问",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    ctx.subscriptionService.publish(ctx.userId, subscription.id, { trigger: "manual" });
+    const temp = ctx.subscriptionService.createTempToken(ctx.userId, subscription.id, {
+      label: "临时设备",
+      ttlSeconds: 3600
+    });
+
+    expect(temp.canReveal).toBe(true);
+    expect(ctx.subscriptionService.revealTempToken(ctx.userId, subscription.id, temp.id)).toEqual({
+      token: temp.token,
+      url: temp.url
+    });
+    expect(
+      ctx.subscriptionService
+        .listAccess(ctx.userId, subscription.id)
+        .tempTokens.find((entry) => entry.id === temp.id)?.canReveal
+    ).toBe(true);
+
+    const now = new Date().toISOString();
+    const authService = {
+      authenticate: () => ({
+        id: ctx.userId,
+        email: "alice@test.local",
+        username: "alice",
+        displayName: "Alice",
+        locale: "zh-CN",
+        status: "active" as const,
+        isAdmin: false,
+        createdAt: now,
+        updatedAt: now
+      })
+    } as unknown as AuthService;
+    const app = new Elysia().use(
+      createSubscriptionRoutes(
+        authService,
+        ctx.subscriptionService,
+        ctx.secretStore,
+        new InMemoryRateLimiter()
+      )
+    );
+    for (const path of [
+      `/api/subscriptions/${subscription.id}/primary-link`,
+      `/api/subscriptions/${subscription.id}/tokens/${token.id}/reveal`,
+      `/api/subscriptions/${subscription.id}/temp-tokens/${temp.id}/reveal`
+    ]) {
+      const response = await app.handle(new Request(`http://localhost${path}`));
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("pragma")).toBe("no-cache");
+    }
+  });
+
+  test("短期链接 reveal 校验归属、有效状态，并清楚处理旧版无密文记录", () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "主订阅",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const { subscription: otherSubscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "同账号其他订阅",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    ctx.subscriptionService.publish(ctx.userId, subscription.id, { trigger: "manual" });
+
+    const active = ctx.subscriptionService.createTempToken(ctx.userId, subscription.id, {
+      label: "活动链接",
+      ttlSeconds: 3600
+    });
+    // 即使同属一个账号，也不能借另一个订阅 ID 撤销这条链接。
+    ctx.subscriptionService.revokeTempToken(ctx.userId, otherSubscription.id, active.id);
+    expect(ctx.subscriptionService.revealTempToken(ctx.userId, subscription.id, active.id).token).toBe(
+      active.token
+    );
+
+    const otherUserId = createUser(ctx.db, "bob");
+    let ownershipError: unknown;
+    try {
+      ctx.subscriptionService.revealTempToken(otherUserId, subscription.id, active.id);
+    } catch (error) {
+      ownershipError = error;
+    }
+    expect(ownershipError).toBeInstanceOf(SubscriptionError);
+    expect(ownershipError).toMatchObject({ status: 404, message: "订阅不存在。" });
+
+    ctx.subscriptionService.revokeTempToken(ctx.userId, subscription.id, active.id);
+    expect(
+      ctx.subscriptionService
+        .listAccess(ctx.userId, subscription.id)
+        .tempTokens.find((entry) => entry.id === active.id)?.canReveal
+    ).toBe(false);
+    let revokedError: unknown;
+    try {
+      ctx.subscriptionService.revealTempToken(ctx.userId, subscription.id, active.id);
+    } catch (error) {
+      revokedError = error;
+    }
+    expect(revokedError).toMatchObject({ status: 410, message: "短期链接已失效。" });
+
+    const expired = ctx.subscriptionService.createTempToken(ctx.userId, subscription.id, {
+      label: "过期链接",
+      ttlSeconds: 3600
+    });
+    ctx.db
+      .query("UPDATE subscription_temp_tokens SET expires_at = ? WHERE id = ?")
+      .run(new Date(Date.now() - 1000).toISOString(), expired.id);
+    let expiredError: unknown;
+    try {
+      ctx.subscriptionService.revealTempToken(ctx.userId, subscription.id, expired.id);
+    } catch (error) {
+      expiredError = error;
+    }
+    expect(expiredError).toMatchObject({ status: 410, message: "短期链接已过期。" });
+
+    const legacy = ctx.subscriptionService.createTempToken(ctx.userId, subscription.id, {
+      label: "旧版链接",
+      ttlSeconds: 3600
+    });
+    ctx.db
+      .query("UPDATE subscription_temp_tokens SET token_ciphertext = NULL WHERE id = ?")
+      .run(legacy.id);
+    expect(
+      ctx.subscriptionService
+        .listAccess(ctx.userId, subscription.id)
+        .tempTokens.find((entry) => entry.id === legacy.id)?.canReveal
+    ).toBe(false);
+    // 迁移前的短链仍可按哈希拉取，只是无法重新显示明文。
+    expect(
+      ctx.subscriptionService.deliver(
+        subscription.id,
+        legacy.token,
+        "temp_token",
+        null,
+        null
+      ).yamlText.length
+    ).toBeGreaterThan(0);
+    let legacyError: unknown;
+    try {
+      ctx.subscriptionService.revealTempToken(ctx.userId, subscription.id, legacy.id);
+    } catch (error) {
+      legacyError = error;
+    }
+    expect(legacyError).toMatchObject({
+      status: 409,
+      message: "该短期链接创建于旧版本，无法再次显示；请重新生成一条短期链接。"
+    });
+  });
 });
 
 // ── 节点延迟测试 ─────────────────────────────────────────────

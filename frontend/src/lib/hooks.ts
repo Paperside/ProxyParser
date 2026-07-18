@@ -517,6 +517,12 @@ export const useAccessMutations = (id: string) => {
         }),
       onSuccess: invalidate
     }),
+    revealTempToken: useMutation({
+      mutationFn: (tokenId: string) =>
+        authorizedRequest<RevealedToken>(`/api/subscriptions/${id}/temp-tokens/${tokenId}/reveal`, {
+          method: "GET"
+        })
+    }),
     revokeTempToken: useMutation({
       mutationFn: (tokenId: string) =>
         authorizedRequest<{ ok: boolean }>(`/api/subscriptions/${id}/temp-tokens/${tokenId}`, {

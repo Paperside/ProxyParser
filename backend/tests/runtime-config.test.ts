@@ -311,15 +311,17 @@ describe("运行时配置", () => {
     }
   });
 
-  test("启动保护遍历两类全部密文并拒绝 mixed-key 或损坏记录", () => {
+  test("启动保护遍历长期/短期 token 等全部密文并拒绝 mixed-key 或损坏记录", () => {
     const db = new Database(":memory:");
     db.exec(`
       CREATE TABLE custom_node_secrets (id TEXT PRIMARY KEY, ciphertext BLOB NOT NULL);
       CREATE TABLE subscription_tokens (id TEXT PRIMARY KEY, token_ciphertext BLOB);
+      CREATE TABLE subscription_temp_tokens (id TEXT PRIMARY KEY, token_ciphertext BLOB);
     `);
     const correct = new SecretBox(randomBytes(32));
     const customCiphertext = correct.encrypt({ password: "existing" });
     const tokenCiphertext = correct.encrypt({ token: "persisted" });
+    const tempTokenCiphertext = correct.encrypt({ token: "temporary" });
 
     db.query("INSERT INTO custom_node_secrets (id, ciphertext) VALUES (?, ?)").run(
       "sec_existing",
@@ -329,10 +331,15 @@ describe("运行时配置", () => {
       "tok_existing",
       tokenCiphertext
     );
+    db.query("INSERT INTO subscription_temp_tokens (id, token_ciphertext) VALUES (?, ?)").run(
+      "tmp_existing",
+      tempTokenCiphertext
+    );
 
     let records = listEncryptedSecretRecords(db);
     expect(records.map((record) => record.kind)).toEqual([
       "custom_node_secret",
+      "subscription_temp_token",
       "subscription_token"
     ]);
     expect(() =>
@@ -346,15 +353,19 @@ describe("运行时配置", () => {
     ).toThrow("与数据库中的加密记录不匹配");
 
     const otherKeyCiphertext = new SecretBox(randomBytes(32)).encrypt({ token: "wrong-key" });
-    db.query("UPDATE subscription_tokens SET token_ciphertext = ? WHERE id = ?").run(
+    db.query("UPDATE subscription_temp_tokens SET token_ciphertext = ? WHERE id = ?").run(
       otherKeyCiphertext,
-      "tok_existing"
+      "tmp_existing"
     );
     records = listEncryptedSecretRecords(db);
     expect(() =>
       verifySecretBoxCiphertexts(correct, records.map((record) => record.ciphertext))
     ).toThrow("与数据库中的加密记录不匹配");
 
+    db.query("UPDATE subscription_temp_tokens SET token_ciphertext = ? WHERE id = ?").run(
+      tempTokenCiphertext,
+      "tmp_existing"
+    );
     db.query("UPDATE subscription_tokens SET token_ciphertext = ? WHERE id = ?").run(
       Buffer.from([1, 2, 3]),
       "tok_existing"
@@ -363,6 +374,34 @@ describe("运行时配置", () => {
     expect(() =>
       verifySecretBoxCiphertexts(correct, records.map((record) => record.ciphertext))
     ).toThrow("数据库密文已经损坏");
+    db.close();
+  });
+
+  test("只读历史 fixture 尚无短期密文列时仍可检查已有密文", () => {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE TABLE custom_node_secrets (id TEXT PRIMARY KEY, ciphertext BLOB NOT NULL);
+      CREATE TABLE subscription_tokens (id TEXT PRIMARY KEY, token_ciphertext BLOB);
+      CREATE TABLE subscription_temp_tokens (id TEXT PRIMARY KEY, token_hash TEXT NOT NULL);
+    `);
+    const secretBox = new SecretBox(randomBytes(32));
+    db.query("INSERT INTO custom_node_secrets (id, ciphertext) VALUES (?, ?)").run(
+      "sec_existing",
+      secretBox.encrypt({ password: "existing" })
+    );
+    db.query("INSERT INTO subscription_tokens (id, token_ciphertext) VALUES (?, ?)").run(
+      "tok_existing",
+      secretBox.encrypt({ token: "persisted" })
+    );
+    db.query("INSERT INTO subscription_temp_tokens (id, token_hash) VALUES (?, ?)").run(
+      "tmp_legacy",
+      "hash-only"
+    );
+
+    expect(listEncryptedSecretRecords(db).map((record) => record.kind)).toEqual([
+      "custom_node_secret",
+      "subscription_token"
+    ]);
     db.close();
   });
 

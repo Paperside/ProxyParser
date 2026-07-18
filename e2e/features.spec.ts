@@ -151,6 +151,33 @@ test("地区范围默认常用且 Final 兜底组可编辑", async ({ page }) =>
   await page.goto(`/subscriptions/${subscriptionId}/groups`);
   await expect(page.getByRole("combobox", { name: "地区分组范围" })).toContainText("常用地区");
 
+  const openAiGroup = page.getByRole("group", { name: "代理组 OpenAI" });
+  await openAiGroup.getByRole("button", { name: "编辑" }).click();
+  const scopedDialog = page.getByRole("dialog");
+  await expect(scopedDialog.getByText("当前不生效的地区组引用", { exact: false })).toBeVisible();
+  await expect(scopedDialog.getByText("组 Others", { exact: true })).toBeVisible();
+  await expect(scopedDialog.getByText("组 DE", { exact: true })).toHaveCount(0);
+  await expect(scopedDialog.getByText("组 FR", { exact: true })).toHaveCount(0);
+  await scopedDialog.getByRole("combobox", { name: "成员类型" }).click();
+  await page.getByRole("option", { name: "代理组", exact: true }).click();
+  await scopedDialog.getByRole("combobox", { name: "选择" }).click();
+  await expect(page.getByRole("option", { name: "Others", exact: true })).toBeVisible();
+  await expect(page.getByRole("option", { name: "DE", exact: true })).toHaveCount(0);
+  await page.getByRole("option", { name: "Others", exact: true }).click();
+  const preserveHiddenMembers = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PUT" &&
+      new URL(response.url()).pathname === `/api/subscriptions/${subscriptionId}/draft`
+  );
+  await scopedDialog.getByRole("button", { name: "保存" }).click();
+  const savedPayload = (await preserveHiddenMembers).request().postDataJSON() as {
+    buildConfig: {
+      groups: { custom: Array<{ name: string; members: Array<{ kind: string; name?: string }> }> };
+    };
+  };
+  const savedOpenAi = savedPayload.buildConfig.groups.custom.find((group) => group.name === "OpenAI");
+  expect(savedOpenAi?.members).toContainEqual({ kind: "group", name: "FR" });
+
   const finalGroup = page.getByRole("group", { name: "代理组 Final" });
   await expect(finalGroup.getByText("MATCH 兜底")).toBeVisible();
   await finalGroup.getByRole("button", { name: "编辑" }).click();
@@ -158,6 +185,52 @@ test("地区范围默认常用且 Final 兜底组可编辑", async ({ page }) =>
   await expect(dialog.getByText("第一项是默认出口", { exact: false })).toBeVisible();
   await expect(dialog.getByText("组 Proxies", { exact: true })).toBeVisible();
   await expect(dialog.getByText("DIRECT", { exact: true })).toBeVisible();
+});
+
+test("订阅快捷入口与访问页均可按需展示二维码", async ({ page }) => {
+  const subscriptionId = await registerAndCreateSubscription(page);
+
+  await page.goto("/workbench");
+  const workbenchCard = page.getByRole("group", { name: "订阅 E2E subscription" });
+  const workbenchCopy = workbenchCard.getByRole("button", { name: "复制链接", exact: true });
+  const workbenchQr = workbenchCard.getByRole("button", { name: "显示订阅二维码" });
+  await expect(workbenchQr).toBeVisible();
+  await workbenchCopy.hover();
+  const workbenchPreview = workbenchCard.getByTestId("subscription-qr-popover");
+  await expect(workbenchPreview).toBeVisible();
+  await expect(workbenchPreview.getByRole("img", { name: "订阅二维码" })).toBeVisible();
+  await workbenchQr.click();
+  const qrDialog = page.getByRole("dialog", { name: "订阅二维码" });
+  await expect(qrDialog.getByRole("img", { name: "订阅二维码" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.goto("/subscriptions");
+  const subscriptionRow = page.getByRole("row").filter({ hasText: "E2E subscription" });
+  await expect(subscriptionRow.getByRole("button", { name: "显示订阅二维码" })).toBeVisible();
+  await subscriptionRow.getByRole("button", { name: "复制链接", exact: true }).hover();
+  await expect(subscriptionRow.getByTestId("subscription-qr-popover")).toBeVisible();
+  await expect(
+    subscriptionRow.getByTestId("subscription-qr-popover").getByRole("img", { name: "订阅二维码" })
+  ).toBeVisible();
+
+  await page.goto(`/subscriptions/${subscriptionId}/access`);
+  const longTokenRow = page.getByText("默认设备", { exact: true }).locator("..");
+  await longTokenRow.getByRole("button", { name: "复制链接", exact: true }).hover();
+  await expect(longTokenRow.getByTestId("subscription-qr-popover")).toBeVisible();
+  await expect(
+    longTokenRow.getByTestId("subscription-qr-popover").getByRole("img", { name: "订阅二维码" })
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "生成", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "订阅链接已生成" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  const tempTokenRow = page.getByText("分享", { exact: true }).locator("..");
+  await expect(tempTokenRow.getByRole("button", { name: "复制链接", exact: true })).toBeVisible();
+  await tempTokenRow.getByRole("button", { name: "复制链接", exact: true }).hover();
+  await expect(tempTokenRow.getByTestId("subscription-qr-popover")).toBeVisible();
+  await expect(
+    tempTokenRow.getByTestId("subscription-qr-popover").getByRole("img", { name: "订阅二维码" })
+  ).toBeVisible();
 });
 
 test("规则交付开关、URI 自动识别与延迟测试入口可用", async ({ page }) => {

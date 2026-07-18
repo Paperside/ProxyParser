@@ -1193,6 +1193,7 @@ export class SubscriptionService {
     const record = this.repository.createTempToken({
       subscriptionId: id,
       tokenHash: sha256Hex(plaintext),
+      tokenCiphertext: this.secretBox.encrypt({ token: plaintext }),
       label: input.label,
       expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString()
     });
@@ -1203,9 +1204,33 @@ export class SubscriptionService {
     };
   }
 
+  // 短期链接仅在仍有效时允许恢复明文；旧版本只存哈希，无法也不应尝试逆向恢复。
+  revealTempToken(ownerUserId: string, id: string, tokenId: string) {
+    this.requireOwned(ownerUserId, id);
+    const record = this.repository.findTempTokenForReveal(id, tokenId);
+    if (!record) {
+      throw new SubscriptionError("短期链接不存在。", 404);
+    }
+    if (record.revokedAt) {
+      throw new SubscriptionError("短期链接已失效。", 410);
+    }
+    const expiresAt = Date.parse(record.expiresAt);
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      throw new SubscriptionError("短期链接已过期。", 410);
+    }
+    if (!record.tokenCiphertext) {
+      throw new SubscriptionError(
+        "该短期链接创建于旧版本，无法再次显示；请重新生成一条短期链接。",
+        409
+      );
+    }
+    const { token } = this.secretBox.decrypt(record.tokenCiphertext) as { token: string };
+    return { token, url: `${this.options.publicBaseUrl}/s/${id}/t/${token}` };
+  }
+
   revokeTempToken(ownerUserId: string, id: string, tokenId: string) {
     this.requireOwned(ownerUserId, id);
-    this.repository.revokeTempToken(tokenId);
+    this.repository.revokeTempToken(id, tokenId);
     return { ok: true };
   }
 

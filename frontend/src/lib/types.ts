@@ -248,6 +248,7 @@ export interface TokenInfo {
   lastUsedAt: string | null;
   createdAt: string;
   expiresAt?: string;
+  canReveal?: boolean;
 }
 
 export interface IssuedToken extends TokenInfo {

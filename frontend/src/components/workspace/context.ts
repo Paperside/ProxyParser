@@ -1,7 +1,7 @@
 import { createContext, useContext } from "react";
 
 import type { BuildConfig } from "../../lib/build-config-types";
-import { REGION_CODES } from "../../lib/regions";
+import { regionCodesForScope } from "../../lib/regions";
 import type {
   SubscriptionDetail,
   SyncLatestRulesetsResult,
@@ -55,7 +55,8 @@ export const deriveGroupNames = (config: BuildConfig): string[] => {
     }
     if (generator.kind === "auto-group") names.push(generator.name);
     if (generator.kind === "region-groups") {
-      names.push(...REGION_CODES, "Others");
+      // scope 缺省是历史配置，与渲染管线一样按 full 兼容。
+      names.push(...regionCodesForScope(generator.scope ?? "full"), "Others");
     }
   }
   for (const group of config.groups.custom) {

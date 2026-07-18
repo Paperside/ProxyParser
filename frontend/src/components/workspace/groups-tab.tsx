@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { cn } from "../../lib/cn";
 
 import type { CustomGroup, GroupMember } from "../../lib/build-config-types";
-import { REGION_CODES, regionLabel } from "../../lib/regions";
+import { COMMON_REGION_CODES, REGION_CODES, regionLabel } from "../../lib/regions";
 import { SectionTitle } from "../shared";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -117,7 +117,14 @@ const MemberPicker = ({ onAdd }: { onAdd: (member: GroupMember) => void }) => {
           }))
         ];
       case "group":
-        return knownGroupNames.map((name) => ({ value: name, label: name }));
+        return knownGroupNames
+          .filter(
+            (name) =>
+              !REGION_GROUP_NAME_SET.has(name) ||
+              workspaceIndex === null ||
+              workspaceIndex.groupIndex.some((group) => group.name === name)
+          )
+          .map((name) => ({ value: name, label: name }));
       case "builtin":
         return BUILTIN_POLICY_OPTIONS.map((option) => ({ value: option.value, label: option.label }));
       case "node":
@@ -200,6 +207,43 @@ interface MemberRow {
 const toMemberRows = (members: GroupMember[]): MemberRow[] =>
   members.map((member) => ({ id: crypto.randomUUID(), member }));
 
+const REGION_CODE_SET = new Set(REGION_CODES);
+const COMMON_REGION_CODE_SET = new Set<string>(COMMON_REGION_CODES);
+const REGION_GROUP_NAME_SET = new Set([...REGION_CODES, "Others"]);
+
+const hiddenRegionGroupNames = (
+  commonScope: boolean,
+  currentGroupNames: ReadonlySet<string> | null
+): Set<string> =>
+  new Set(
+    [...REGION_GROUP_NAME_SET].filter(
+      (name) =>
+        (commonScope && REGION_CODE_SET.has(name) && !COMMON_REGION_CODE_SET.has(name)) ||
+        (currentGroupNames !== null && !currentGroupNames.has(name))
+    )
+  );
+
+// 常用地区只是当前的渲染视图；切换范围不应破坏原有完整地区配置。
+// 编辑时将未展示的地区成员留在原始槽位，可见成员仍可自由删除/排序/新增。
+const restoreHiddenMembers = (
+  visibleMembers: GroupMember[],
+  originalMembers: GroupMember[],
+  isHidden: (member: GroupMember) => boolean
+): GroupMember[] => {
+  let visibleCursor = 0;
+  const restored: GroupMember[] = [];
+  for (const original of originalMembers) {
+    if (isHidden(original)) {
+      restored.push(original);
+      continue;
+    }
+    const replacement = visibleMembers[visibleCursor++];
+    if (replacement) restored.push(replacement);
+  }
+  restored.push(...visibleMembers.slice(visibleCursor));
+  return restored;
+};
+
 const GroupEditorDialog = ({
   initial,
   onClose
@@ -208,9 +252,28 @@ const GroupEditorDialog = ({
   onClose: () => void;
 }) => {
   const { config, update, workspaceIndex, editingLocked } = useWorkspace();
+  const regionGenerator = config.groups.generators.find((generator) => generator.kind === "region-groups");
+  const commonRegionScope = regionGenerator?.kind === "region-groups" && regionGenerator.scope === "common";
+  const originalMembers = initial?.members ?? [];
+  // 弹窗打开时固定当前生效集合，避免保存期间 workspace index 刷新导致成员被错位合并。
+  const [hiddenRegionNames] = useState(() =>
+    hiddenRegionGroupNames(
+      commonRegionScope,
+      workspaceIndex === null
+        ? null
+        : new Set(workspaceIndex.groupIndex.map((group) => group.name))
+    )
+  );
+  const isHiddenRegionMember = (member: GroupMember) =>
+    member.kind === "group" && hiddenRegionNames.has(member.name);
+  const hiddenRegionMemberCount = originalMembers.filter(isHiddenRegionMember).length;
   const [name, setName] = useState(initial?.name ?? "");
   const [type, setType] = useState<CustomGroup["type"]>(initial?.type ?? "select");
-  const [rows, setRows] = useState<MemberRow[]>(() => toMemberRows(initial?.members ?? []));
+  const [rows, setRows] = useState<MemberRow[]>(() =>
+    toMemberRows(
+      originalMembers.filter((member) => !isHiddenRegionMember(member))
+    )
+  );
   const isFinalTarget = initial !== null && config.rules.final.target === initial.name;
 
   const nodeName = (id: string) =>
@@ -225,7 +288,12 @@ const GroupEditorDialog = ({
       toast.error("代理组至少需要一个成员");
       return;
     }
-    const members = rows.map((row) => row.member);
+    const visibleMembers = rows.map((row) => row.member);
+    const members = restoreHiddenMembers(
+      visibleMembers,
+      originalMembers,
+      isHiddenRegionMember
+    );
     const accepted = update((draft) => {
       const existingIndex = draft.groups.custom.findIndex((group) => group.name === (initial?.name ?? name));
       const nextGroup: CustomGroup = { name: name.trim(), type, members };
@@ -296,6 +364,11 @@ const GroupEditorDialog = ({
           成员（拖拽调整输出顺序）
           {type === "select" ? <span className="ml-1 font-normal text-faint">第一项为默认选择</span> : null}
         </p>
+        {hiddenRegionMemberCount > 0 ? (
+          <p className="mb-2 rounded border border-line bg-bg px-2.5 py-1.5 text-[11px] leading-5 text-faint">
+            已隐藏 {hiddenRegionMemberCount} 个当前不生效的地区组引用，配置仍保留；当对应地区产生节点或切换范围后会自动恢复。
+          </p>
+        ) : null}
         <div className="mb-3">
           <SortableList
             items={rows}

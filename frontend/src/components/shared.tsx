@@ -1,6 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Check, Copy } from "lucide-react";
-import QRCode from "qrcode";
+import { useCallback, useEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
+import { Check, Copy, QrCode as QrCodeIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "../lib/cn";
@@ -9,39 +8,58 @@ import type { DiffSummary, EvaluateIssueDto, Health } from "../lib/types";
 import { healthLabel } from "../lib/format";
 import { Badge } from "./ui/badge";
 import { Button, type ButtonProps } from "./ui/button";
+import { Dialog, DialogContent } from "./ui/dialog";
 
 // 二维码：toDataURL + <img>，不依赖 canvas ref 的挂载时机，失败时会显式提示而不是静默留白。
 export const QrCode = ({ url, size = 168 }: { url: string; size?: number }) => {
   const [src, setSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
     setSrc(null);
-    QRCode.toDataURL(url, {
-      width: size,
-      margin: 1,
-      color: { dark: "#e8eaf2", light: "#00000000" }
-    })
+    setFailed(false);
+    import("qrcode")
+      .then(({ default: QRCode }) =>
+        QRCode.toDataURL(url, {
+          width: size,
+          margin: 4,
+          errorCorrectionLevel: "M",
+          color: { dark: "#111827", light: "#ffffff" }
+        })
+      )
       .then((dataUrl) => {
         if (!cancelled) setSrc(dataUrl);
       })
       .catch(() => {
-        if (!cancelled) toast.error("二维码生成失败，可直接复制链接");
+        if (!cancelled) {
+          setFailed(true);
+          toast.error("二维码生成失败，可直接复制链接");
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [url, size]);
-  return src ? (
+  return failed ? (
+    <div
+      style={{ width: size, height: size }}
+      role="status"
+      className="flex items-center justify-center rounded-md border border-err/30 bg-white px-4 text-center text-[11px] text-err"
+    >
+      二维码生成失败，请复制链接导入
+    </div>
+  ) : src ? (
     <img
       src={src}
       alt="订阅二维码"
       style={{ width: size, height: size }}
-      className="rounded-md border border-line bg-surface2 p-1.5"
+      className="rounded-md border border-line bg-white p-1"
     />
   ) : (
     <div
       style={{ width: size, height: size }}
-      className="flex items-center justify-center rounded-md border border-line bg-surface2 text-[11px] text-faint"
+      aria-live="polite"
+      className="flex items-center justify-center rounded-md border border-line bg-white text-[11px] text-slate-500"
     >
       生成中…
     </div>
@@ -82,36 +100,226 @@ export const AsyncCopyButton = ({
   onReveal,
   label = "复制链接",
   size = "sm",
-  variant
+  variant,
+  showQrButton = false,
+  qrButtonLabel = "二维码",
+  qrTitle = "订阅二维码"
 }: {
   onReveal: () => Promise<string>;
   label?: string;
   size?: ButtonProps["size"];
   variant?: ButtonProps["variant"];
+  showQrButton?: boolean;
+  qrButtonLabel?: string;
+  qrTitle?: string;
 }) => {
-  const [state, setState] = useState<"idle" | "loading" | "copied">("idle");
-  return (
-    <Button
-      size={size}
-      variant={variant}
-      disabled={state === "loading"}
-      onClick={async () => {
-        setState("loading");
-        try {
-          const url = await onReveal();
-          await navigator.clipboard.writeText(url);
-          setState("copied");
-          toast.success("已复制到剪贴板");
-          setTimeout(() => setState("idle"), 1500);
-        } catch (error) {
-          setState("idle");
-          toast.error(error instanceof Error ? error.message : "复制失败，请重试");
+  const [copyState, setCopyState] = useState<"idle" | "loading" | "copied">("idle");
+  const [revealState, setRevealState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [url, setUrl] = useState<string | null>(null);
+  const [hoverOpen, setHoverOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const urlRef = useRef<string | null>(null);
+  const hoverOpenRef = useRef(false);
+  const dialogOpenRef = useRef(false);
+  const pendingReveal = useRef<Promise<string> | null>(null);
+  const revealGeneration = useRef(0);
+  const focusWithin = useRef(false);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearHoverTimer = () => {
+    if (hoverTimer.current !== null) {
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+  };
+
+  const clearSensitiveUrl = useCallback(() => {
+    revealGeneration.current += 1;
+    pendingReveal.current = null;
+    urlRef.current = null;
+    setUrl(null);
+    setRevealState("idle");
+  }, []);
+
+  const reveal = useCallback(async () => {
+    if (urlRef.current) return urlRef.current;
+    if (pendingReveal.current) return pendingReveal.current;
+
+    const generation = revealGeneration.current;
+    setRevealState("loading");
+    const request = onReveal()
+      .then((nextUrl) => {
+        if (generation === revealGeneration.current) {
+          urlRef.current = nextUrl;
+          setUrl(nextUrl);
+          setRevealState("ready");
         }
-      }}
-    >
-      {state === "copied" ? <Check className="size-3.5 text-ok" /> : <Copy className="size-3.5" />}
-      {label}
-    </Button>
+        return nextUrl;
+      })
+      .catch((error: unknown) => {
+        if (generation === revealGeneration.current) setRevealState("error");
+        throw error;
+      })
+      .finally(() => {
+        if (pendingReveal.current === request) pendingReveal.current = null;
+      });
+    pendingReveal.current = request;
+    return request;
+  }, [onReveal]);
+
+  const startHoverPreview = (immediate = false) => {
+    clearHoverTimer();
+    hoverTimer.current = setTimeout(() => {
+      hoverOpenRef.current = true;
+      setHoverOpen(true);
+      void reveal().catch(() => undefined);
+    }, immediate ? 0 : 180);
+  };
+
+  const stopHoverPreview = () => {
+    clearHoverTimer();
+    hoverOpenRef.current = false;
+    setHoverOpen(false);
+    if (!dialogOpenRef.current) clearSensitiveUrl();
+  };
+
+  const handleBlur = (event: FocusEvent<HTMLSpanElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      focusWithin.current = false;
+      stopHoverPreview();
+    }
+  };
+
+  const copyUrl = async () => {
+    setCopyState("loading");
+    try {
+      const nextUrl = await reveal();
+      await navigator.clipboard.writeText(nextUrl);
+      setCopyState("copied");
+      toast.success("已复制到剪贴板");
+      if (copyResetTimer.current !== null) clearTimeout(copyResetTimer.current);
+      copyResetTimer.current = setTimeout(() => {
+        setCopyState("idle");
+        if (!hoverOpenRef.current && !dialogOpenRef.current) clearSensitiveUrl();
+      }, 1500);
+    } catch (error) {
+      setCopyState("idle");
+      toast.error(error instanceof Error ? error.message : "复制失败，请重试");
+    }
+  };
+
+  useEffect(
+    () => () => {
+      clearHoverTimer();
+      if (copyResetTimer.current !== null) clearTimeout(copyResetTimer.current);
+      revealGeneration.current += 1;
+    },
+    []
+  );
+
+  return (
+    <>
+      <span className="inline-flex items-center gap-1.5">
+        <span
+          className="relative inline-flex"
+          onMouseEnter={() => startHoverPreview(false)}
+          onMouseLeave={() => {
+            if (!focusWithin.current) stopHoverPreview();
+          }}
+          onFocusCapture={() => {
+            focusWithin.current = true;
+            startHoverPreview(true);
+          }}
+          onBlur={handleBlur}
+        >
+          <Button
+            size={size}
+            variant={variant}
+            disabled={copyState === "loading"}
+            onClick={() => void copyUrl()}
+          >
+            {copyState === "copied" ? (
+              <Check className="size-3.5 text-ok" />
+            ) : (
+              <Copy className="size-3.5" />
+            )}
+            {label}
+          </Button>
+          {hoverOpen ? (
+            <span
+              role="tooltip"
+              data-testid="subscription-qr-popover"
+              className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 flex w-[206px] flex-col items-center gap-2 rounded-lg border border-line-strong bg-surface p-3 shadow-2xl shadow-black/60"
+            >
+              <span className="self-start text-[11px] font-semibold text-muted">扫码导入当前订阅</span>
+              {url ? (
+                <QrCode url={url} size={176} />
+              ) : revealState === "error" ? (
+                <span className="grid h-44 w-44 place-items-center rounded-md border border-err/30 bg-err-bg px-4 text-center text-[11px] text-err">
+                  二维码暂不可用，请点击复制重试
+                </span>
+              ) : (
+                <span aria-live="polite" className="grid h-44 w-44 place-items-center rounded-md bg-white text-[11px] text-slate-500">
+                  正在安全读取链接…
+                </span>
+              )}
+              <span className="text-[10px] leading-4 text-faint">仅在气泡打开期间读取并生成</span>
+              <span className="absolute -bottom-1.5 right-5 size-3 rotate-45 border-b border-r border-line-strong bg-surface" />
+            </span>
+          ) : null}
+        </span>
+        {showQrButton ? (
+          <Button
+            size={size}
+            variant={variant}
+            aria-label={`显示${qrTitle}`}
+            title={`显示${qrTitle}`}
+            onClick={() => {
+              dialogOpenRef.current = true;
+              setDialogOpen(true);
+              void reveal().catch((error: unknown) =>
+                toast.error(error instanceof Error ? error.message : "二维码生成失败，请重试")
+              );
+            }}
+          >
+            <QrCodeIcon className="size-3.5" />
+            {qrButtonLabel}
+          </Button>
+        ) : null}
+      </span>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          dialogOpenRef.current = open;
+          setDialogOpen(open);
+          if (!open && !hoverOpenRef.current) clearSensitiveUrl();
+        }}
+      >
+        <DialogContent
+          title={qrTitle}
+          description="用 Clash / Mihomo 客户端扫描导入；二维码只在当前弹窗中本地生成。"
+        >
+          <div className="flex flex-col items-center gap-3">
+            {url ? (
+              <QrCode url={url} size={192} />
+            ) : revealState === "error" ? (
+              <p className="rounded-md border border-err/30 bg-err-bg px-3 py-2 text-xs text-err">
+                链接读取失败，请关闭后重试。
+              </p>
+            ) : (
+              <div aria-live="polite" className="grid size-48 place-items-center rounded-md bg-white text-xs text-slate-500">
+                正在安全读取链接…
+              </div>
+            )}
+            <Button size="sm" onClick={() => void copyUrl()} disabled={copyState === "loading" || !url}>
+              {copyState === "copied" ? <Check className="size-3.5 text-ok" /> : <Copy className="size-3.5" />}
+              {copyState === "copied" ? "已复制" : "复制链接"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
@@ -133,6 +341,7 @@ export const CopyLinkButton = ({
       size={size}
       variant={variant}
       label={label}
+      showQrButton
       onReveal={async () => (await mutations.copyPrimaryLink.mutateAsync()).url}
     />
   );
