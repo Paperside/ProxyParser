@@ -190,15 +190,89 @@ test("地区范围默认常用且 Final 兜底组可编辑", async ({ page }) =>
 test("订阅快捷入口与访问页均可按需展示二维码", async ({ page }) => {
   const subscriptionId = await registerAndCreateSubscription(page);
 
+  await page.setViewportSize({ width: 900, height: 600 });
   await page.goto("/workbench");
   const workbenchCard = page.getByRole("group", { name: "订阅 E2E subscription" });
   const workbenchCopy = workbenchCard.getByRole("button", { name: "复制链接", exact: true });
   const workbenchQr = workbenchCard.getByRole("button", { name: "显示订阅二维码" });
   await expect(workbenchQr).toBeVisible();
-  await workbenchCopy.hover();
   const workbenchPreview = workbenchCard.getByTestId("subscription-qr-popover");
+  const positionCopyAnchor = async (position: "top" | "middle" | "bottom") => {
+    await workbenchCopy.evaluate((button, nextPosition) => {
+      const anchor = button.parentElement;
+      if (!anchor) throw new Error("二维码触发器缺少定位容器");
+      const anchorHeight = anchor.getBoundingClientRect().height;
+      const top =
+        nextPosition === "top"
+          ? 8
+          : nextPosition === "bottom"
+            ? window.innerHeight - anchorHeight - 8
+            : (window.innerHeight - anchorHeight) / 2;
+      Object.assign(anchor.style, {
+        position: "fixed",
+        right: "24px",
+        top: `${top}px`,
+        zIndex: "80"
+      });
+    }, position);
+  };
+  const closeHoverPreview = async () => {
+    await page.mouse.move(2, 2);
+    await expect(workbenchPreview).toBeHidden();
+  };
+
+  await positionCopyAnchor("top");
+  await workbenchCopy.hover();
   await expect(workbenchPreview).toBeVisible();
+  await expect(workbenchPreview).toHaveAttribute("data-placement", "down");
   await expect(workbenchPreview.getByRole("img", { name: "订阅二维码" })).toBeVisible();
+  await expect(workbenchPreview.getByText("仅在气泡打开期间读取并生成")).toHaveCount(0);
+  const downGeometry = await workbenchPreview.evaluate((popover) => {
+    const anchor = popover.parentElement;
+    if (!anchor) throw new Error("二维码气泡缺少定位容器");
+    return {
+      anchorBottom: anchor.getBoundingClientRect().bottom,
+      popoverTop: popover.getBoundingClientRect().top
+    };
+  });
+  expect(downGeometry.popoverTop).toBeGreaterThanOrEqual(downGeometry.anchorBottom - 1);
+
+  await closeHoverPreview();
+  await positionCopyAnchor("bottom");
+  await workbenchCopy.hover();
+  await expect(workbenchPreview).toHaveAttribute("data-placement", "up");
+  const upGeometry = await workbenchPreview.evaluate((popover) => {
+    const anchor = popover.parentElement;
+    if (!anchor) throw new Error("二维码气泡缺少定位容器");
+    return {
+      anchorTop: anchor.getBoundingClientRect().top,
+      popoverBottom: popover.getBoundingClientRect().bottom
+    };
+  });
+  expect(upGeometry.popoverBottom).toBeLessThanOrEqual(upGeometry.anchorTop + 1);
+
+  await closeHoverPreview();
+  await page.setViewportSize({ width: 900, height: 260 });
+  await positionCopyAnchor("middle");
+  await workbenchCopy.hover();
+  await expect(workbenchPreview).toHaveAttribute("data-placement", "down");
+  const constrainedGeometry = await workbenchPreview.evaluate((popover) => {
+    const anchor = popover.parentElement;
+    if (!anchor) throw new Error("二维码气泡缺少定位容器");
+    const anchorRect = anchor.getBoundingClientRect();
+    const requiredSpace = popover.getBoundingClientRect().height + 8;
+    return {
+      requiredSpace,
+      spaceAbove: anchorRect.top,
+      spaceBelow: window.innerHeight - anchorRect.bottom
+    };
+  });
+  expect(constrainedGeometry.spaceAbove).toBeLessThan(constrainedGeometry.requiredSpace);
+  expect(constrainedGeometry.spaceBelow).toBeLessThan(constrainedGeometry.requiredSpace);
+
+  await closeHoverPreview();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await workbenchCopy.evaluate((button) => button.parentElement?.removeAttribute("style"));
   await workbenchQr.click();
   const qrDialog = page.getByRole("dialog", { name: "订阅二维码" });
   await expect(qrDialog.getByRole("img", { name: "订阅二维码" })).toBeVisible();

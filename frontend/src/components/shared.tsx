@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type ReactNode
+} from "react";
 import { Check, Copy, QrCode as QrCodeIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -95,7 +103,21 @@ export const CopyButton = ({ text, label = "复制链接" }: { text: string; lab
   );
 };
 
-// 明文按需获取（如订阅长期链接）：点击时才请求一次，取到后立即复制，不在前端常驻明文。
+type QrPopoverPlacement = "down" | "up";
+
+const QR_POPOVER_GAP_PX = 8;
+
+const chooseQrPopoverPlacement = (
+  spaceAbove: number,
+  spaceBelow: number,
+  requiredSpace: number
+): QrPopoverPlacement => {
+  if (spaceBelow >= requiredSpace) return "down";
+  if (spaceAbove >= requiredSpace) return "up";
+  return "down";
+};
+
+// 订阅链接按需获取：复制、悬停二维码或弹窗首次需要时读取，气泡关闭后清理前端状态。
 export const AsyncCopyButton = ({
   onReveal,
   label = "复制链接",
@@ -118,6 +140,10 @@ export const AsyncCopyButton = ({
   const [url, setUrl] = useState<string | null>(null);
   const [hoverOpen, setHoverOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [popoverPlacement, setPopoverPlacement] = useState<QrPopoverPlacement>("down");
+  const [popoverPositionReady, setPopoverPositionReady] = useState(false);
+  const hoverAnchorRef = useRef<HTMLSpanElement | null>(null);
+  const hoverPopoverRef = useRef<HTMLSpanElement | null>(null);
   const urlRef = useRef<string | null>(null);
   const hoverOpenRef = useRef(false);
   const dialogOpenRef = useRef(false);
@@ -126,6 +152,7 @@ export const AsyncCopyButton = ({
   const focusWithin = useRef(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const placementFrame = useRef<number | null>(null);
 
   const clearHoverTimer = () => {
     if (hoverTimer.current !== null) {
@@ -168,9 +195,73 @@ export const AsyncCopyButton = ({
     return request;
   }, [onReveal]);
 
+  const measurePopoverPlacement = useCallback(() => {
+    if (!hoverOpenRef.current) return;
+    const anchor = hoverAnchorRef.current;
+    const popover = hoverPopoverRef.current;
+    if (!anchor || !popover) return;
+
+    const anchorRect = anchor.getBoundingClientRect();
+    const popoverRect = popover.getBoundingClientRect();
+    const visualViewport = window.visualViewport;
+    const viewportTop = visualViewport?.offsetTop ?? 0;
+    const viewportHeight = visualViewport?.height ?? document.documentElement.clientHeight;
+    const viewportBottom = viewportTop + viewportHeight;
+    const requiredSpace = popoverRect.height + QR_POPOVER_GAP_PX;
+    const nextPlacement = chooseQrPopoverPlacement(
+      anchorRect.top - viewportTop,
+      viewportBottom - anchorRect.bottom,
+      requiredSpace
+    );
+
+    setPopoverPlacement((current) =>
+      current === nextPlacement ? current : nextPlacement
+    );
+    setPopoverPositionReady(true);
+  }, []);
+
+  const schedulePopoverMeasurement = useCallback(() => {
+    if (!hoverOpenRef.current || placementFrame.current !== null) return;
+    placementFrame.current = window.requestAnimationFrame(() => {
+      placementFrame.current = null;
+      measurePopoverPlacement();
+    });
+  }, [measurePopoverPlacement]);
+
+  useLayoutEffect(() => {
+    if (!hoverOpen) return;
+
+    measurePopoverPlacement();
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(schedulePopoverMeasurement);
+    if (hoverAnchorRef.current) resizeObserver?.observe(hoverAnchorRef.current);
+    if (hoverPopoverRef.current) resizeObserver?.observe(hoverPopoverRef.current);
+
+    window.addEventListener("resize", schedulePopoverMeasurement);
+    window.addEventListener("scroll", schedulePopoverMeasurement, true);
+    window.visualViewport?.addEventListener("resize", schedulePopoverMeasurement);
+    window.visualViewport?.addEventListener("scroll", schedulePopoverMeasurement);
+
+    return () => {
+      window.removeEventListener("resize", schedulePopoverMeasurement);
+      window.removeEventListener("scroll", schedulePopoverMeasurement, true);
+      window.visualViewport?.removeEventListener("resize", schedulePopoverMeasurement);
+      window.visualViewport?.removeEventListener("scroll", schedulePopoverMeasurement);
+      resizeObserver?.disconnect();
+      if (placementFrame.current !== null) {
+        window.cancelAnimationFrame(placementFrame.current);
+        placementFrame.current = null;
+      }
+    };
+  }, [hoverOpen, measurePopoverPlacement, schedulePopoverMeasurement]);
+
   const startHoverPreview = (immediate = false) => {
     clearHoverTimer();
     hoverTimer.current = setTimeout(() => {
+      setPopoverPlacement("down");
+      setPopoverPositionReady(false);
       hoverOpenRef.current = true;
       setHoverOpen(true);
       void reveal().catch(() => undefined);
@@ -181,6 +272,7 @@ export const AsyncCopyButton = ({
     clearHoverTimer();
     hoverOpenRef.current = false;
     setHoverOpen(false);
+    setPopoverPositionReady(false);
     if (!dialogOpenRef.current) clearSensitiveUrl();
   };
 
@@ -213,6 +305,7 @@ export const AsyncCopyButton = ({
     () => () => {
       clearHoverTimer();
       if (copyResetTimer.current !== null) clearTimeout(copyResetTimer.current);
+      if (placementFrame.current !== null) window.cancelAnimationFrame(placementFrame.current);
       revealGeneration.current += 1;
     },
     []
@@ -222,6 +315,7 @@ export const AsyncCopyButton = ({
     <>
       <span className="inline-flex items-center gap-1.5">
         <span
+          ref={hoverAnchorRef}
           className="relative inline-flex"
           onMouseEnter={() => startHoverPreview(false)}
           onMouseLeave={() => {
@@ -248,9 +342,15 @@ export const AsyncCopyButton = ({
           </Button>
           {hoverOpen ? (
             <span
+              ref={hoverPopoverRef}
               role="tooltip"
               data-testid="subscription-qr-popover"
-              className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 flex w-[206px] flex-col items-center gap-2 rounded-lg border border-line-strong bg-surface p-3 shadow-2xl shadow-black/60"
+              data-placement={popoverPlacement}
+              className={cn(
+                "pointer-events-none absolute right-0 z-50 flex w-[206px] flex-col items-center gap-2 rounded-lg border border-line-strong bg-surface p-3 shadow-2xl shadow-black/60",
+                popoverPlacement === "down" ? "top-full mt-2" : "bottom-full mb-2",
+                !popoverPositionReady && "invisible"
+              )}
             >
               <span className="self-start text-[11px] font-semibold text-muted">扫码导入当前订阅</span>
               {url ? (
@@ -264,8 +364,14 @@ export const AsyncCopyButton = ({
                   正在安全读取链接…
                 </span>
               )}
-              <span className="text-[10px] leading-4 text-faint">仅在气泡打开期间读取并生成</span>
-              <span className="absolute -bottom-1.5 right-5 size-3 rotate-45 border-b border-r border-line-strong bg-surface" />
+              <span
+                className={cn(
+                  "absolute right-5 size-3 rotate-45 bg-surface",
+                  popoverPlacement === "down"
+                    ? "-top-1.5 border-l border-t border-line-strong"
+                    : "-bottom-1.5 border-b border-r border-line-strong"
+                )}
+              />
             </span>
           ) : null}
         </span>
