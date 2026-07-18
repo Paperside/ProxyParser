@@ -22,7 +22,13 @@ import { AccessTab } from "../components/workspace/access-tab";
 import { WorkspaceRail } from "../components/workspace/rail";
 import { cn } from "../lib/cn";
 import type { BuildConfig } from "../lib/build-config-types";
-import { usePreview, useSubscription, useSubscriptionMutations } from "../lib/hooks";
+import {
+  usePreparePublishCandidate,
+  useSubscription,
+  useSubscriptionMutations,
+  useValidatePublishCandidate,
+  useWorkspaceIndex
+} from "../lib/hooks";
 
 const TABS = [
   { id: "overview", label: "概览" },
@@ -39,16 +45,35 @@ type TabId = (typeof TABS)[number]["id"];
 
 const PublishDialog = ({
   subscriptionId,
+  expectedDraftRevision,
   onClose
 }: {
   subscriptionId: string;
+  expectedDraftRevision: number;
   onClose: () => void;
 }) => {
-  const preview = usePreview(subscriptionId, true);
+  const prepareCandidate = usePreparePublishCandidate(subscriptionId);
+  const candidateForValidation =
+    prepareCandidate.data?.phase === "rendered"
+      ? prepareCandidate.data.candidateId
+      : null;
+  const validateCandidate = useValidatePublishCandidate(
+    subscriptionId,
+    candidateForValidation
+  );
   const mutations = useSubscriptionMutations(subscriptionId);
   const [publishError, setPublishError] = useState<string | null>(null);
 
-  const errors = preview.data?.issues.filter((issue) => issue.severity === "error") ?? [];
+  const prepared = validateCandidate.data ?? prepareCandidate.data ?? null;
+  const currentCandidate =
+    prepared?.draftRevision === expectedDraftRevision ? prepared : null;
+  const errors = currentCandidate?.issues.filter((issue) => issue.severity === "error") ?? [];
+  const preparationError = prepareCandidate.error instanceof Error
+    ? prepareCandidate.error.message
+    : null;
+  const validationError = validateCandidate.error instanceof Error
+    ? validateCandidate.error.message
+    : null;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -57,45 +82,74 @@ const PublishDialog = ({
         title="预览并发布"
         description="确认这次要发布的变化。客户端在发布后拉取到的就是这份内容。"
       >
-        {preview.isFetching ? (
-          <p className="text-xs text-muted">正在渲染与校验…</p>
-        ) : preview.isError ? (
-          <p className="text-xs text-err">预览失败：{preview.error.message}</p>
-        ) : preview.data ? (
+        {prepareCandidate.isPending && !currentCandidate ? (
+          <p className="text-xs text-muted">正在生成不可变候选版本…</p>
+        ) : preparationError ? (
+          <p className="text-xs text-err">候选版本生成失败：{preparationError}</p>
+        ) : currentCandidate ? (
           <div className="flex flex-col gap-4">
             <div>
               <p className="mb-1.5 text-xs font-medium text-muted">
                 与当前版本
-                {preview.data.activeReleaseSeq !== null
-                  ? ` v${preview.data.activeReleaseSeq} `
+                {currentCandidate.activeReleaseSeq !== null
+                  ? ` v${currentCandidate.activeReleaseSeq} `
                   : ""}
                 的差异
               </p>
-              <DiffChips diff={preview.data.diffVsActive} />
+              <DiffChips diff={currentCandidate.diffVsActive} />
             </div>
             <div className="flex gap-4 font-mono text-xs text-muted">
-              <span>{preview.data.stats.nodeCount} 节点</span>
-              <span>{preview.data.stats.groupCount} 组</span>
-              <span>{preview.data.stats.ruleCount} 规则</span>
-              <span>{preview.data.stats.providerCount} 规则集</span>
+              <span>{currentCandidate.stats.nodeCount} 节点</span>
+              <span>{currentCandidate.stats.groupCount} 组</span>
+              <span>{currentCandidate.stats.ruleCount} 规则</span>
+              <span>{currentCandidate.stats.providerCount} 规则集</span>
             </div>
-            {preview.data.issues.length > 0 ? (
+            {currentCandidate.issues.length > 0 ? (
               <div>
                 <p className="mb-1 text-xs font-medium text-muted">
                   {errors.length > 0
                     ? `存在 ${errors.length} 个必须处理的问题，发布将被阻断：`
                     : "提示（不阻断发布）："}
                 </p>
-                <IssueList issues={preview.data.issues} />
+                <IssueList issues={currentCandidate.issues} />
               </div>
             ) : null}
+            <div className="rounded-md border border-line bg-bg px-3 py-2 text-xs">
+              {currentCandidate.phase === "structural_failed" ? (
+                <p className="text-err">结构校验未通过，未运行 Mihomo。</p>
+              ) : validateCandidate.isPending || currentCandidate.phase === "validating" ? (
+                <p className="text-muted">渲染完成，Mihomo 内核正在校验这份候选文件…</p>
+              ) : validationError ? (
+                <p className="text-err">Mihomo 校验请求失败：{validationError}</p>
+              ) : currentCandidate.phase === "validated" && currentCandidate.mihomo?.passed ? (
+                <p className="text-ok">
+                  Mihomo 内核校验通过
+                  {currentCandidate.mihomo.durationMs !== null
+                    ? `（${currentCandidate.mihomo.durationMs}ms）`
+                    : ""}
+                </p>
+              ) : currentCandidate.phase === "validation_failed" ? (
+                <div className="flex flex-col gap-2 text-err">
+                  <p>Mihomo 内核校验失败，不能发布。</p>
+                  {currentCandidate.mihomo?.output ? (
+                    <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-[11px]">
+                      {currentCandidate.mihomo.output}
+                    </pre>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-muted">等待 Mihomo 内核校验…</p>
+              )}
+            </div>
             {publishError ? (
               <pre className="overflow-x-auto rounded-md bg-err-bg px-3 py-2 font-mono text-[11px] text-err">
                 {publishError}
               </pre>
             ) : null}
           </div>
-        ) : null}
+        ) : (
+          <p className="text-xs text-muted">草稿版本已变化，正在等待最新预览…</p>
+        )}
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
             取消
@@ -103,9 +157,11 @@ const PublishDialog = ({
           <Button
             variant="primary"
             disabled={
-              preview.isFetching ||
-              !preview.isSuccess ||
-              !preview.data ||
+              prepareCandidate.isPending ||
+              validateCandidate.isPending ||
+              !currentCandidate ||
+              currentCandidate.phase !== "validated" ||
+              currentCandidate.mihomo?.passed !== true ||
               errors.length > 0 ||
               mutations.publish.isPending
             }
@@ -113,8 +169,9 @@ const PublishDialog = ({
               mutations.publish
                 .mutateAsync({
                   subscriptionId,
-                  expectedDraftRevision: preview.data!.draftRevision,
-                  expectedRenderedHash: preview.data!.renderedHash
+                  candidateId: currentCandidate!.candidateId,
+                  expectedDraftRevision: currentCandidate!.draftRevision,
+                  expectedRenderedHash: currentCandidate!.renderedHash
                 })
                 .then((release) => {
                   toast.success(`v${release.seq} 已发布`);
@@ -192,6 +249,17 @@ const SubscriptionWorkspace = ({
       return;
     }
     const serverConfig = detail.data.draftBuildConfig ?? detail.data.buildConfig;
+    // 元信息更新等操作会让详情查询 refetch。服务端 revision 与配置都未变化时保留
+    // 当前对象身份，避免右侧按需生成的预览被误判为失效。
+    if (
+      loadedFor.current === subscriptionId &&
+      !dirtyRef.current &&
+      draftRevision.current === detail.data.draftRevision &&
+      serverConfig !== null &&
+      buildConfigsEqual(configRef.current, serverConfig)
+    ) {
+      return;
+    }
     // 首次载入，或服务端配置变化且本地无未保存修改时同步
     if (loadedFor.current !== subscriptionId || (!dirtyRef.current && serverConfig)) {
       const nextConfig = serverConfig ? cloneBuildConfig(serverConfig) : null;
@@ -524,7 +592,7 @@ const SubscriptionWorkspace = ({
     }
   };
 
-  const preview = usePreview(subscriptionId, config !== null && !dirty);
+  const workspaceIndex = useWorkspaceIndex(subscriptionId, config !== null && !dirty);
   const [showPublish, setShowPublish] = useState(false);
 
   const knownGroupNames = useMemo(() => (config ? deriveGroupNames(config) : []), [config]);
@@ -538,6 +606,13 @@ const SubscriptionWorkspace = ({
 
   const saveConflict = saveFailure?.kind === "conflict";
   const workspaceLocked = syncingRulesets || discardingDraft || saveConflict;
+  const currentDraftRevision = draftRevision.current ?? detail.data.draftRevision;
+  const currentWorkspaceIndex =
+    !dirty &&
+    !savingDraft &&
+    workspaceIndex.data?.draftRevision === currentDraftRevision
+      ? workspaceIndex.data
+      : null;
 
   const value: WorkspaceContextValue = {
     detail: detail.data,
@@ -547,11 +622,10 @@ const SubscriptionWorkspace = ({
     saving: dirty || savingDraft,
     syncingRulesets,
     discardingDraft,
-    draftRevision: draftRevision.current ?? detail.data.draftRevision,
+    draftRevision: currentDraftRevision,
     syncLatestRulesets,
-    preview: preview.data ?? null,
-    previewLoading: preview.isFetching,
-    refreshPreview: () => void preview.refetch(),
+    workspaceIndex: currentWorkspaceIndex,
+    workspaceIndexLoading: workspaceIndex.isFetching || dirty || savingDraft,
     knownGroupNames
   };
 
@@ -725,6 +799,7 @@ const SubscriptionWorkspace = ({
       {showPublish ? (
         <PublishDialog
           subscriptionId={subscriptionId}
+          expectedDraftRevision={value.draftRevision}
           onClose={() => setShowPublish(false)}
         />
       ) : null}

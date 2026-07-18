@@ -15,12 +15,13 @@ import {
   verifySecretBoxCiphertexts
 } from "./lib/security/secret-box";
 import { Scheduler } from "./lib/scheduler/scheduler";
-import { isMihomoAvailable } from "./lib/validate/mihomo-gate";
+import { isMihomoAvailable, verifyMihomoGeodata } from "./lib/validate/mihomo-gate";
 import { AuditLogRepository } from "./modules/audit/audit-log.repository";
 import { AuditLogService } from "./modules/audit/audit-log.service";
 import { AuthService } from "./modules/auth/auth.service";
 import { createAuthRoutes } from "./modules/auth/routes";
 import { EventRepository } from "./modules/events/event.repository";
+import { createNodeRoutes } from "./modules/nodes/routes";
 import { RulesetRepository } from "./modules/rulesets/ruleset.repository";
 import { RulesetService } from "./modules/rulesets/ruleset.service";
 import { createRulesetRoutes } from "./modules/rulesets/routes";
@@ -66,7 +67,7 @@ const main = async () => {
   const rulesetRepository = new RulesetRepository(db);
   const rulesetService = new RulesetService(rulesetRepository, events);
 
-  const templateRepository = new TemplateRepository(db);
+  const templateRepository = new TemplateRepository(db, secretBox);
   const subscriptionRepository = new SubscriptionRepository(db);
   const subscriptionService = new SubscriptionService(
     subscriptionRepository,
@@ -79,6 +80,9 @@ const main = async () => {
     {
       publicBaseUrl: runtimeConfig.publicBaseUrl,
       tempTokenTtlSeconds: runtimeConfig.subscriptionTempTokenTtlSeconds,
+      latencyTestUrl: runtimeConfig.latencyTestUrl,
+      latencyTimeoutMs: runtimeConfig.latencyTimeoutMs,
+      deliveryArtifactDir: `${runtimeConfig.secretDataDir}/delivery-artifacts`,
       mihomo: {
         mihomoPath: runtimeConfig.mihomoPath,
         dataDir: runtimeConfig.mihomoDataDir,
@@ -101,6 +105,12 @@ const main = async () => {
     dataDir: runtimeConfig.mihomoDataDir,
     assetsDir: runtimeConfig.assetsDir
   });
+  if (process.env.NODE_ENV === "production" && !mihomoAvailable) {
+    throw new Error("生产环境缺少可执行的 Mihomo 内核，拒绝启动不完整的发布门禁。");
+  }
+  // 离线 geodata 是发布门禁的一部分。缺失或被篡改时启动即失败，
+  // 让部署健康检查回滚，而不是等到用户确认发布时才暴露问题。
+  verifyMihomoGeodata(runtimeConfig.assetsDir);
 
   const app = new Elysia()
     .use(cors({ origin: true }))
@@ -114,13 +124,16 @@ const main = async () => {
     .use(createAuthRoutes(authService, auditLogService, rateLimiter))
     .use(createUpstreamSourceRoutes(authService, sourceService))
     .use(createRulesetRoutes(authService, rulesetService))
-    .use(createSubscriptionRoutes(authService, subscriptionService, secretStore))
+    .use(createNodeRoutes(authService))
+    .use(createSubscriptionRoutes(authService, subscriptionService, secretStore, rateLimiter))
     .use(
       createTemplateRoutes(
         authService,
         templateRepository,
         subscriptionRepository,
-        subscriptionService
+        subscriptionService,
+        secretStore,
+        auditLogService
       )
     )
     .use(createDeliveryRoutes(subscriptionService, rulesetService, rateLimiter))
@@ -134,7 +147,7 @@ const main = async () => {
       return {
         database: getDatabaseHealth(),
         scheduler: { lastTickAt: scheduler.lastTickAt },
-        mihomoGate: { available: mihomoAvailable },
+        mihomoGate: { available: mihomoAvailable, offlineAssetsReady: true },
         publicBaseUrl: runtimeConfig.publicBaseUrl
       };
     })

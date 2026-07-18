@@ -27,6 +27,7 @@ export interface BuiltinRulesetManifestEntry {
   recommendedTarget: string;
   sources: RulesetSource[];
   extraRules?: string[];
+  includeInRecommendedTemplate?: boolean;
   file: string;
 }
 

@@ -1,7 +1,12 @@
-import { useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { FileText, RefreshCw } from "lucide-react";
 
-import { useTrace } from "../../lib/hooks";
+import {
+  usePreviewRequest,
+  usePreviewYaml,
+  usePreviewYamlDownload,
+  useTrace
+} from "../../lib/hooks";
 import type { TraceResultDto } from "../../lib/types";
 import { DiffChips, IssueList } from "../shared";
 import { Badge } from "../ui/badge";
@@ -9,13 +14,48 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useWorkspace } from "./context";
 
-// 右侧诊断栏：预览 / 与已发布差异 / 规则追踪器（原型 03/05 的 rail）
+const formatBytes = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+};
+
+const MAX_INLINE_YAML_BYTES = 1024 * 1024;
+
+// 右侧诊断栏：完整求值与 YAML 都由用户明确触发，工作区载入不再隐式展开规则正文。
 export const WorkspaceRail = () => {
-  const { detail, preview, previewLoading, refreshPreview } = useWorkspace();
+  const { detail, config, draftRevision, saving } = useWorkspace();
   const [tab, setTab] = useState<"preview" | "diff" | "trace">("diff");
+  const previewRequest = usePreviewRequest(detail.id);
+  const yamlRequest = usePreviewYaml(detail.id);
+  const yamlDownload = usePreviewYamlDownload(detail.id);
   const trace = useTrace(detail.id);
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<TraceResultDto | null>(null);
+
+  // 任意本地编辑都会让既有 hash/YAML 失效；服务端保存完成前也不展示旧结果。
+  useEffect(() => {
+    previewRequest.reset();
+    yamlRequest.reset();
+    yamlDownload.reset();
+  }, [config]);
+
+  const preview =
+    !saving && previewRequest.data?.draftRevision === draftRevision
+      ? previewRequest.data
+      : null;
+  const yaml =
+    preview &&
+    yamlRequest.data?.draftRevision === preview.draftRevision &&
+    yamlRequest.data.renderedHash === preview.renderedHash
+      ? yamlRequest.data.yamlText
+      : null;
+
+  const generatePreview = () => {
+    yamlRequest.reset();
+    yamlDownload.reset();
+    previewRequest.mutate();
+  };
 
   const runTrace = () => {
     if (!query.trim()) return;
@@ -24,6 +64,28 @@ export const WorkspaceRail = () => {
       { onSuccess: setResult }
     );
   };
+
+  const previewEmptyState = (
+    <div className="rounded-md border border-line bg-bg p-3 text-xs text-muted">
+      <p className="mb-2 leading-relaxed">
+        仅在你主动生成时才会展开规则并计算完整差异；内联规则较多时可能需要数秒。
+      </p>
+      {previewRequest.isError ? (
+        <p className="mb-2 text-err">
+          生成失败：
+          {previewRequest.error instanceof Error ? previewRequest.error.message : "未知错误"}
+        </p>
+      ) : null}
+      <Button
+        size="sm"
+        variant="primary"
+        disabled={saving || previewRequest.isPending}
+        onClick={generatePreview}
+      >
+        {previewRequest.isPending ? "正在生成…" : "生成预览与差异"}
+      </Button>
+    </div>
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -49,9 +111,20 @@ export const WorkspaceRail = () => {
         <>
           <div className="mb-2 flex items-center gap-2">
             <span className="text-xs font-medium">当前草稿的渲染产物</span>
-            <Button size="sm" variant="ghost" className="ml-auto" onClick={refreshPreview}>
-              <RefreshCw className={`size-3 ${previewLoading ? "animate-spin" : ""}`} />
-            </Button>
+            {preview ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-auto"
+                title="重新生成预览"
+                disabled={saving || previewRequest.isPending}
+                onClick={generatePreview}
+              >
+                <RefreshCw
+                  className={`size-3 ${previewRequest.isPending ? "animate-spin" : ""}`}
+                />
+              </Button>
+            ) : null}
           </div>
           {preview ? (
             <>
@@ -59,13 +132,60 @@ export const WorkspaceRail = () => {
                 <span>{preview.stats.nodeCount} 节点</span>
                 <span>{preview.stats.groupCount} 组</span>
                 <span>{preview.stats.ruleCount} 规则</span>
+                <span>{formatBytes(preview.yamlBytes)}</span>
               </div>
-              <pre className="min-h-0 flex-1 overflow-auto rounded-md border border-line bg-bg p-2.5 font-mono text-[10.5px] leading-relaxed text-muted">
-                {preview.yamlText}
-              </pre>
+              {yaml ? (
+                <pre className="min-h-0 flex-1 overflow-auto rounded-md border border-line bg-bg p-2.5 font-mono text-[10.5px] leading-relaxed text-muted">
+                  {yaml}
+                </pre>
+              ) : (
+                <div className="rounded-md border border-line bg-bg p-3 text-xs text-muted">
+                  <p className="mb-2 leading-relaxed">
+                    {preview.yamlBytes > MAX_INLINE_YAML_BYTES
+                      ? `完整 YAML 约 ${formatBytes(preview.yamlBytes)}。为避免浏览器卡顿，大于 1 MiB 的内容只提供文件下载，不会写入页面。`
+                      : `完整 YAML 约 ${formatBytes(preview.yamlBytes)}，不会自动加载。`}
+                  </p>
+                  {yamlRequest.isError || yamlDownload.isError ? (
+                    <p className="mb-2 text-err">
+                      {preview.yamlBytes > MAX_INLINE_YAML_BYTES ? "下载" : "加载"}失败：
+                      {yamlRequest.error instanceof Error
+                        ? yamlRequest.error.message
+                        : yamlDownload.error instanceof Error
+                          ? yamlDownload.error.message
+                          : "未知错误"}
+                    </p>
+                  ) : null}
+                  <Button
+                    size="sm"
+                    disabled={yamlRequest.isPending || yamlDownload.isPending}
+                    onClick={() => {
+                      const input = {
+                        expectedDraftRevision: preview.draftRevision,
+                        expectedRenderedHash: preview.renderedHash
+                      };
+                      if (preview.yamlBytes > MAX_INLINE_YAML_BYTES) {
+                        yamlDownload.mutate({ ...input, fileName: detail.displayName });
+                      } else {
+                        yamlRequest.mutate(input);
+                      }
+                    }}
+                  >
+                    <FileText className="size-3" />
+                    {yamlRequest.isPending
+                      ? "正在加载…"
+                      : yamlDownload.isPending
+                        ? "正在下载…"
+                        : preview.yamlBytes > MAX_INLINE_YAML_BYTES
+                          ? yamlDownload.isSuccess
+                            ? "再次下载完整 YAML"
+                            : "下载完整 YAML"
+                          : "加载完整 YAML"}
+                  </Button>
+                </div>
+              )}
             </>
           ) : (
-            <p className="text-xs text-faint">{previewLoading ? "渲染中…" : "保存草稿后自动渲染。"}</p>
+            previewEmptyState
           )}
         </>
       ) : null}
@@ -79,18 +199,24 @@ export const WorkspaceRail = () => {
               : "（尚未发布）"}
             <span className="ml-1 font-normal text-faint">发布前你会再次确认</span>
           </p>
-          <div className="mb-4">
-            <DiffChips diff={preview?.diffVsActive ?? null} />
-          </div>
-          <p className="mb-1.5 text-xs font-medium">
-            待处理问题{" "}
-            {preview && preview.issues.length > 0 ? (
-              <Badge variant="warn">{preview.issues.length}</Badge>
-            ) : null}
-          </p>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <IssueList issues={preview?.issues ?? []} />
-          </div>
+          {preview ? (
+            <>
+              <div className="mb-4">
+                <DiffChips diff={preview.diffVsActive} />
+              </div>
+              <p className="mb-1.5 text-xs font-medium">
+                待处理问题{" "}
+                {preview.issues.length > 0 ? (
+                  <Badge variant="warn">{preview.issues.length}</Badge>
+                ) : null}
+              </p>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <IssueList issues={preview.issues} />
+              </div>
+            </>
+          ) : (
+            previewEmptyState
+          )}
         </>
       ) : null}
 

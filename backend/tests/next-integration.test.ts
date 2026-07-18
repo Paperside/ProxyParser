@@ -1,10 +1,20 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { gunzipSync } from "node:zlib";
 
 import yaml from "js-yaml";
+import { Elysia } from "elysia";
 
 import {
   loadBuiltinRulesetManifest,
@@ -16,24 +26,31 @@ import {
   seedBuiltinTemplates
 } from "../src/lib/db/seed-builtin-templates";
 import { SecretBox } from "../src/lib/security/secret-box";
+import { InMemoryRateLimiter } from "../src/lib/security/rate-limiter";
+import type { LatencyResult, LatencyTarget } from "../src/lib/latency/mihomo-latency";
 import { Scheduler } from "../src/lib/scheduler/scheduler";
 import { extractTemplate, instantiateTemplate } from "../src/lib/build-config/template";
 import { EventRepository } from "../src/modules/events/event.repository";
 import { RulesetRepository } from "../src/modules/rulesets/ruleset.repository";
 import { RulesetService } from "../src/modules/rulesets/ruleset.service";
 import { SecretStore } from "../src/modules/subscriptions/secret-store";
+import { createDeliveryRoutes } from "../src/modules/subscriptions/delivery-routes";
+import { createSubscriptionRoutes } from "../src/modules/subscriptions/routes";
 import {
   DraftRevisionConflictError,
   SubscriptionRepository
 } from "../src/modules/subscriptions/subscription.repository";
 import {
   SubscriptionError,
-  SubscriptionService
+  SubscriptionService,
+  type SubscriptionServiceOptions
 } from "../src/modules/subscriptions/subscription.service";
 import { TemplateRepository } from "../src/modules/templates/template.repository";
 import { UpstreamSourceRepository } from "../src/modules/upstream-sources/upstream-source.repository";
 import { UpstreamSourceService } from "../src/modules/upstream-sources/upstream-source.service";
+import { createUpstreamSourceRoutes } from "../src/modules/upstream-sources/routes";
 import type { ClashProxyDocument } from "../src/types";
+import type { AuthService } from "../src/modules/auth/auth.service";
 
 const migrationsDir = resolve(import.meta.dir, "../migrations");
 
@@ -68,7 +85,16 @@ const defaultNodes = [
   { name: "神秘节点", type: "ss", server: "x1.test", port: 443, cipher: "aes-128-gcm", password: "c" }
 ];
 
-const createTestContext = (options: { mihomo?: boolean } = {}) => {
+const createTestContext = (
+  options: {
+    mihomo?: boolean;
+    latencyRunner?: SubscriptionServiceOptions["latencyRunner"];
+    mihomoValidator?: SubscriptionServiceOptions["mihomoValidator"];
+    deliveryArtifactDir?: string;
+    publishCandidateTtlMs?: number;
+    publishCandidateMaxTotalBytes?: number;
+  } = {}
+) => {
   const db = new Database(":memory:");
   db.exec("PRAGMA foreign_keys = ON;");
   applyMigrations(db);
@@ -80,9 +106,9 @@ const createTestContext = (options: { mihomo?: boolean } = {}) => {
   const sourceService = new UpstreamSourceService(sourceRepository, events);
   const rulesetRepository = new RulesetRepository(db);
   const rulesetService = new RulesetService(rulesetRepository, events);
-  const templateRepository = new TemplateRepository(db);
-  const subscriptionRepository = new SubscriptionRepository(db);
   const secretBox = new SecretBox(randomBytes(32));
+  const templateRepository = new TemplateRepository(db, secretBox);
+  const subscriptionRepository = new SubscriptionRepository(db);
   const secretStore = new SecretStore(db, secretBox);
   const backendDataDir = resolve(import.meta.dir, "..", "data");
   const subscriptionService = new SubscriptionService(
@@ -101,7 +127,12 @@ const createTestContext = (options: { mihomo?: boolean } = {}) => {
             dataDir: backendDataDir,
             assetsDir: resolve(import.meta.dir, "..", "assets")
           }
-        : { mihomoPath: null, dataDir: "/nonexistent-dir", assetsDir: "/nonexistent-dir" }
+        : { mihomoPath: null, dataDir: "/nonexistent-dir", assetsDir: "/nonexistent-dir" },
+      latencyRunner: options.latencyRunner,
+      mihomoValidator: options.mihomoValidator,
+      publishCandidateTtlMs: options.publishCandidateTtlMs,
+      publishCandidateMaxTotalBytes: options.publishCandidateMaxTotalBytes,
+      deliveryArtifactDir: options.deliveryArtifactDir
     }
   );
   sourceService.registerOnSynced((source, report) =>
@@ -138,6 +169,48 @@ afterEach(() => {
 // ── 创建与发布管线 ────────────────────────────────────────────
 
 describe("发布管线", () => {
+  test("多源空白方案只合并节点、追加来源名，并接受地区范围", () => {
+    const ctx = createTestContext();
+    const sourceB = ctx.sourceService.createFromUpload(ctx.userId, {
+      displayName: "备用机场",
+      yamlContent: sourceYaml([{ ...defaultNodes[0], name: "HK-01" }])
+    });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "合并订阅",
+      sourceIds: [ctx.source.id, sourceB.id],
+      start: { kind: "blank", regionScope: "full" }
+    });
+
+    const detail = ctx.subscriptionService.getDetail(ctx.userId, subscription.id);
+    const regionGenerator = detail.draftBuildConfig?.groups.generators.find(
+      (generator) => generator.kind === "region-groups"
+    );
+    expect(regionGenerator).toHaveProperty("scope", "full");
+
+    const workspace = ctx.subscriptionService.workspaceIndex(ctx.userId, subscription.id);
+    expect(workspace.nodeIndex.map((node) => node.renderedName)).toEqual(
+      expect.arrayContaining(["HK-01 · 白云机场", "HK-01 · 备用机场"])
+    );
+    expect(workspace.nodeIndex.map((node) => node.sourceName)).toEqual(
+      expect.arrayContaining(["白云机场", "备用机场"])
+    );
+    expect(new Set(workspace.nodeIndex.map((node) => node.id)).size).toBe(
+      workspace.nodeIndex.length
+    );
+    expect(workspace.groupIndex.at(-1)).toMatchObject({
+      name: "Final",
+      proxies: ["Proxies", "DIRECT"]
+    });
+
+    expect(() =>
+      ctx.subscriptionService.create(ctx.userId, {
+        displayName: "非法透传",
+        sourceIds: [ctx.source.id, sourceB.id],
+        start: { kind: "patch" }
+      })
+    ).toThrow("只支持单一订阅源");
+  });
+
   test("推荐方案创建 → 发布 → 版本 v1 → 链接可拉取", () => {
     const ctx = createTestContext();
     const { subscription, token } = ctx.subscriptionService.create(ctx.userId, {
@@ -166,9 +239,11 @@ describe("发布管线", () => {
     );
     const groupNames = doc["proxy-groups"].map((g) => g.name);
     expect(groupNames).toEqual(
-      expect.arrayContaining(["Proxies", "OpenAI", "Anthropic", "ChinaMax", "HK", "US"])
+      expect.arrayContaining(["Proxies", "OpenAI", "Anthropic", "China", "HK", "US"])
     );
-    expect(doc.rules?.[doc.rules.length - 1]).toBe("MATCH,Proxies");
+    expect(groupNames.at(-1)).toBe("Final");
+    expect(doc["proxy-groups"].at(-1)?.proxies).toEqual(["Proxies", "DIRECT"]);
+    expect(doc.rules?.[doc.rules.length - 1]).toBe("MATCH,Final");
     // 规则快照以不可变哈希端点输出
     const providers = doc["rule-providers"] as Record<string, { url: string; path: string }>;
     expect(Object.values(providers).every((p) => p.url.startsWith("https://pp.test/rs/"))).toBe(
@@ -180,9 +255,110 @@ describe("发布管线", () => {
       expect(provider.path).toBe(`./rule-providers/${hash}.yaml`);
     }
     expect(doc.rules).toContain("RULE-SET,anthropic,Anthropic");
-    expect(doc.rules).toContain("RULE-SET,chinamax,ChinaMax");
+    expect(doc.rules).toContain("RULE-SET,china,China");
+    expect(doc.rules).toContain("RULE-SET,advertisinglite,REJECT");
+    expect(providers).not.toHaveProperty("chinamax");
+    expect(providers).not.toHaveProperty("advertising");
     // 发布后健康转绿
     expect(ctx.subscriptionRepository.findById(subscription.id)!.health).toBe("ok");
+  });
+
+  test("交付端点复用 gzip 产物并返回固定 Content-Length", async () => {
+    const artifactDir = mkdtempSync(resolve(tmpdir(), "proxyparser-delivery-"));
+    try {
+      const ctx = createTestContext({ deliveryArtifactDir: artifactDir });
+      const { subscription, token } = ctx.subscriptionService.create(ctx.userId, {
+        displayName: "压缩交付",
+        sourceIds: [ctx.source.id],
+        start: { kind: "recommended" }
+      });
+      const release = ctx.subscriptionService.publish(ctx.userId, subscription.id, {
+        trigger: "manual"
+      });
+      const app = new Elysia().use(
+        createDeliveryRoutes(
+          ctx.subscriptionService,
+          ctx.rulesetService,
+          new InMemoryRateLimiter()
+        )
+      );
+      const request = (acceptEncoding = "gzip") =>
+        app.handle(
+          new Request(`http://localhost/s/${subscription.id}/${token.token}`, {
+            headers: {
+              "Accept-Encoding": acceptEncoding,
+              "User-Agent": "Clash-Verge-rev/e2e"
+            }
+          })
+        );
+
+      const first = await request();
+      expect(first.status).toBe(200);
+      expect(first.headers.get("content-encoding")).toBe("gzip");
+      const firstBytes = new Uint8Array(await first.arrayBuffer());
+      expect(first.headers.get("content-length")).toBe(String(firstBytes.byteLength));
+      expect(gunzipSync(firstBytes).toString("utf8")).toBe(release.renderedYaml);
+
+      const second = await request();
+      expect(new Uint8Array(await second.arrayBuffer())).toEqual(firstBytes);
+      const artifactFiles = readdirSync(artifactDir).filter((name) => name.endsWith(".yaml.gz"));
+      expect(artifactFiles).toHaveLength(1);
+
+      writeFileSync(resolve(artifactDir, artifactFiles[0]!), "damaged-gzip-artifact");
+      const repaired = await request();
+      expect(repaired.status).toBe(200);
+      expect(repaired.headers.get("content-encoding")).toBe("gzip");
+      expect(gunzipSync(new Uint8Array(await repaired.arrayBuffer())).toString("utf8")).toBe(
+        release.renderedYaml
+      );
+
+      const refused = await request("br, gzip;q=0, *;q=1");
+      expect(refused.headers.get("content-encoding")).toBeNull();
+      expect(refused.headers.get("content-length")).toBeNull();
+      expect(await refused.text()).toBe(release.renderedYaml);
+
+      const wildcard = await request("br, *;q=0.5");
+      expect(wildcard.headers.get("content-encoding")).toBe("gzip");
+      expect(gunzipSync(new Uint8Array(await wildcard.arrayBuffer())).toString("utf8")).toBe(
+        release.renderedYaml
+      );
+    } finally {
+      rmSync(artifactDir, { recursive: true, force: true });
+    }
+  });
+
+  test("gzip 产物准备失败只记录失败拉取，不提前记录成功", async () => {
+    const rootDir = mkdtempSync(resolve(tmpdir(), "proxyparser-delivery-failure-"));
+    const invalidArtifactDir = resolve(rootDir, "not-a-directory");
+    writeFileSync(invalidArtifactDir, "occupied by a file");
+    try {
+      const ctx = createTestContext({ deliveryArtifactDir: invalidArtifactDir });
+      const { subscription, token } = ctx.subscriptionService.create(ctx.userId, {
+        displayName: "压缩交付失败",
+        sourceIds: [ctx.source.id],
+        start: { kind: "recommended" }
+      });
+      ctx.subscriptionService.publish(ctx.userId, subscription.id, { trigger: "manual" });
+      const app = new Elysia().use(
+        createDeliveryRoutes(
+          ctx.subscriptionService,
+          ctx.rulesetService,
+          new InMemoryRateLimiter()
+        )
+      );
+
+      const response = await app.handle(
+        new Request(`http://localhost/s/${subscription.id}/${token.token}`, {
+          headers: { "Accept-Encoding": "gzip" }
+        })
+      );
+      expect(response.status).toBe(500);
+      const logs = ctx.subscriptionRepository.listPullLogs(subscription.id);
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatchObject({ status: "failed", http_status: 500 });
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
   });
 
   test("拉取零上游请求：断网状态下 deliver 正常", () => {
@@ -524,11 +700,471 @@ describe("Token", () => {
       ctx.subscriptionService.deliver(subscription.id, temp.token, "temp_token", null, null)
     ).toThrow("无效或已撤销");
   });
+
+  test("短期链接在有效期内可按需恢复，reveal 响应禁止缓存", async () => {
+    const ctx = createTestContext();
+    const { subscription, token } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "二维码访问",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    ctx.subscriptionService.publish(ctx.userId, subscription.id, { trigger: "manual" });
+    const temp = ctx.subscriptionService.createTempToken(ctx.userId, subscription.id, {
+      label: "临时设备",
+      ttlSeconds: 3600
+    });
+
+    expect(temp.canReveal).toBe(true);
+    expect(ctx.subscriptionService.revealTempToken(ctx.userId, subscription.id, temp.id)).toEqual({
+      token: temp.token,
+      url: temp.url
+    });
+    expect(
+      ctx.subscriptionService
+        .listAccess(ctx.userId, subscription.id)
+        .tempTokens.find((entry) => entry.id === temp.id)?.canReveal
+    ).toBe(true);
+
+    const now = new Date().toISOString();
+    const authService = {
+      authenticate: () => ({
+        id: ctx.userId,
+        email: "alice@test.local",
+        username: "alice",
+        displayName: "Alice",
+        locale: "zh-CN",
+        status: "active" as const,
+        isAdmin: false,
+        createdAt: now,
+        updatedAt: now
+      })
+    } as unknown as AuthService;
+    const app = new Elysia().use(
+      createSubscriptionRoutes(
+        authService,
+        ctx.subscriptionService,
+        ctx.secretStore,
+        new InMemoryRateLimiter()
+      )
+    );
+    const assertNoStore = (response: Response) => {
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("pragma")).toBe("no-cache");
+    };
+    for (const path of [
+      `/api/subscriptions/${subscription.id}/primary-link`,
+      `/api/subscriptions/${subscription.id}/tokens/${token.id}/reveal`,
+      `/api/subscriptions/${subscription.id}/temp-tokens/${temp.id}/reveal`
+    ]) {
+      const response = await app.handle(new Request(`http://localhost${path}`));
+      expect(response.status).toBe(200);
+      assertNoStore(response);
+    }
+
+    const createTokenResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/tokens`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "no-store" })
+      })
+    );
+    expect(createTokenResponse.status).toBe(200);
+    assertNoStore(createTokenResponse);
+    const createdToken = await createTokenResponse.json() as { id: string };
+
+    const rotateTokenResponse = await app.handle(
+      new Request(
+        `http://localhost/api/subscriptions/${subscription.id}/tokens/${createdToken.id}/rotate`,
+        { method: "POST" }
+      )
+    );
+    expect(rotateTokenResponse.status).toBe(200);
+    assertNoStore(rotateTokenResponse);
+
+    const createTempTokenResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/temp-tokens`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "no-store", ttlSeconds: 3600 })
+      })
+    );
+    expect(createTempTokenResponse.status).toBe(200);
+    assertNoStore(createTempTokenResponse);
+
+    const splitSecretResponse = await app.handle(
+      new Request("http://localhost/api/secrets/split", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "ss",
+          fields: { cipher: "aes-128-gcm", password: "no-store-secret" }
+        })
+      })
+    );
+    expect(splitSecretResponse.status).toBe(201);
+    assertNoStore(splitSecretResponse);
+    const splitSecret = await splitSecretResponse.json() as { secretRef: string };
+    const revealSecretResponse = await app.handle(
+      new Request(`http://localhost/api/secrets/${splitSecret.secretRef}`)
+    );
+    expect(revealSecretResponse.status).toBe(200);
+    assertNoStore(revealSecretResponse);
+  });
+
+  test("主链接读取在长期链接为空时不会隐式签发 bearer token", () => {
+    const ctx = createTestContext();
+    const { subscription, token } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "只读主链接",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    ctx.subscriptionService.revokeToken(ctx.userId, subscription.id, token.id);
+
+    expect(() => ctx.subscriptionService.getPrimaryLink(ctx.userId, subscription.id)).toThrow(
+      "请到“访问”页显式创建"
+    );
+    expect(ctx.subscriptionService.listAccess(ctx.userId, subscription.id).tokens).toHaveLength(0);
+  });
+
+  test("短期链接 reveal 校验归属、有效状态，并清楚处理旧版无密文记录", () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "主订阅",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const { subscription: otherSubscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "同账号其他订阅",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    ctx.subscriptionService.publish(ctx.userId, subscription.id, { trigger: "manual" });
+
+    const active = ctx.subscriptionService.createTempToken(ctx.userId, subscription.id, {
+      label: "活动链接",
+      ttlSeconds: 3600
+    });
+    // 即使同属一个账号，也不能借另一个订阅 ID 撤销这条链接。
+    ctx.subscriptionService.revokeTempToken(ctx.userId, otherSubscription.id, active.id);
+    expect(ctx.subscriptionService.revealTempToken(ctx.userId, subscription.id, active.id).token).toBe(
+      active.token
+    );
+
+    const otherUserId = createUser(ctx.db, "bob");
+    let ownershipError: unknown;
+    try {
+      ctx.subscriptionService.revealTempToken(otherUserId, subscription.id, active.id);
+    } catch (error) {
+      ownershipError = error;
+    }
+    expect(ownershipError).toBeInstanceOf(SubscriptionError);
+    expect(ownershipError).toMatchObject({ status: 404, message: "订阅不存在。" });
+
+    ctx.subscriptionService.revokeTempToken(ctx.userId, subscription.id, active.id);
+    expect(
+      ctx.subscriptionService
+        .listAccess(ctx.userId, subscription.id)
+        .tempTokens.find((entry) => entry.id === active.id)?.canReveal
+    ).toBe(false);
+    let revokedError: unknown;
+    try {
+      ctx.subscriptionService.revealTempToken(ctx.userId, subscription.id, active.id);
+    } catch (error) {
+      revokedError = error;
+    }
+    expect(revokedError).toMatchObject({ status: 410, message: "短期链接已失效。" });
+
+    const expired = ctx.subscriptionService.createTempToken(ctx.userId, subscription.id, {
+      label: "过期链接",
+      ttlSeconds: 3600
+    });
+    ctx.db
+      .query("UPDATE subscription_temp_tokens SET expires_at = ? WHERE id = ?")
+      .run(new Date(Date.now() - 1000).toISOString(), expired.id);
+    let expiredError: unknown;
+    try {
+      ctx.subscriptionService.revealTempToken(ctx.userId, subscription.id, expired.id);
+    } catch (error) {
+      expiredError = error;
+    }
+    expect(expiredError).toMatchObject({ status: 410, message: "短期链接已过期。" });
+
+    const legacy = ctx.subscriptionService.createTempToken(ctx.userId, subscription.id, {
+      label: "旧版链接",
+      ttlSeconds: 3600
+    });
+    ctx.db
+      .query("UPDATE subscription_temp_tokens SET token_ciphertext = NULL WHERE id = ?")
+      .run(legacy.id);
+    expect(
+      ctx.subscriptionService
+        .listAccess(ctx.userId, subscription.id)
+        .tempTokens.find((entry) => entry.id === legacy.id)?.canReveal
+    ).toBe(false);
+    // 迁移前的短链仍可按哈希拉取，只是无法重新显示明文。
+    expect(
+      ctx.subscriptionService.deliver(
+        subscription.id,
+        legacy.token,
+        "temp_token",
+        null,
+        null
+      ).yamlText.length
+    ).toBeGreaterThan(0);
+    let legacyError: unknown;
+    try {
+      ctx.subscriptionService.revealTempToken(ctx.userId, subscription.id, legacy.id);
+    } catch (error) {
+      legacyError = error;
+    }
+    expect(legacyError).toMatchObject({
+      status: 409,
+      message: "该短期链接创建于旧版本，无法再次显示；请重新生成一条短期链接。"
+    });
+  });
+});
+
+// ── 节点延迟测试 ─────────────────────────────────────────────
+
+describe("节点延迟测试", () => {
+  test("服务边界拒绝空列表和超过 200 项的列表，且不会启动 runner", async () => {
+    let runnerCalls = 0;
+    const ctx = createTestContext({
+      latencyRunner: async () => {
+        runnerCalls += 1;
+        return [];
+      }
+    });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "测速输入上限",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const nodeId = ctx.subscriptionService.workspaceIndex(ctx.userId, subscription.id)
+      .nodeIndex[0]!.id;
+
+    await expect(
+      ctx.subscriptionService.testLatency(ctx.userId, subscription.id, [])
+    ).rejects.toMatchObject({ status: 422 });
+    await expect(
+      ctx.subscriptionService.testLatency(
+        ctx.userId,
+        subscription.id,
+        Array.from({ length: 201 }, () => nodeId)
+      )
+    ).rejects.toMatchObject({ status: 422 });
+    expect(runnerCalls).toBe(0);
+  });
+
+  test("路由严格校验 nodeIds，并把请求取消信号传给 runner", async () => {
+    let runnerCalls = 0;
+    let runnerSignal: AbortSignal | undefined;
+    const ctx = createTestContext({
+      latencyRunner: async (targets, options) => {
+        runnerCalls += 1;
+        runnerSignal = options.signal;
+        return targets.map((target) => ({
+          nodeId: target.nodeId,
+          name: target.name,
+          status: "ok" as const,
+          delayMs: 10
+        }));
+      }
+    });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "测速路由校验",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const nodeId = ctx.subscriptionService.workspaceIndex(ctx.userId, subscription.id)
+      .nodeIndex[0]!.id;
+    const now = new Date().toISOString();
+    const authService = {
+      authenticate: () => ({
+        id: ctx.userId,
+        email: "alice@test.local",
+        username: "alice",
+        displayName: "Alice",
+        locale: "zh-CN",
+        status: "active" as const,
+        isAdmin: false,
+        createdAt: now,
+        updatedAt: now
+      })
+    } as unknown as AuthService;
+    const app = new Elysia().use(
+      createSubscriptionRoutes(
+        authService,
+        ctx.subscriptionService,
+        ctx.secretStore,
+        new InMemoryRateLimiter()
+      )
+    );
+    const request = (body: unknown) => app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/latency-tests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      })
+    );
+
+    for (const body of [
+      {},
+      { nodeIds: [] },
+      { nodeIds: [nodeId, 42] },
+      { nodeIds: Array.from({ length: 201 }, () => nodeId) }
+    ]) {
+      const response = await request(body);
+      expect(response.status).toBe(422);
+    }
+    expect(runnerCalls).toBe(0);
+
+    const validRequest = new Request(
+      `http://localhost/api/subscriptions/${subscription.id}/latency-tests`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodeIds: [nodeId] })
+      }
+    );
+    const response = await app.handle(validRequest);
+    expect(response.status).toBe(200);
+    expect(runnerCalls).toBe(1);
+    expect(runnerSignal).toBe(validRequest.signal);
+  });
+
+  test("测速只收集节点，不读取或展开规则正文", async () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "轻量测速",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    let rulesetSnapshotReads = 0;
+    ctx.rulesetRepository.findSnapshot = () => {
+      rulesetSnapshotReads += 1;
+      throw new Error("latency must not load ruleset content");
+    };
+
+    await expect(
+      ctx.subscriptionService.testLatency(ctx.userId, subscription.id, ["missing-node"])
+    ).rejects.toThrow("不存在或已禁用");
+    expect(rulesetSnapshotReads).toBe(0);
+  });
+
+  test("第三个独立测速请求进入 FIFO 等待，不会因两个运行中请求直接 429", async () => {
+    const controls: Array<{
+      targets: LatencyTarget[];
+      resolve: (results: LatencyResult[]) => void;
+    }> = [];
+    const runner: NonNullable<SubscriptionServiceOptions["latencyRunner"]> = (targets) =>
+      new Promise<LatencyResult[]>((resolveRun) => {
+        controls.push({ targets, resolve: resolveRun });
+      });
+    const ctx = createTestContext({ latencyRunner: runner });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "并发测速",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const nodeId = ctx.subscriptionService.workspaceIndex(ctx.userId, subscription.id)
+      .nodeIndex[0]!.id;
+    const requests = [
+      ctx.subscriptionService.testLatency(ctx.userId, subscription.id, [nodeId]),
+      ctx.subscriptionService.testLatency(ctx.userId, subscription.id, [nodeId]),
+      ctx.subscriptionService.testLatency(ctx.userId, subscription.id, [nodeId])
+    ];
+    await new Promise<void>((resolveTick) => setTimeout(resolveTick, 0));
+    expect(controls).toHaveLength(2);
+
+    const resultFor = (target: LatencyTarget): LatencyResult => ({
+      nodeId: target.nodeId,
+      name: target.name,
+      status: "ok",
+      delayMs: 12
+    });
+    controls[0]!.resolve(controls[0]!.targets.map(resultFor));
+    await requests[0];
+    await new Promise<void>((resolveTick) => setTimeout(resolveTick, 0));
+    expect(controls).toHaveLength(3);
+
+    controls[1]!.resolve(controls[1]!.targets.map(resultFor));
+    controls[2]!.resolve(controls[2]!.targets.map(resultFor));
+    const responses = await Promise.all(requests);
+    expect(responses.map((response) => response.results[0]?.status)).toEqual([
+      "ok",
+      "ok",
+      "ok"
+    ]);
+  });
 });
 
 // ── 上游变化吸收与调度器 ───────────────────────────────────────
 
 describe("上游吸收", () => {
+  test("上传 YAML 可替换或编辑，并生成报告通知引用订阅", async () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "上传源更新",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    ctx.subscriptionService.publish(ctx.userId, subscription.id, { trigger: "manual" });
+    ctx.subscriptionService.updateMeta(ctx.userId, subscription.id, { publishPolicy: "confirm" });
+
+    const replacement = sourceYaml([
+      ...defaultNodes,
+      {
+        name: "JP-Upload",
+        type: "ss",
+        server: "jp-upload.test",
+        port: 443,
+        cipher: "aes-128-gcm",
+        password: "updated"
+      }
+    ]);
+    const updated = await ctx.sourceService.replaceUpload(
+      ctx.userId,
+      ctx.source.id,
+      replacement,
+      "replacement.yml"
+    );
+
+    expect(updated.uploadedFileName).toBe("replacement.yml");
+    expect(updated.proxyCount).toBe(defaultNodes.length + 1);
+    const content = ctx.sourceService.getUploadContent(ctx.userId, ctx.source.id);
+    expect(content.yamlContent).toBe(replacement);
+    expect(content.uploadedFileName).toBe("replacement.yml");
+    expect(content.contentHash).toMatch(/^[a-f0-9]{64}$/);
+
+    const now = new Date().toISOString();
+    const authService = {
+      authenticate: () => ({
+        id: ctx.userId,
+        email: "alice@test.local",
+        username: "alice",
+        displayName: "Alice",
+        locale: "zh-CN",
+        status: "active" as const,
+        isAdmin: false,
+        createdAt: now,
+        updatedAt: now
+      })
+    } as unknown as AuthService;
+    const app = new Elysia().use(createUpstreamSourceRoutes(authService, ctx.sourceService));
+    const contentResponse = await app.handle(
+      new Request(`http://localhost/api/sources/${ctx.source.id}/content`)
+    );
+    expect(contentResponse.status).toBe(200);
+    expect(contentResponse.headers.get("cache-control")).toBe("no-store");
+    expect((await contentResponse.json() as { yamlContent: string }).yamlContent).toBe(replacement);
+    expect(ctx.sourceRepository.listSyncReports(ctx.source.id)[0]!.nodesAdded).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "JP-Upload" })])
+    );
+    expect(ctx.subscriptionRepository.findById(subscription.id)!.pendingUpstreamChange).toBe(true);
+    expect(ctx.subscriptionRepository.listReleases(subscription.id)).toHaveLength(1);
+  });
+
   test("URL 源同步 → 报告 → auto 策略自动发布新版本", async () => {
     const ctx = createTestContext();
 
@@ -658,6 +1294,560 @@ describe("上游吸收", () => {
     expect(release.renderedYaml).toContain("JP-Preview");
   });
 
+  test("发布候选只渲染一次、Mihomo 只校验一次，并原子发布同一份字节", async () => {
+    let validationCalls = 0;
+    let validatedYaml = "";
+    const ctx = createTestContext({
+      mihomoValidator: async (yamlText) => {
+        validationCalls += 1;
+        validatedYaml = yamlText;
+        return {
+          available: true,
+          passed: true,
+          exitCode: 0,
+          output: "configuration test is successful",
+          durationMs: 12
+        };
+      }
+    });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "候选原子发布",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+
+    let rulesetSnapshotReads = 0;
+    const originalFindSnapshot = ctx.rulesetRepository.findSnapshot.bind(ctx.rulesetRepository);
+    ctx.rulesetRepository.findSnapshot = (hash: string) => {
+      rulesetSnapshotReads += 1;
+      return originalFindSnapshot(hash);
+    };
+
+    const candidate = ctx.subscriptionService.preparePublishCandidate(
+      ctx.userId,
+      subscription.id
+    );
+    const readsAfterRender = rulesetSnapshotReads;
+    expect(readsAfterRender).toBeGreaterThan(0);
+    expect(candidate.phase).toBe("rendered");
+    expect(candidate).not.toHaveProperty("renderedYaml");
+
+    const [validated, duplicateValidation] = await Promise.all([
+      ctx.subscriptionService.validatePublishCandidate(
+        ctx.userId,
+        subscription.id,
+        candidate.candidateId
+      ),
+      ctx.subscriptionService.validatePublishCandidate(
+        ctx.userId,
+        subscription.id,
+        candidate.candidateId
+      )
+    ]);
+    expect(validated.phase).toBe("validated");
+    expect(duplicateValidation).toEqual(validated);
+    expect(validated.mihomo?.passed).toBe(true);
+    expect(validationCalls).toBe(1);
+    expect(rulesetSnapshotReads).toBe(readsAfterRender);
+
+    const cachedValidation = await ctx.subscriptionService.validatePublishCandidate(
+      ctx.userId,
+      subscription.id,
+      candidate.candidateId
+    );
+    expect(cachedValidation).toEqual(validated);
+    expect(validationCalls).toBe(1);
+
+    const release = ctx.subscriptionService.publishPreparedCandidate(
+      ctx.userId,
+      subscription.id,
+      {
+        candidateId: candidate.candidateId,
+        expectedDraftRevision: candidate.draftRevision,
+        expectedRenderedHash: candidate.renderedHash
+      }
+    );
+    expect(release.renderedYaml).toBe(validatedYaml);
+    expect(release.renderedHash).toBe(candidate.renderedHash);
+    expect(release.validation.mihomo?.durationMs).toBe(12);
+    expect(validationCalls).toBe(1);
+    expect(rulesetSnapshotReads).toBe(readsAfterRender);
+  });
+
+  test("发布候选到期后主动释放，不依赖下一次候选请求触发清理", async () => {
+    const ctx = createTestContext({ publishCandidateTtlMs: 20 });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "候选主动过期",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const candidate = ctx.subscriptionService.preparePublishCandidate(ctx.userId, subscription.id);
+    const internals = ctx.subscriptionService as unknown as {
+      publishCandidates: Map<string, unknown>;
+    };
+    expect(internals.publishCandidates.has(candidate.candidateId)).toBe(true);
+
+    await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+    expect(internals.publishCandidates.has(candidate.candidateId)).toBe(false);
+  });
+
+  test("发布候选总字节预算会淘汰同一用户的旧候选，单候选超限则原子拒绝", () => {
+    const ctx = createTestContext();
+    const { subscription: firstSubscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "字节预算一",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const { subscription: secondSubscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "字节预算二",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const first = ctx.subscriptionService.preparePublishCandidate(
+      ctx.userId,
+      firstSubscription.id
+    );
+    const mutableOptions = ctx.subscriptionService as unknown as {
+      options: SubscriptionServiceOptions;
+      publishCandidates: Map<string, unknown>;
+    };
+    mutableOptions.options.publishCandidateMaxTotalBytes = first.yamlBytes + 1;
+
+    const second = ctx.subscriptionService.preparePublishCandidate(
+      ctx.userId,
+      secondSubscription.id
+    );
+    expect(mutableOptions.publishCandidates.has(first.candidateId)).toBe(false);
+    expect(mutableOptions.publishCandidates.has(second.candidateId)).toBe(true);
+
+    mutableOptions.options.publishCandidateMaxTotalBytes = 1;
+    expect(() =>
+      ctx.subscriptionService.preparePublishCandidate(ctx.userId, firstSubscription.id)
+    ).toThrow("发布候选过大");
+    expect(mutableOptions.publishCandidates.has(second.candidateId)).toBe(true);
+  });
+
+  test("发布候选容量满时不会跨用户驱逐已生成的候选", () => {
+    const ctx = createTestContext();
+    const aliceSubscriptions = Array.from({ length: 4 }, (_, index) =>
+      ctx.subscriptionService.create(ctx.userId, {
+        displayName: `Alice 候选 ${index + 1}`,
+        sourceIds: [ctx.source.id],
+        start: { kind: "recommended" }
+      }).subscription
+    );
+    const aliceCandidates = aliceSubscriptions.map((subscription) =>
+      ctx.subscriptionService.preparePublishCandidate(ctx.userId, subscription.id)
+    );
+    const internals = ctx.subscriptionService as unknown as {
+      publishCandidates: Map<string, unknown>;
+    };
+    const before = [...internals.publishCandidates.keys()];
+
+    const bobId = createUser(ctx.db, "candidate-bob");
+    const bobSource = ctx.sourceService.createFromUpload(bobId, {
+      displayName: "Bob Source",
+      yamlContent: sourceYaml(defaultNodes)
+    });
+    const { subscription: bobSubscription } = ctx.subscriptionService.create(bobId, {
+      displayName: "Bob 候选",
+      sourceIds: [bobSource.id],
+      start: { kind: "recommended" }
+    });
+    expect(() =>
+      ctx.subscriptionService.preparePublishCandidate(bobId, bobSubscription.id)
+    ).toThrow("候选缓存繁忙");
+    expect([...internals.publishCandidates.keys()]).toEqual(before);
+    expect(aliceCandidates.every((candidate) => before.includes(candidate.candidateId))).toBe(true);
+  });
+
+  test("发布候选校验最多并行两个，并按有界 FIFO 启动等待任务", async () => {
+    let active = 0;
+    let maxActive = 0;
+    let started = 0;
+    const resolvers: Array<() => void> = [];
+    const ctx = createTestContext({
+      mihomoValidator: () => {
+        started += 1;
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        return new Promise((resolveValidation) => {
+          resolvers.push(() => {
+            active -= 1;
+            resolveValidation({
+              available: true,
+              passed: true,
+              exitCode: 0,
+              output: null,
+              durationMs: 1
+            });
+          });
+        });
+      }
+    });
+    const subscriptions = Array.from({ length: 4 }, (_, index) =>
+      ctx.subscriptionService.create(ctx.userId, {
+        displayName: `候选并发 ${index + 1}`,
+        sourceIds: [ctx.source.id],
+        start: { kind: "recommended" }
+      }).subscription
+    );
+    const candidates = subscriptions.map((subscription) =>
+      ctx.subscriptionService.preparePublishCandidate(ctx.userId, subscription.id)
+    );
+    const validations = candidates.map((candidate, index) =>
+      ctx.subscriptionService.validatePublishCandidate(
+        ctx.userId,
+        subscriptions[index]!.id,
+        candidate.candidateId
+      )
+    );
+    const waitForStarted = async (expected: number) => {
+      for (let attempt = 0; attempt < 50 && started < expected; attempt += 1) {
+        await new Promise<void>((resolveTick) => setTimeout(resolveTick, 0));
+      }
+      expect(started).toBe(expected);
+    };
+
+    await waitForStarted(2);
+    expect(maxActive).toBe(2);
+    resolvers[0]!();
+    await waitForStarted(3);
+    resolvers[1]!();
+    await waitForStarted(4);
+    resolvers[2]!();
+    resolvers[3]!();
+    expect((await Promise.all(validations)).every((result) => result.phase === "validated")).toBe(
+      true
+    );
+    expect(maxActive).toBe(2);
+  });
+
+  test("校验中的候选到期时暂时保留，校验结束后拒绝结果并释放", async () => {
+    let finishValidation: (() => void) | null = null;
+    const ctx = createTestContext({
+      publishCandidateTtlMs: 20,
+      mihomoValidator: () =>
+        new Promise((resolveValidation) => {
+          finishValidation = () =>
+            resolveValidation({
+              available: true,
+              passed: true,
+              exitCode: 0,
+              output: null,
+              durationMs: 30
+            });
+        })
+    });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "校验中到期",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const candidate = ctx.subscriptionService.preparePublishCandidate(ctx.userId, subscription.id);
+    const validation = ctx.subscriptionService.validatePublishCandidate(
+      ctx.userId,
+      subscription.id,
+      candidate.candidateId
+    );
+    await new Promise<void>((resolveTick) => setTimeout(resolveTick, 0));
+    await new Promise((resolveWait) => setTimeout(resolveWait, 40));
+    const internals = ctx.subscriptionService as unknown as {
+      publishCandidates: Map<string, unknown>;
+    };
+    expect(internals.publishCandidates.has(candidate.candidateId)).toBe(true);
+
+    finishValidation?.();
+    await expect(validation).rejects.toMatchObject({ status: 404 });
+    expect(internals.publishCandidates.has(candidate.candidateId)).toBe(false);
+  });
+
+  test("发布候选校验后上游快照变化时拒绝提升旧候选", async () => {
+    const ctx = createTestContext({
+      mihomoValidator: async () => ({
+        available: true,
+        passed: true,
+        exitCode: 0,
+        output: null,
+        durationMs: 1
+      })
+    });
+    let servedNodes = defaultNodes;
+    globalThis.fetch = (async () =>
+      new Response(sourceYaml(servedNodes), { status: 200 })) as unknown as typeof fetch;
+    const urlSource = await ctx.sourceService.create(ctx.userId, {
+      displayName: "候选快照源",
+      sourceUrl: "https://candidate-snapshot.test/sub"
+    });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "候选快照保护",
+      sourceIds: [urlSource.id],
+      start: { kind: "recommended" }
+    });
+    const candidate = ctx.subscriptionService.preparePublishCandidate(ctx.userId, subscription.id);
+    await ctx.subscriptionService.validatePublishCandidate(
+      ctx.userId,
+      subscription.id,
+      candidate.candidateId
+    );
+
+    servedNodes = [
+      ...defaultNodes,
+      { name: "New", type: "ss", server: "new.test", port: 443, cipher: "aes-128-gcm", password: "new" }
+    ];
+    await ctx.sourceService.sync(urlSource.id);
+
+    expect(() =>
+      ctx.subscriptionService.publishPreparedCandidate(ctx.userId, subscription.id, {
+        candidateId: candidate.candidateId,
+        expectedDraftRevision: candidate.draftRevision,
+        expectedRenderedHash: candidate.renderedHash
+      })
+    ).toThrow("上游订阅已在候选版本生成后变化");
+    expect(ctx.subscriptionRepository.listReleases(subscription.id)).toHaveLength(0);
+  });
+
+  test("工作区索引不读取规则正文，完整 YAML 仅由按需预览返回", () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "轻量工作区",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+
+    let projectedSourceReads = 0;
+    let fullSourceReads = 0;
+    const originalFindWorkspaceSnapshot =
+      ctx.sourceRepository.findWorkspaceSnapshotById.bind(ctx.sourceRepository);
+    const originalFindParsedSnapshot =
+      ctx.sourceRepository.findParsedSnapshotById.bind(ctx.sourceRepository);
+    ctx.sourceRepository.findWorkspaceSnapshotById = (id: string) => {
+      projectedSourceReads += 1;
+      return originalFindWorkspaceSnapshot(id);
+    };
+    ctx.sourceRepository.findParsedSnapshotById = (id: string) => {
+      fullSourceReads += 1;
+      return originalFindParsedSnapshot(id);
+    };
+
+    let rulesetSnapshotReads = 0;
+    const originalFindSnapshot = ctx.rulesetRepository.findSnapshot.bind(ctx.rulesetRepository);
+    ctx.rulesetRepository.findSnapshot = (hash: string) => {
+      rulesetSnapshotReads += 1;
+      return originalFindSnapshot(hash);
+    };
+
+    const workspace = ctx.subscriptionService.workspaceIndex(ctx.userId, subscription.id);
+    expect(rulesetSnapshotReads).toBe(0);
+    expect(projectedSourceReads).toBeGreaterThan(0);
+    expect(fullSourceReads).toBe(0);
+    expect(workspace.draftRevision).toBe(subscription.draftRevision);
+    expect(workspace.stats.nodeCount).toBe(defaultNodes.length);
+    expect(workspace.stats.groupCount).toBeGreaterThan(0);
+    expect(workspace.nodeIndex).toHaveLength(defaultNodes.length);
+    expect(workspace.groupIndex.length).toBe(workspace.stats.groupCount);
+    expect(
+      workspace.issues.some((issue) => issue.kind === "missing-ruleset-snapshot")
+    ).toBe(false);
+    expect(workspace).not.toHaveProperty("yamlText");
+    expect(JSON.stringify(workspace)).not.toContain('"password"');
+
+    const preview = ctx.subscriptionService.preview(ctx.userId, subscription.id);
+    expect(rulesetSnapshotReads).toBeGreaterThan(0);
+    expect(preview).not.toHaveProperty("yamlText");
+    expect(preview.yamlBytes).toBeGreaterThan(0);
+
+    const yamlPreview = ctx.subscriptionService.previewYaml(ctx.userId, subscription.id);
+    expect(yamlPreview.draftRevision).toBe(preview.draftRevision);
+    expect(yamlPreview.renderedHash).toBe(preview.renderedHash);
+    expect(Buffer.byteLength(yamlPreview.yamlText, "utf8")).toBe(preview.yamlBytes);
+    expect(yamlPreview.yamlText).toContain("proxy-groups:");
+    expect(fullSourceReads).toBe(0);
+
+    const { subscription: patchSubscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "Patch 规则保留",
+      sourceIds: [ctx.source.id],
+      start: { kind: "patch" }
+    });
+    ctx.subscriptionService.preview(ctx.userId, patchSubscription.id);
+    expect(fullSourceReads).toBeGreaterThan(0);
+  });
+
+  test("版本摘要查询不携带 rendered_yaml，完整产物仍可按需读取", () => {
+    const ctx = createTestContext();
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "版本摘要",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const release = ctx.subscriptionService.publish(ctx.userId, subscription.id, {
+      trigger: "manual"
+    });
+
+    const summary = ctx.subscriptionRepository.findReleaseSummaryById(release.id)!;
+    const summaries = ctx.subscriptionRepository.listReleaseSummaries(subscription.id);
+    expect(summary).not.toHaveProperty("renderedYaml");
+    expect(summary).not.toHaveProperty("buildConfig");
+    expect(summaries[0]).toEqual(summary);
+    const artifact = ctx.subscriptionRepository.findReleaseArtifactById(release.id)!;
+    expect(summary.yamlBytes).toBe(Buffer.byteLength(artifact.renderedYaml, "utf8"));
+    expect(artifact.renderedYaml).toContain("proxy-groups:");
+    expect(artifact.renderedHash).toBe(summary.renderedHash);
+  });
+
+  test("预览路由默认返回轻量 JSON，YAML 路由返回带校验头的原始正文", async () => {
+    const ctx = createTestContext({
+      mihomoValidator: async () => ({
+        available: true,
+        passed: true,
+        exitCode: 0,
+        output: null,
+        durationMs: 3
+      })
+    });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "预览路由",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const now = new Date().toISOString();
+    const authService = {
+      authenticate: () => ({
+        id: ctx.userId,
+        email: "alice@test.local",
+        username: "alice",
+        displayName: "Alice",
+        locale: "zh-CN",
+        status: "active" as const,
+        isAdmin: false,
+        createdAt: now,
+        updatedAt: now
+      })
+    } as unknown as AuthService;
+    const app = new Elysia().use(
+      createSubscriptionRoutes(
+        authService,
+        ctx.subscriptionService,
+        ctx.secretStore,
+        new InMemoryRateLimiter()
+      )
+    );
+
+    const workspaceResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/workspace-index`, {
+        method: "POST"
+      })
+    );
+    expect(workspaceResponse.status).toBe(200);
+    const workspacePayload = await workspaceResponse.json() as Record<string, unknown>;
+    expect(workspacePayload).not.toHaveProperty("yamlText");
+    expect(workspacePayload).toHaveProperty("nodeIndex");
+
+    const previewResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/preview`, {
+        method: "POST"
+      })
+    );
+    expect(previewResponse.status).toBe(200);
+    const previewPayload = await previewResponse.json() as Record<string, unknown>;
+    expect(previewPayload).not.toHaveProperty("yamlText");
+    expect(previewPayload).toHaveProperty("yamlBytes");
+
+    const yamlResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/preview/yaml`, {
+        method: "POST"
+      })
+    );
+    expect(yamlResponse.status).toBe(200);
+    expect(yamlResponse.headers.get("content-type")).toContain("application/yaml");
+    expect(yamlResponse.headers.get("cache-control")).toBe("no-store");
+    expect(yamlResponse.headers.get("access-control-expose-headers")).toContain(
+      "X-Draft-Revision"
+    );
+    expect(yamlResponse.headers.get("access-control-expose-headers")).toContain(
+      "X-Rendered-Hash"
+    );
+    expect(yamlResponse.headers.get("x-draft-revision")).toBe(String(subscription.draftRevision));
+    expect(yamlResponse.headers.get("x-rendered-hash")).toBe(previewPayload.renderedHash);
+    expect(yamlResponse.headers.get("etag")).toBe(`"${previewPayload.renderedHash}"`);
+    const yamlText = await yamlResponse.text();
+    expect(Buffer.byteLength(yamlText, "utf8")).toBe(previewPayload.yamlBytes);
+    expect(yamlText).toContain("proxy-groups:");
+
+    const stalePagePublishResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedDraftRevision: subscription.draftRevision,
+          expectedRenderedHash: previewPayload.renderedHash
+        })
+      })
+    );
+    expect(stalePagePublishResponse.status).toBe(409);
+    expect(await stalePagePublishResponse.json()).toMatchObject({
+      message: "发布流程已升级，请刷新页面后重新预览并发布。"
+    });
+
+    const candidateResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/publish-candidates`, {
+        method: "POST"
+      })
+    );
+    expect(candidateResponse.status).toBe(200);
+    const candidate = await candidateResponse.json() as {
+      candidateId: string;
+      phase: string;
+      draftRevision: number;
+      renderedHash: string;
+    };
+    expect(candidate.phase).toBe("rendered");
+    const validationResponse = await app.handle(
+      new Request(
+        `http://localhost/api/subscriptions/${subscription.id}/publish-candidates/${candidate.candidateId}/validate`,
+        { method: "POST" }
+      )
+    );
+    expect(validationResponse.status).toBe(200);
+    expect((await validationResponse.json() as { phase: string }).phase).toBe("validated");
+    const publishResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateId: candidate.candidateId,
+          expectedDraftRevision: candidate.draftRevision,
+          expectedRenderedHash: candidate.renderedHash
+        })
+      })
+    );
+    expect(publishResponse.status).toBe(200);
+    const published = await publishResponse.json() as { id: string };
+
+    const releasesResponse = await app.handle(
+      new Request(`http://localhost/api/subscriptions/${subscription.id}/releases`)
+    );
+    expect(releasesResponse.status).toBe(200);
+    const releases = await releasesResponse.json() as Array<{ id: string; yamlBytes: number }>;
+    expect(releases[0]?.id).toBe(published.id);
+    expect(releases[0]?.yamlBytes).toBeGreaterThan(0);
+
+    const releaseYamlResponse = await app.handle(
+      new Request(
+        `http://localhost/api/subscriptions/${subscription.id}/releases/${published.id}/yaml`
+      )
+    );
+    expect(releaseYamlResponse.status).toBe(200);
+    expect(releaseYamlResponse.headers.get("content-type")).toContain("application/yaml");
+    expect(releaseYamlResponse.headers.get("cache-control")).toBe("no-store");
+    expect(releaseYamlResponse.headers.get("content-disposition")).toContain("attachment");
+    expect(releaseYamlResponse.headers.get("x-rendered-hash")).toMatch(/^[a-f0-9]{64}$/);
+    expect(Number(releaseYamlResponse.headers.get("x-yaml-bytes"))).toBe(releases[0]!.yamlBytes);
+    expect(Buffer.byteLength(await releaseYamlResponse.text(), "utf8")).toBe(
+      releases[0]!.yamlBytes
+    );
+  });
+
   test("auto 策略遇到未发布草稿时只标记变化，不夹带草稿发布", async () => {
     const ctx = createTestContext();
     let servedNodes = defaultNodes;
@@ -718,11 +1908,12 @@ describe("规则库", () => {
     expect(snapshot?.content).toContain("openai");
   });
 
-  test("内置规则后处理补齐 ChinaMax GEOIP 与 Anthropic 官方域名", () => {
+  test("内置规则后处理补齐 China/ChinaMax GEOIP 与 Anthropic 官方域名", () => {
     const ctx = createTestContext();
     const manifest = loadBuiltinRulesetManifest();
     const payloadBySlug = new Map<string, string[]>();
     const expectedBySlug = new Map<string, string[]>([
+      ["china", ["GEOIP,CN,no-resolve"]],
       ["chinamax", ["GEOIP,CN,no-resolve"]],
       [
         "anthropic",
@@ -1262,7 +2453,7 @@ describe("规则追踪器", () => {
     // 兜底断言用一个不落入任何 CIDR/域名规则集的公共 IP
     const fallback = ctx.subscriptionService.trace(ctx.userId, subscription.id, "8.8.8.8", false);
     expect(fallback.verdict).toBe("final");
-    expect(fallback.target).toBe("Proxies");
+    expect(fallback.target).toBe("Final");
     expect(fallback.maybeNotes.some((note) => note.includes("GEOIP,CN,no-resolve"))).toBe(
       true
     );
@@ -1321,6 +2512,62 @@ describe("模板 v2", () => {
     const record = ctx.subscriptionRepository.findById(subscription.id)!;
     const result = extractTemplate(record.draftBuildConfig!);
     expect("error" in result && result.error).toContain("patch");
+  });
+
+  test("含敏感信息模板只在独立密文表保存，并在确认后复制给应用者", () => {
+    const ctx = createTestContext();
+    const base = instantiateTemplate(
+      ctx.templateRepository.findLatestPayload(RECOMMENDED_TEMPLATE_ID)!,
+      [ctx.source.id]
+    );
+    base.nodes.custom.push({
+      id: "cn_shared",
+      name: "Shared VPS",
+      type: "trojan",
+      server: "shared.test",
+      port: 443,
+      secretRef: ctx.secretStore.create(ctx.userId, { password: "template-secret" }),
+      extra: {}
+    });
+    const extracted = extractTemplate(base, { retainSensitive: true });
+    if (!("payload" in extracted)) throw new Error("extract failed");
+    const template = ctx.templateRepository.create({
+      ownerUserId: ctx.userId,
+      displayName: "含凭据模板",
+      description: null,
+      visibility: "public",
+      payload: extracted.payload,
+      extractionReport: extracted.report,
+      versionNote: null,
+      embeddedSecrets: new Map([["cn_shared", { password: "template-secret" }]])
+    });
+    expect(template.embeddedSecrets).toBe(true);
+    expect(JSON.stringify(template)).not.toContain("template-secret");
+
+    const bob = createUser(ctx.db, "template-bob");
+    const bobSource = ctx.sourceService.createFromUpload(bob, {
+      displayName: "Bob source",
+      yamlContent: sourceYaml(defaultNodes)
+    });
+    expect(() => ctx.subscriptionService.create(bob, {
+      displayName: "未确认",
+      sourceIds: [bobSource.id],
+      start: { kind: "template", templateId: template.id }
+    })).toThrow("需要明确确认");
+
+    const created = ctx.subscriptionService.create(bob, {
+      displayName: "已确认",
+      sourceIds: [bobSource.id],
+      start: { kind: "template", templateId: template.id, confirmSensitive: true }
+    });
+    const copiedNode = created.subscription.draftBuildConfig!.nodes.custom.find(
+      (node) => node.id === "cn_shared"
+    )!;
+    expect(copiedNode.secretRef).not.toBeNull();
+    expect(ctx.secretStore.resolveForOwner(bob, copiedNode.secretRef!)).toEqual({
+      password: "template-secret"
+    });
+    expect(ctx.secretStore.resolveForOwner(ctx.userId, copiedNode.secretRef!)).toBeNull();
   });
 });
 

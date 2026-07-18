@@ -1,3 +1,4 @@
+import { useCallback, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "../providers/auth-provider";
@@ -6,9 +7,13 @@ import type {
   CreateSubscriptionResponse,
   EventEntry,
   InstanceHealth,
+  LatencyTestResponse,
   IssuedToken,
   PasteParseReportDto,
+  ParsedNodeUriDto,
   PreviewResult,
+  PreviewYamlResult,
+  PublishCandidateResult,
   ReleaseDetail,
   ReleaseMutationResult,
   ReleaseSummary,
@@ -21,9 +26,11 @@ import type {
   SubscriptionSummary,
   SyncLatestRulesetsResult,
   SyncReport,
+  UploadedSourceContent,
   TemplateDetail,
   TemplateSummary,
-  TraceResultDto
+  TraceResultDto,
+  WorkspaceIndexResult
 } from "./types";
 import type { BuildConfig, TemplateExtractionReport } from "./build-config-types";
 
@@ -34,6 +41,7 @@ const keys = {
   sources: ["sources"] as const,
   source: (id: string) => ["sources", id] as const,
   sourceReports: (id: string) => ["sources", id, "reports"] as const,
+  sourceContent: (id: string) => ["sources", id, "content"] as const,
   subscriptions: ["subscriptions"] as const,
   subscription: (id: string) => ["subscriptions", id] as const,
   releases: (id: string) => ["subscriptions", id, "releases"] as const,
@@ -43,8 +51,8 @@ const keys = {
   rulesets: ["rulesets"] as const,
   templates: ["templates"] as const,
   template: (id: string) => ["templates", id] as const,
-  templateExtractPreview: (subscriptionId: string) =>
-    ["template-extract-preview", subscriptionId] as const,
+  templateExtractPreview: (subscriptionId: string, retainSensitive: boolean) =>
+    ["template-extract-preview", subscriptionId, retainSensitive] as const,
   events: ["events"] as const,
   instance: ["instance"] as const
 };
@@ -65,6 +73,27 @@ export const useSourceReports = (id: string) => {
   });
 };
 
+export const useSourceContent = (id: string, enabled: boolean) => {
+  const { authorizedRequest } = useAuth();
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: keys.sourceContent(id),
+    queryFn: ({ signal }) =>
+      authorizedRequest<UploadedSourceContent>(`/api/sources/${id}/content`, {
+        cache: "no-store",
+        signal
+      }),
+    enabled,
+    gcTime: 0
+  });
+  const clear = useCallback(() => {
+    const queryKey = keys.sourceContent(id);
+    void queryClient.cancelQueries({ queryKey, exact: true });
+    queryClient.removeQueries({ queryKey, exact: true });
+  }, [id, queryClient]);
+  return { ...query, clear };
+};
+
 export const useSourceMutations = () => {
   const { authorizedRequest } = useAuth();
   const qc = useQueryClient();
@@ -79,7 +108,8 @@ export const useSourceMutations = () => {
           method: "POST",
           body: JSON.stringify(body)
         }),
-      onSuccess: invalidate
+      onSuccess: invalidate,
+      gcTime: 1_000
     }),
     update: useMutation({
       mutationFn: ({ id, ...body }: Record<string, unknown> & { id: string }) =>
@@ -87,7 +117,8 @@ export const useSourceMutations = () => {
           method: "PATCH",
           body: JSON.stringify(body)
         }),
-      onSuccess: invalidate
+      onSuccess: invalidate,
+      gcTime: 1_000
     }),
     sync: useMutation({
       mutationFn: (id: string) =>
@@ -133,7 +164,11 @@ export const useSubscriptionMutations = (id?: string) => {
       mutationFn: (body: {
         displayName: string;
         sourceIds: string[];
-        start: { kind: string; templateId?: string };
+        start: {
+          kind: string;
+          templateId?: string;
+          confirmSensitive?: boolean;
+        };
       }) =>
         authorizedRequest<CreateSubscriptionResponse>("/api/subscriptions", {
           method: "POST",
@@ -190,16 +225,18 @@ export const useSubscriptionMutations = (id?: string) => {
     publish: useMutation({
       mutationFn: ({
         subscriptionId,
+        candidateId,
         expectedDraftRevision,
         expectedRenderedHash
       }: {
         subscriptionId: string;
+        candidateId: string;
         expectedDraftRevision: number;
         expectedRenderedHash: string;
       }) =>
         authorizedRequest<ReleaseMutationResult>(`/api/subscriptions/${subscriptionId}/publish`, {
           method: "POST",
-          body: JSON.stringify({ expectedDraftRevision, expectedRenderedHash })
+          body: JSON.stringify({ candidateId, expectedDraftRevision, expectedRenderedHash })
         }),
       onSuccess: (_release, { subscriptionId }) => {
         void qc.invalidateQueries({ queryKey: keys.subscriptions });
@@ -250,15 +287,15 @@ export const useSubscriptionMutations = (id?: string) => {
         }),
       onSuccess: invalidate
     }),
-    // 工作台卡片 / 订阅列表「复制链接」快捷按钮：优先复用已有长期链接，没有时后端会补建一条
-    copyPrimaryLink: useMutation({
-      mutationFn: () => {
+    // 工作台卡片 / 订阅列表「复制链接」快捷按钮：只读取已有长期链接。
+    copyPrimaryLink: {
+      mutateAsync: () => {
         if (!id) throw new Error("缺少订阅 ID");
         return authorizedRequest<RevealedToken>(`/api/subscriptions/${id}/primary-link`, {
           method: "GET"
         });
       }
-    })
+    }
   };
 };
 
@@ -269,7 +306,152 @@ export const usePreview = (id: string, enabled: boolean) => {
     queryFn: () =>
       authorizedRequest<PreviewResult>(`/api/subscriptions/${id}/preview`, { method: "POST" }),
     enabled,
+    staleTime: 0,
+    refetchOnMount: "always"
+  });
+};
+
+export const usePreparePublishCandidate = (id: string) => {
+  const { authorizedRequest } = useAuth();
+  // Each mounted publish flow gets a unique key. React Query can therefore
+  // deduplicate Strict Mode's effect replay without ever reusing a candidate
+  // from an earlier dialog/session.
+  const flowId = useRef(crypto.randomUUID()).current;
+  return useQuery({
+    queryKey: ["publish-candidate", id, flowId],
+    queryFn: () =>
+      authorizedRequest<PublishCandidateResult>(
+        `/api/subscriptions/${id}/publish-candidates`,
+        { method: "POST" }
+      ),
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
+  });
+};
+
+export const useValidatePublishCandidate = (id: string, candidateId: string | null) => {
+  const { authorizedRequest } = useAuth();
+  return useQuery({
+    queryKey: ["publish-candidate-validation", id, candidateId],
+    queryFn: () => {
+      if (!candidateId) throw new Error("缺少发布候选版本");
+      return authorizedRequest<PublishCandidateResult>(
+        `/api/subscriptions/${id}/publish-candidates/${candidateId}/validate`,
+        { method: "POST" }
+      );
+    },
+    enabled: candidateId !== null,
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
+  });
+};
+
+export const useWorkspaceIndex = (id: string, enabled: boolean) => {
+  const { authorizedRequest } = useAuth();
+  return useQuery({
+    queryKey: [...keys.subscription(id), "workspace-index"],
+    queryFn: () =>
+      authorizedRequest<WorkspaceIndexResult>(
+        `/api/subscriptions/${id}/workspace-index`,
+        { method: "POST" }
+      ),
+    enabled,
     staleTime: 0
+  });
+};
+
+export const usePreviewRequest = (id: string) => {
+  const { authorizedRequest } = useAuth();
+  return useMutation({
+    mutationFn: () =>
+      authorizedRequest<PreviewResult>(`/api/subscriptions/${id}/preview`, {
+        method: "POST"
+      })
+  });
+};
+
+export const usePreviewYaml = (id: string) => {
+  const { authorizedResponse } = useAuth();
+  return useMutation({
+    mutationFn: async ({
+      expectedDraftRevision,
+      expectedRenderedHash
+    }: {
+      expectedDraftRevision: number;
+      expectedRenderedHash: string;
+    }): Promise<PreviewYamlResult> => {
+      const response = await authorizedResponse(
+        `/api/subscriptions/${id}/preview/yaml`,
+        { method: "POST", headers: { Accept: "application/yaml" }, cache: "no-store" }
+      );
+      const draftRevision = Number(response.headers.get("X-Draft-Revision"));
+      const renderedHash = response.headers.get("X-Rendered-Hash");
+      if (!Number.isSafeInteger(draftRevision) || !renderedHash) {
+        await response.body?.cancel();
+        throw new Error("完整预览响应缺少草稿版本信息，请重试。");
+      }
+      if (
+        draftRevision !== expectedDraftRevision ||
+        renderedHash !== expectedRenderedHash
+      ) {
+        await response.body?.cancel();
+        throw new Error("草稿已变化，请重新生成预览后再加载 YAML。");
+      }
+      return {
+        draftRevision,
+        renderedHash,
+        yamlText: await response.text()
+      };
+    }
+  });
+};
+
+export const usePreviewYamlDownload = (id: string) => {
+  const { authorizedResponse } = useAuth();
+  return useMutation({
+    mutationFn: async ({
+      expectedDraftRevision,
+      expectedRenderedHash,
+      fileName
+    }: {
+      expectedDraftRevision: number;
+      expectedRenderedHash: string;
+      fileName: string;
+    }) => {
+      const response = await authorizedResponse(
+        `/api/subscriptions/${id}/preview/yaml`,
+        { method: "POST", headers: { Accept: "application/yaml" }, cache: "no-store" }
+      );
+      const draftRevision = Number(response.headers.get("X-Draft-Revision"));
+      const renderedHash = response.headers.get("X-Rendered-Hash");
+      if (!Number.isSafeInteger(draftRevision) || !renderedHash) {
+        await response.body?.cancel();
+        throw new Error("完整预览响应缺少草稿版本信息，请重试。");
+      }
+      if (
+        draftRevision !== expectedDraftRevision ||
+        renderedHash !== expectedRenderedHash
+      ) {
+        await response.body?.cancel();
+        throw new Error("草稿已变化，请重新生成预览后再下载 YAML。");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${fileName.replace(/[\\/:*?"<>|]/g, "_") || "subscription"}.yaml`;
+      link.style.display = "none";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      return { draftRevision, renderedHash };
+    }
   });
 };
 
@@ -287,7 +469,51 @@ export const useRelease = (id: string, releaseId: string | null) => {
     queryKey: keys.release(id, releaseId ?? "none"),
     queryFn: () =>
       authorizedRequest<ReleaseDetail>(`/api/subscriptions/${id}/releases/${releaseId}`),
-    enabled: releaseId !== null
+    enabled: releaseId !== null,
+    gcTime: 0
+  });
+};
+
+export const useReleaseYamlDownload = (id: string) => {
+  const { authorizedResponse } = useAuth();
+  return useMutation({
+    mutationFn: async ({
+      releaseId,
+      expectedYamlBytes,
+      fileName
+    }: {
+      releaseId: string;
+      expectedYamlBytes: number;
+      fileName: string;
+    }) => {
+      const response = await authorizedResponse(
+        `/api/subscriptions/${id}/releases/${releaseId}/yaml`,
+        { headers: { Accept: "application/yaml" }, cache: "no-store" }
+      );
+      const renderedHash = response.headers.get("X-Rendered-Hash");
+      // Nginx may gzip this authenticated API response and rewrite Content-Length;
+      // X-Yaml-Bytes always describes the immutable, uncompressed Release bytes.
+      const yamlBytes = Number(response.headers.get("X-Yaml-Bytes"));
+      if (!renderedHash || yamlBytes !== expectedYamlBytes) {
+        await response.body?.cancel();
+        throw new Error("版本产物信息与列表不一致，请刷新后重试。");
+      }
+
+      const blob = await response.blob();
+      if (blob.size !== expectedYamlBytes) {
+        throw new Error("下载的版本产物长度不完整，请重试。");
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${fileName.replace(/[\\/:*?"<>|]/g, "_") || "subscription"}.yaml`;
+      link.style.display = "none";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      return { renderedHash, yamlBytes };
+    }
   });
 };
 
@@ -304,21 +530,28 @@ export const useAccessMutations = (id: string) => {
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: keys.access(id) });
   return {
-    createToken: useMutation({
-      mutationFn: (label: string | null) =>
-        authorizedRequest<IssuedToken>(`/api/subscriptions/${id}/tokens`, {
+    createToken: {
+      mutateAsync: async (label: string | null) => {
+        const issued = await authorizedRequest<IssuedToken>(`/api/subscriptions/${id}/tokens`, {
           method: "POST",
           body: JSON.stringify({ label })
-        }),
-      onSuccess: invalidate
-    }),
-    rotateToken: useMutation({
-      mutationFn: (tokenId: string) =>
-        authorizedRequest<IssuedToken>(`/api/subscriptions/${id}/tokens/${tokenId}/rotate`, {
-          method: "POST"
-        }),
-      onSuccess: invalidate
-    }),
+        });
+        invalidate();
+        return issued;
+      }
+    },
+    rotateToken: {
+      mutateAsync: async (tokenId: string) => {
+        const issued = await authorizedRequest<IssuedToken>(
+          `/api/subscriptions/${id}/tokens/${tokenId}/rotate`,
+          {
+            method: "POST"
+          }
+        );
+        invalidate();
+        return issued;
+      }
+    },
     revokeToken: useMutation({
       mutationFn: (tokenId: string) =>
         authorizedRequest<{ ok: boolean }>(`/api/subscriptions/${id}/tokens/${tokenId}`, {
@@ -334,20 +567,31 @@ export const useAccessMutations = (id: string) => {
         }),
       onSuccess: invalidate
     }),
-    revealToken: useMutation({
-      mutationFn: (tokenId: string) =>
+    revealToken: {
+      mutateAsync: (tokenId: string) =>
         authorizedRequest<RevealedToken>(`/api/subscriptions/${id}/tokens/${tokenId}/reveal`, {
           method: "GET"
         })
-    }),
-    createTempToken: useMutation({
-      mutationFn: (body: { label: string | null; ttlSeconds: number }) =>
-        authorizedRequest<IssuedToken>(`/api/subscriptions/${id}/temp-tokens`, {
-          method: "POST",
-          body: JSON.stringify(body)
-        }),
-      onSuccess: invalidate
-    }),
+    },
+    createTempToken: {
+      mutateAsync: async (body: { label: string | null; ttlSeconds: number }) => {
+        const issued = await authorizedRequest<IssuedToken>(
+          `/api/subscriptions/${id}/temp-tokens`,
+          {
+            method: "POST",
+            body: JSON.stringify(body)
+          }
+        );
+        invalidate();
+        return issued;
+      }
+    },
+    revealTempToken: {
+      mutateAsync: (tokenId: string) =>
+        authorizedRequest<RevealedToken>(`/api/subscriptions/${id}/temp-tokens/${tokenId}/reveal`, {
+          method: "GET"
+        })
+    },
     revokeTempToken: useMutation({
       mutationFn: (tokenId: string) =>
         authorizedRequest<{ ok: boolean }>(`/api/subscriptions/${id}/temp-tokens/${tokenId}`, {
@@ -486,10 +730,10 @@ export const useTemplate = (id: string | null) => {
   });
 };
 
-export const useTemplateExtractPreview = (subscriptionId: string) => {
+export const useTemplateExtractPreview = (subscriptionId: string, retainSensitive = false) => {
   const { authorizedRequest } = useAuth();
   return useQuery({
-    queryKey: keys.templateExtractPreview(subscriptionId),
+    queryKey: keys.templateExtractPreview(subscriptionId, retainSensitive),
     queryFn: () =>
       authorizedRequest<{
         payload: unknown;
@@ -497,7 +741,7 @@ export const useTemplateExtractPreview = (subscriptionId: string) => {
         draftRevision: number;
       }>(
         "/api/templates/extract-preview",
-        { method: "POST", body: JSON.stringify({ subscriptionId }) }
+        { method: "POST", body: JSON.stringify({ subscriptionId, retainSensitive }) }
       ),
     // 每次打开都重新分析当前草稿；React Query 会复用同一轮仍在进行的请求。
     staleTime: 0,
@@ -518,6 +762,9 @@ export const useTemplateMutations = () => {
         displayName: string;
         description?: string;
         visibility?: string;
+        retainSensitive?: boolean;
+        confirmSensitive?: boolean;
+        confirmShareSensitive?: boolean;
       }) =>
         authorizedRequest<TemplateDetail>("/api/templates", {
           method: "POST",
@@ -526,7 +773,7 @@ export const useTemplateMutations = () => {
       onSuccess: invalidate
     }),
     instantiate: useMutation({
-      mutationFn: ({ id, ...body }: { id: string; displayName: string; sourceIds: string[] }) =>
+      mutationFn: ({ id, ...body }: { id: string; displayName: string; sourceIds: string[]; confirmSensitive?: boolean }) =>
         authorizedRequest<CreateSubscriptionResponse>(`/api/templates/${id}/instantiate`, {
           method: "POST",
           body: JSON.stringify(body)
@@ -547,20 +794,75 @@ export const useTemplateMutations = () => {
 // 节点表单只有一张字段清单，敏感/非敏感的拆分与加密都在后端完成。
 export const useSecretMutations = () => {
   const { authorizedRequest } = useAuth();
+  const [splitPendingCount, setSplitPendingCount] = useState(0);
+  const [resolvePendingCount, setResolvePendingCount] = useState(0);
   return {
-    split: useMutation({
-      mutationFn: (body: { type: string; fields: Record<string, unknown>; secretRef?: string | null }) =>
-        authorizedRequest<{ secretRef: string | null; extra: Record<string, unknown> }>(
-          "/api/secrets/split",
-          { method: "POST", body: JSON.stringify(body) }
-        )
-    }),
+    split: {
+      isPending: splitPendingCount > 0,
+      mutateAsync: async (body: {
+        type: string;
+        fields: Record<string, unknown>;
+        secretRef?: string | null;
+      }) => {
+        setSplitPendingCount((count) => count + 1);
+        try {
+          return await authorizedRequest<{
+            secretRef: string | null;
+            extra: Record<string, unknown>;
+          }>(
+            "/api/secrets/split",
+            { method: "POST", body: JSON.stringify(body) }
+          );
+        } finally {
+          setSplitPendingCount((count) => Math.max(0, count - 1));
+        }
+      }
+    },
     // 仅用于打开编辑弹窗时回显敏感字段
-    resolve: useMutation({
-      mutationFn: (id: string) =>
-        authorizedRequest<{ fields: Record<string, unknown> }>(`/api/secrets/${id}`)
-    })
+    resolve: {
+      isPending: resolvePendingCount > 0,
+      mutateAsync: async (id: string) => {
+        setResolvePendingCount((count) => count + 1);
+        try {
+          return await authorizedRequest<{ fields: Record<string, unknown> }>(
+            `/api/secrets/${id}`
+          );
+        } finally {
+          setResolvePendingCount((count) => Math.max(0, count - 1));
+        }
+      }
+    }
   };
+};
+
+export const useNodeUriParser = () => {
+  const { authorizedRequest } = useAuth();
+  const [pendingCount, setPendingCount] = useState(0);
+  return {
+    isPending: pendingCount > 0,
+    mutateAsync: async (uri: string) => {
+      setPendingCount((count) => count + 1);
+      try {
+        return await authorizedRequest<ParsedNodeUriDto>("/api/nodes/parse-uri", {
+          method: "POST",
+          body: JSON.stringify({ uri })
+        });
+      } finally {
+        setPendingCount((count) => Math.max(0, count - 1));
+      }
+    }
+  };
+};
+
+export const useLatencyTest = (subscriptionId: string) => {
+  const { authorizedRequest } = useAuth();
+  return useMutation({
+    mutationFn: (nodeIds: string[]) =>
+      authorizedRequest<LatencyTestResponse>(`/api/subscriptions/${subscriptionId}/latency-tests`, {
+        method: "POST",
+        body: JSON.stringify({ nodeIds })
+      })
+  });
 };
 
 export const useEvents = () => {

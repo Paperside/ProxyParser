@@ -73,6 +73,13 @@ export interface SourceSummary {
   updatedAt: string;
 }
 
+export interface UploadedSourceContent {
+  sourceId: string;
+  uploadedFileName: string | null;
+  yamlContent: string;
+  contentHash: string | null;
+}
+
 export interface SyncReport {
   id: string;
   upstreamSourceId: string;
@@ -150,6 +157,7 @@ export interface NodeIndexEntry {
   id: string;
   renderedName: string;
   sourceId: string | null;
+  sourceName: string | null;
   disabled: boolean;
   region: string | null;
   regionInferred: boolean;
@@ -166,13 +174,39 @@ export interface GroupIndexEntry {
 export interface PreviewResult {
   draftRevision: number;
   renderedHash: string;
-  yamlText: string;
+  yamlBytes: number;
   issues: EvaluateIssueDto[];
   stats: { nodeCount: number; groupCount: number; ruleCount: number; providerCount: number };
   nodeIndex: NodeIndexEntry[];
   groupIndex: GroupIndexEntry[];
   diffVsActive: DiffSummary | null;
   activeReleaseSeq: number | null;
+}
+
+export interface PublishCandidateResult extends PreviewResult {
+  candidateId: string;
+  expiresAt: string;
+  phase:
+    | "rendered"
+    | "structural_failed"
+    | "validating"
+    | "validated"
+    | "validation_failed";
+  mihomo: MihomoValidationDto | null;
+}
+
+export interface WorkspaceIndexResult {
+  draftRevision: number;
+  issues: EvaluateIssueDto[];
+  stats: { nodeCount: number; groupCount: number };
+  nodeIndex: NodeIndexEntry[];
+  groupIndex: GroupIndexEntry[];
+}
+
+export interface PreviewYamlResult {
+  draftRevision: number;
+  renderedHash: string;
+  yamlText: string;
 }
 
 export interface MihomoValidationDto {
@@ -190,6 +224,7 @@ export interface ReleaseSummary {
   triggerDetail: string | null;
   diffSummary: DiffSummary | Record<string, never>;
   validation: { structuralErrors: number; mihomo: MihomoValidationDto | null };
+  yamlBytes: number;
   createdBy: string | null;
   createdAt: string;
   isActive: boolean;
@@ -215,6 +250,7 @@ export interface TokenInfo {
   lastUsedAt: string | null;
   createdAt: string;
   expiresAt?: string;
+  canReveal?: boolean;
 }
 
 export interface IssuedToken extends TokenInfo {
@@ -330,6 +366,29 @@ export interface PasteParseReportDto {
   invalid: Array<{ line: string; reason: string }>;
 }
 
+export interface ParsedNodeUriDto {
+  name: string;
+  type: string;
+  server: string;
+  port: number;
+  fields: Record<string, unknown>;
+  warnings: string[];
+  scheme: string;
+}
+
+export interface LatencyTestResponse {
+  testUrl: string;
+  timeoutMs: number;
+  testedAt: string;
+  results: Array<{
+    nodeId: string;
+    name: string;
+    status: "ok" | "unreachable" | "error";
+    delayMs: number | null;
+    message?: string;
+  }>;
+}
+
 // ── 模板 ─────────────────────────────────────────────────────
 
 export interface TemplateSummary {
@@ -341,6 +400,7 @@ export interface TemplateSummary {
   visibility: "private" | "unlisted" | "public";
   isOfficial: boolean;
   latestVersion: number;
+  embeddedSecrets: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -364,6 +424,6 @@ export interface EventEntry {
 export interface InstanceHealth {
   database: { path: string; migrationCount: number; tableCount: number; rulesetCatalogCount: number };
   scheduler: { lastTickAt: string | null };
-  mihomoGate: { available: boolean };
+  mihomoGate: { available: boolean; offlineAssetsReady: boolean };
   publicBaseUrl: string;
 }

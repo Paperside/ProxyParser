@@ -1,5 +1,5 @@
-// 地区码 + 中文显示名，手动与后端 backend/src/lib/render-v2/region.ts 的 REGION_CODES 保持同步
-// （同 BUILTIN_POLICY_OPTIONS 的维护方式：改一处记得改另一处）。
+// 地区码 + 中文显示名，手动与后端 backend/src/lib/render-v2/region.ts 的
+// REGION_CODES / COMMON_REGION_CODES 保持同步（同 BUILTIN_POLICY_OPTIONS 的维护方式）。
 
 export const REGION_LABELS: Record<string, string> = {
   HK: "香港",
@@ -60,6 +60,11 @@ export const REGION_LABELS: Record<string, string> = {
 };
 
 export const REGION_CODES = Object.keys(REGION_LABELS);
+
+export const COMMON_REGION_CODES = ["HK", "TW", "JP", "SG", "US", "KR", "GB", "DE"] as const;
+
+export const regionCodesForScope = (scope: "common" | "full"): readonly string[] =>
+  scope === "common" ? COMMON_REGION_CODES : REGION_CODES;
 
 export const regionLabel = (code: string): string => {
   const label = REGION_LABELS[code];

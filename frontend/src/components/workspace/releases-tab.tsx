@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { formatRelative, triggerLabel } from "../../lib/format";
-import { useRelease, useReleases, useSubscriptionMutations } from "../../lib/hooks";
+import { formatBytes, formatRelative, triggerLabel } from "../../lib/format";
+import {
+  useRelease,
+  useReleases,
+  useReleaseYamlDownload,
+  useSubscriptionMutations
+} from "../../lib/hooks";
 import { DiffChips, SectionTitle } from "../shared";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -10,6 +15,8 @@ import { Card } from "../ui/card";
 import { Dialog, DialogContent } from "../ui/dialog";
 import { Textarea } from "../ui/textarea";
 import { useWorkspace } from "./context";
+
+const MAX_INLINE_YAML_BYTES = 1024 * 1024;
 
 const YamlDialog = ({
   subscriptionId,
@@ -24,7 +31,13 @@ const YamlDialog = ({
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent wide title={release.data ? `v${release.data.seq} 的渲染产物` : "载入中…"}>
-        <Textarea readOnly value={release.data?.renderedYaml ?? ""} className="min-h-[50vh]" />
+        {release.data && release.data.yamlBytes > MAX_INLINE_YAML_BYTES ? (
+          <p className="rounded-md bg-warn-bg px-3 py-2 text-xs text-warn">
+            该版本 YAML 大于 1 MiB，不会写入页面。请关闭弹窗后从版本列表下载文件。
+          </p>
+        ) : (
+          <Textarea readOnly value={release.data?.renderedYaml ?? ""} className="min-h-[50vh]" />
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -40,6 +53,7 @@ export const ReleasesTab = () => {
   } = useWorkspace();
   const releases = useReleases(detail.id);
   const mutations = useSubscriptionMutations(detail.id);
+  const yamlDownload = useReleaseYamlDownload(detail.id);
   const [viewingYaml, setViewingYaml] = useState<string | null>(null);
   const rollbackBlocked =
     detail.hasDraft || saving || syncingRulesets || discardingDraft;
@@ -111,8 +125,38 @@ export const ReleasesTab = () => {
                   {release.createdBy === "system" ? " · 系统" : ""}
                 </span>
                 <span className="ml-auto flex gap-1.5">
-                  <Button size="sm" variant="ghost" onClick={() => setViewingYaml(release.id)}>
-                    查看 YAML
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={
+                      release.yamlBytes > MAX_INLINE_YAML_BYTES && yamlDownload.isPending
+                    }
+                    title={`${formatBytes(release.yamlBytes)} · ${
+                      release.yamlBytes > MAX_INLINE_YAML_BYTES
+                        ? "大于 1 MiB，仅下载文件"
+                        : "可在页面内查看"
+                    }`}
+                    onClick={() => {
+                      if (release.yamlBytes <= MAX_INLINE_YAML_BYTES) {
+                        setViewingYaml(release.id);
+                        return;
+                      }
+                      yamlDownload
+                        .mutateAsync({
+                          releaseId: release.id,
+                          expectedYamlBytes: release.yamlBytes,
+                          fileName: `${detail.displayName}-v${release.seq}`
+                        })
+                        .catch((error: unknown) =>
+                          toast.error(error instanceof Error ? error.message : "下载失败")
+                        );
+                    }}
+                  >
+                    {release.yamlBytes > MAX_INLINE_YAML_BYTES
+                      ? yamlDownload.isPending
+                        ? "下载中…"
+                        : "下载 YAML"
+                      : "查看 YAML"}
                   </Button>
                   {!release.isActive ? (
                     <Button

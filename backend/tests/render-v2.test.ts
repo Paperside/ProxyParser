@@ -7,7 +7,11 @@ import type { BuildConfig } from "../src/lib/build-config/types";
 import { computeNativeNodeId, identifyNodes } from "../src/lib/build-config/node-identity";
 import { validateBuildConfig } from "../src/lib/build-config/validate";
 import { emitClashYaml } from "../src/lib/render-v2/emit-yaml";
-import { evaluate, type EvaluateInput } from "../src/lib/render-v2/evaluate";
+import {
+  evaluate,
+  evaluateWorkspaceIndex,
+  type EvaluateInput
+} from "../src/lib/render-v2/evaluate";
 import { diffDocuments } from "../src/lib/render-v2/release-diff";
 import { SecretBox } from "../src/lib/security/secret-box";
 import { randomBytes } from "node:crypto";
@@ -97,6 +101,59 @@ describe("validateBuildConfig", () => {
       expect(result.value.sources[0]!.enabled).toBe(true);
       expect(result.value.nodes.custom).toEqual([]);
     }
+  });
+
+  test("地区分组范围只接受 common / full，旧配置不强行补默认值", () => {
+    const valid = validateBuildConfig({
+      version: 1,
+      mode: "rebuild",
+      sources: [{ sourceId: "src_1" }],
+      groups: {
+        generators: [
+          {
+            kind: "region-groups",
+            groupType: "select",
+            unclassified: "others",
+            scope: "common"
+          }
+        ]
+      },
+      rules: { final: { target: "DIRECT" } }
+    });
+    expect(valid.ok).toBe(true);
+    if (valid.ok) {
+      expect(valid.value.groups.generators[0]).toHaveProperty("scope", "common");
+    }
+
+    const legacy = validateBuildConfig({
+      version: 1,
+      mode: "rebuild",
+      sources: [{ sourceId: "src_1" }],
+      groups: {
+        generators: [
+          { kind: "region-groups", groupType: "select", unclassified: "others" }
+        ]
+      },
+      rules: { final: { target: "DIRECT" } }
+    });
+    expect(legacy.ok).toBe(true);
+    if (legacy.ok) {
+      expect(legacy.value.groups.generators[0]).not.toHaveProperty("scope");
+    }
+
+    const invalid = validateBuildConfig({
+      version: 1,
+      mode: "rebuild",
+      sources: [{ sourceId: "src_1" }],
+      groups: {
+        generators: [
+          { kind: "region-groups", groupType: "select", scope: "tiny" }
+        ]
+      },
+      rules: { final: { target: "DIRECT" } }
+    });
+    expect(invalid.ok).toBe(false);
+    if (!invalid.ok) expect(invalid.errors.join()).toContain("common / full");
   });
 });
 
@@ -266,6 +323,168 @@ describe("evaluate（rebuild）", () => {
     expect((result.document as Record<string, unknown>)["unified-delay"]).toBe(true);
   });
 
+  test("common 地区模式仅生成常用组，其余已识别地区归入 Others", () => {
+    const config = structuredClone(buildConfig);
+    const regionGenerator = config.groups.generators.find(
+      (generator) => generator.kind === "region-groups"
+    );
+    if (!regionGenerator || regionGenerator.kind !== "region-groups") {
+      throw new Error("expected region generator");
+    }
+    regionGenerator.scope = "common";
+    regionGenerator.unclassified = "ignore";
+    config.sources = [{ sourceId: "src_region", enabled: true }];
+    config.nodes.custom = [];
+    config.groups.custom = [];
+    config.groups.order = ["Proxies"];
+    config.rules = { targets: [], order: [], prelude: [], final: { target: "Proxies" } };
+
+    const snapshot: ClashProxyDocument = {
+      proxies: [
+        { name: "🇯🇵 东京", type: "ss", server: "jp.example.com", port: 443 },
+        { name: "🇫🇷 巴黎", type: "ss", server: "fr.example.com", port: 443 },
+        { name: "神秘节点", type: "ss", server: "unknown.example.com", port: 443 }
+      ],
+      "proxy-groups": [],
+      rules: []
+    };
+    const result = evaluate(
+      createInput({
+        buildConfig: config,
+        sourceSnapshots: new Map([["src_region", snapshot]]),
+        sourceLabels: new Map([["src_region", "地区测试"]]),
+        rulesetSnapshots: new Map(),
+        customNodeSecrets: new Map()
+      })
+    );
+
+    const groups = new Map(result.document["proxy-groups"].map((group) => [group.name, group]));
+    expect(groups.has("JP")).toBe(true);
+    expect(groups.has("FR")).toBe(false);
+    expect(groups.get("Others")?.proxies).toEqual(["巴黎"]);
+    const warning = result.issues.find((issue) => issue.kind === "unclassified-nodes");
+    expect(warning?.refs.nodeIds).toHaveLength(1);
+  });
+
+  test("旧配置缺省 scope 时延续完整地区分组", () => {
+    const config = structuredClone(buildConfig);
+    config.sources = [{ sourceId: "src_region", enabled: true }];
+    config.nodes.custom = [];
+    config.groups.custom = [];
+    config.groups.order = ["Proxies"];
+    config.rules = { targets: [], order: [], prelude: [], final: { target: "Proxies" } };
+    const snapshot: ClashProxyDocument = {
+      proxies: [{ name: "🇫🇷 巴黎", type: "ss", server: "fr.example.com", port: 443 }],
+      "proxy-groups": [],
+      rules: []
+    };
+    const result = evaluate(
+      createInput({
+        buildConfig: config,
+        sourceSnapshots: new Map([["src_region", snapshot]]),
+        sourceLabels: new Map([["src_region", "地区测试"]]),
+        rulesetSnapshots: new Map(),
+        customNodeSecrets: new Map()
+      })
+    );
+    expect(result.document["proxy-groups"].some((group) => group.name === "FR")).toBe(true);
+  });
+
+  test("多源合并追加来源名并为相同端点生成唯一节点 ID", () => {
+    const sharedEndpoint = {
+      type: "ss",
+      server: "shared.example.com",
+      port: 443,
+      password: "secret"
+    };
+    const config: BuildConfig = {
+      version: 1,
+      mode: "rebuild",
+      sources: [
+        { sourceId: "src_a", enabled: true },
+        { sourceId: "src_b", enabled: true }
+      ],
+      nodes: { transforms: [], overrides: [], custom: [] },
+      groups: {
+        generators: [
+          { kind: "proxies-root", name: "Proxies", includeAuto: false, extraMembers: [] }
+        ],
+        custom: [
+          {
+            name: "Final",
+            type: "select",
+            members: [
+              { kind: "group", name: "Proxies" },
+              { kind: "builtin", policy: "DIRECT" }
+            ]
+          }
+        ],
+        order: ["Final", "Proxies"]
+      },
+      rules: { targets: [], order: [], prelude: [], final: { target: "Final" } },
+      config: { structured: {}, rawPatch: null }
+    };
+    const result = evaluate({
+      buildConfig: config,
+      sourceSnapshots: new Map([
+        ["src_a", { proxies: [{ name: "入口", ...sharedEndpoint }], "proxy-groups": [], rules: [] }],
+        ["src_b", { proxies: [{ name: "入口", ...sharedEndpoint }], "proxy-groups": [], rules: [] }]
+      ]),
+      sourceLabels: new Map([
+        ["src_a", "机场甲"],
+        ["src_b", "机场乙"]
+      ]),
+      rulesetSnapshots: new Map(),
+      customNodeSecrets: new Map(),
+      publicBaseUrl: "https://pp.example.com"
+    });
+
+    expect(result.document.proxies.map((node) => node.name)).toEqual([
+      "入口 · 机场甲",
+      "入口 · 机场乙"
+    ]);
+    expect(new Set(result.nodeIndex.map((node) => node.id)).size).toBe(2);
+    expect(result.nodeIndex.every((node) => node.id.startsWith("n_"))).toBe(true);
+    expect(result.nodeIndex.map((node) => node.sourceName)).toEqual(["机场甲", "机场乙"]);
+    expect(result.document["proxy-groups"].at(-1)).toMatchObject({
+      name: "Final",
+      type: "select",
+      proxies: ["Proxies", "DIRECT"]
+    });
+    expect(result.document.rules?.at(-1)).toBe("MATCH,Final");
+  });
+
+  test("全局规则交付模式覆盖旧快照项的 emit", () => {
+    const inlineConfig = structuredClone(buildConfig);
+    inlineConfig.rules.deliveryMode = "inline";
+    const inline = evaluate(createInput({ buildConfig: inlineConfig }));
+    expect(inline.document.rules).toContain("DOMAIN-SUFFIX,openai.com,AI");
+    expect(inline.document["rule-providers"]).toBeUndefined();
+
+    const providerConfig = structuredClone(buildConfig);
+    providerConfig.rules.deliveryMode = "provider";
+    const provider = evaluate(createInput({ buildConfig: providerConfig }));
+    expect(provider.document.rules).toContain("RULE-SET,cn-small,DIRECT");
+    expect(provider.document["rule-providers"]).toHaveProperty("cn-small");
+  });
+
+  test("内联模式遇到无法表达的通配符时阻止发布", () => {
+    const config = structuredClone(buildConfig);
+    config.rules.deliveryMode = "inline";
+    const snapshots = new Map(createInput().rulesetSnapshots);
+    snapshots.set("hash_openai", {
+      hash: "hash_openai",
+      slug: "geosite-openai",
+      behavior: "domain",
+      content: "payload:\n  - 'foo.*.example.com'\n",
+      isPublic: true
+    });
+    const result = evaluate(createInput({ buildConfig: config, rulesetSnapshots: snapshots }));
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({ kind: "inline-unsupported", severity: "error" })
+    );
+  });
+
   test("classical 快照内联时把目标放在 no-resolve/src 修饰符之前", () => {
     const input = createInput();
     input.rulesetSnapshots.set("hash_cn", {
@@ -422,6 +641,40 @@ describe("evaluate（rebuild）", () => {
 });
 
 describe("evaluate（patch）", () => {
+  test("工作区索引保留源节点与组，但不要求加载规则快照正文", () => {
+    const config: BuildConfig = {
+      ...structuredClone(buildConfig),
+      mode: "patch",
+      groups: { generators: [], custom: [], order: [] },
+      rules: {
+        targets: [
+          {
+            target: "SourceGroup",
+            items: [
+              {
+                kind: "snapshot",
+                catalogId: "cat_openai",
+                slug: "geosite-openai",
+                hash: "hash_openai",
+                emit: "provider"
+              }
+            ]
+          }
+        ],
+        order: ["SourceGroup"],
+        prelude: [],
+        final: { target: "SourceGroup" }
+      }
+    };
+
+    const result = evaluateWorkspaceIndex(
+      createInput({ buildConfig: config, rulesetSnapshots: new Map() })
+    );
+    expect(result.stats.nodeCount).toBe(sourceDocument.proxies.length + 1);
+    expect(result.groupIndex.some((group) => group.name === "SourceGroup")).toBe(true);
+    expect(result.issues.some((issue) => issue.kind === "missing-ruleset-snapshot")).toBe(false);
+  });
+
   test("保留源配置：注入自建节点与规则，改名传播到源组", () => {
     const config: BuildConfig = {
       ...JSON.parse(JSON.stringify(buildConfig)),

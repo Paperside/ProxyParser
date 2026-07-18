@@ -14,6 +14,19 @@ export const REGION_CODES = [
 ] as const;
 export type RegionCode = (typeof REGION_CODES)[number];
 
+// 新建订阅默认只为最常见的线路地区生成独立代理组。其余已识别地区仍会被
+// 正确识别和展示，但在 common 模式下统一进入 Others，避免产生几十个代理组。
+export const COMMON_REGION_CODES: readonly RegionCode[] = [
+  "HK",
+  "TW",
+  "JP",
+  "SG",
+  "US",
+  "KR",
+  "GB",
+  "DE"
+];
+
 // 关键字正则兜底表：中文名 + 英文名 + 常见机场三字码，均不加 \b（中文非 \w，加了无效）；
 // 纯英文字母/代码类关键词加 \b 词边界，避免命中长单词内部子串（如 "Australia" 内含 "us"）。
 const REGION_MATCHERS: Array<{ code: RegionCode; pattern: RegExp }> = [

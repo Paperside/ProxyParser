@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 
 import { createId } from "../../lib/ids";
 import type { TemplateExtractionReport, TemplatePayloadV2 } from "../../lib/build-config/types";
+import type { SecretBox } from "../../lib/security/secret-box";
 
 export interface TemplateSummary {
   id: string;
@@ -12,6 +13,7 @@ export interface TemplateSummary {
   visibility: "private" | "unlisted" | "public";
   isOfficial: boolean;
   latestVersion: number;
+  embeddedSecrets: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,7 +45,7 @@ interface VersionRow {
   created_at: string;
 }
 
-const mapSummary = (row: TemplateRow, latestVersion: number): TemplateSummary => ({
+const mapSummary = (row: TemplateRow, latestVersion: number, embeddedSecrets: boolean): TemplateSummary => ({
   id: row.id,
   ownerUserId: row.owner_user_id,
   displayName: row.display_name,
@@ -52,12 +54,16 @@ const mapSummary = (row: TemplateRow, latestVersion: number): TemplateSummary =>
   visibility: row.visibility as TemplateSummary["visibility"],
   isOfficial: row.is_official === 1,
   latestVersion,
+  embeddedSecrets,
   createdAt: row.created_at,
   updatedAt: row.updated_at
 });
 
 export class TemplateRepository {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly box: SecretBox
+  ) {}
 
   private latestVersionOf(templateId: string): VersionRow | null {
     return (
@@ -69,6 +75,13 @@ export class TemplateRepository {
     );
   }
 
+  private versionHasSecrets(versionId: string | null | undefined): boolean {
+    if (!versionId) return false;
+    return Boolean(this.db.query<{ present: number }>(
+      "SELECT 1 AS present FROM template_version_secrets WHERE template_version_id = ? LIMIT 1"
+    ).get(versionId));
+  }
+
   listVisible(userId: string): TemplateSummary[] {
     return this.db
       .query<TemplateRow>(
@@ -77,7 +90,10 @@ export class TemplateRepository {
          ORDER BY is_official DESC, updated_at DESC`
       )
       .all(userId)
-      .map((row) => mapSummary(row, this.latestVersionOf(row.id)?.version ?? 0));
+      .map((row) => {
+        const version = this.latestVersionOf(row.id);
+        return mapSummary(row, version?.version ?? 0, this.versionHasSecrets(version?.id));
+      });
   }
 
   findDetailVisibleTo(id: string, userId: string): TemplateDetail | null {
@@ -91,7 +107,7 @@ export class TemplateRepository {
     if (!visible) return null;
     const version = this.latestVersionOf(id);
     return {
-      ...mapSummary(row, version?.version ?? 0),
+      ...mapSummary(row, version?.version ?? 0, this.versionHasSecrets(version?.id)),
       payload: version ? (JSON.parse(version.payload_json) as TemplatePayloadV2) : null,
       extractionReport: version?.extraction_report
         ? (JSON.parse(version.extraction_report) as TemplateExtractionReport)
@@ -109,6 +125,19 @@ export class TemplateRepository {
     return detail?.payload ?? null;
   }
 
+  resolveLatestSecretsVisibleTo(id: string, userId: string): Map<string, Record<string, unknown>> {
+    const detail = this.findDetailVisibleTo(id, userId);
+    if (!detail?.embeddedSecrets) return new Map();
+    const version = this.latestVersionOf(id);
+    if (!version) return new Map();
+    const rows = this.db.query<{ node_id: string; ciphertext: Uint8Array }>(
+      "SELECT node_id, ciphertext FROM template_version_secrets WHERE template_version_id = ?"
+    ).all(version.id);
+    const result = new Map<string, Record<string, unknown>>();
+    for (const row of rows) result.set(row.node_id, this.box.decrypt(row.ciphertext));
+    return result;
+  }
+
   create(input: {
     ownerUserId: string;
     displayName: string;
@@ -117,6 +146,7 @@ export class TemplateRepository {
     payload: TemplatePayloadV2;
     extractionReport: TemplateExtractionReport | null;
     versionNote: string | null;
+    embeddedSecrets?: Map<string, Record<string, unknown>>;
   }): TemplateDetail {
     const id = createId("tpl");
     const versionId = createId("tplv");
@@ -142,6 +172,12 @@ export class TemplateRepository {
           input.extractionReport ? JSON.stringify(input.extractionReport) : null,
           now
         );
+      for (const [nodeId, fields] of input.embeddedSecrets ?? []) {
+        this.db.query(
+          `INSERT INTO template_version_secrets (template_version_id, node_id, ciphertext, created_at)
+           VALUES (?, ?, ?, ?)`
+        ).run(versionId, nodeId, this.box.encrypt(fields), now);
+      }
       this.db.exec("COMMIT");
     } catch (error) {
       this.db.exec("ROLLBACK");

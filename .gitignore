@@ -8,6 +8,8 @@ package-lock.json
 test_subscription_url
 .DS_Store
 coverage/
+test-results/
+playwright-report/
 *.log
 
 # Local scratch files. Keep real subscription URLs and ad-hoc test inputs here.

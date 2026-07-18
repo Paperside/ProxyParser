@@ -37,6 +37,17 @@ export interface SourceSnapshotRecord {
   createdAt: string;
 }
 
+export interface ParsedSourceSnapshotRecord {
+  id: string;
+  parsed: ClashProxyDocument | null;
+}
+
+interface WorkspaceSnapshotRow {
+  id: string;
+  proxies_json: string | null;
+  proxy_groups_json: string | null;
+}
+
 export interface SyncReportRecord {
   id: string;
   upstreamSourceId: string;
@@ -213,6 +224,17 @@ export class UpstreamSourceRepository {
       );
   }
 
+  updateUploadedMetadata(id: string, uploadedFileName: string | null) {
+    const sourceUrl = `uploaded://${uploadedFileName ?? "config.yaml"}`;
+    this.db
+      .query(
+        `UPDATE upstream_sources
+         SET uploaded_file_name = ?, source_url = ?, updated_at = ?
+         WHERE id = ? AND source_kind = 'uploaded_yaml'`
+      )
+      .run(uploadedFileName, sourceUrl, new Date().toISOString(), id);
+  }
+
   delete(id: string) {
     this.db.query("DELETE FROM upstream_sources WHERE id = ?").run(id);
   }
@@ -344,6 +366,40 @@ export class UpstreamSourceRepository {
       .query<SnapshotRow>("SELECT * FROM upstream_source_snapshots WHERE id = ?")
       .get(id);
     return row ? mapSnapshot(row) : null;
+  }
+
+  findParsedSnapshotById(id: string): ParsedSourceSnapshotRecord | null {
+    const row = this.db
+      .query<{ id: string; parsed_json: string | null }>(
+        "SELECT id, parsed_json FROM upstream_source_snapshots WHERE id = ?"
+      )
+      .get(id);
+    return row ? { id: row.id, parsed: parseJson<ClashProxyDocument | null>(row.parsed_json, null) } : null;
+  }
+
+  // 工作区、节点测速和 rebuild 渲染只需要节点与策略组。用 SQLite JSON
+  // 投影避免把可能很大的上游 rules 正文读进 JS 堆并再次 JSON.parse。
+  findWorkspaceSnapshotById(id: string): ParsedSourceSnapshotRecord | null {
+    const row = this.db
+      .query<WorkspaceSnapshotRow>(
+        `SELECT id,
+                json_extract(parsed_json, '$.proxies') AS proxies_json,
+                json_extract(parsed_json, '$."proxy-groups"') AS proxy_groups_json
+           FROM upstream_source_snapshots
+          WHERE id = ?`
+      )
+      .get(id);
+    if (!row) return null;
+    return {
+      id: row.id,
+      parsed: {
+        proxies: parseJson<ClashProxyDocument["proxies"]>(row.proxies_json, []),
+        "proxy-groups": parseJson<ClashProxyDocument["proxy-groups"]>(
+          row.proxy_groups_json,
+          []
+        )
+      }
+    };
   }
 
   findLatestSuccessfulSnapshot(sourceId: string): SourceSnapshotRecord | null {

@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogFooter } from "../ui/dialog";
 import { Field, Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { DragHandle, SortableList } from "../ui/sortable-list";
+import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { BUILTIN_POLICY_OPTIONS, useWorkspace } from "./context";
 
@@ -53,7 +54,7 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
     setBusy(catalogId);
     try {
       const snapshot = await mutations.ensureSnapshot.mutateAsync(catalogId);
-      if (!pushToBlock(catalogId, slug, snapshot.hash, snapshot.entryCount < 50 ? "inline" : "provider")) {
+      if (!pushToBlock(catalogId, slug, snapshot.hash, "provider")) {
         throw new Error("草稿在导入期间被锁定。请重新载入后再试。");
       }
       toast.success(`已导入 ${slug}（钉住 @${snapshot.hash.slice(0, 8)}）`);
@@ -275,6 +276,7 @@ export const RulesTab = () => {
     update,
     knownGroupNames,
     saving,
+    editingLocked,
     syncingRulesets,
     syncLatestRulesets
   } = useWorkspace();
@@ -291,6 +293,16 @@ export const RulesTab = () => {
         .map((item) => item.catalogId)
     )
   ).size;
+  const legacySnapshotItems = config.rules.targets.flatMap((block) =>
+    block.items.filter((item) => item.kind === "snapshot")
+  );
+  const legacyInlineCount = legacySnapshotItems.filter((item) => item.emit === "inline").length;
+  const legacyProviderCount = legacySnapshotItems.length - legacyInlineCount;
+  const inlineDeliveryChecked =
+    config.rules.deliveryMode === "inline" ||
+    (config.rules.deliveryMode === undefined &&
+      legacyInlineCount > 0 &&
+      legacyProviderCount === 0);
 
   const orderedTargets = [
     ...config.rules.order.filter((target) => config.rules.targets.some((block) => block.target === target)),
@@ -398,6 +410,30 @@ export const RulesTab = () => {
         }
       />
 
+      <div className="mb-3 flex items-start justify-between gap-6 rounded-[10px] border border-line bg-surface px-3.5 py-3">
+        <div>
+          <p className="text-[12.5px] font-semibold">
+            将规则直接写入订阅文件
+            {config.rules.deliveryMode === undefined ? (
+              <Badge className="ml-2 text-[10px]">兼容旧配置</Badge>
+            ) : null}
+          </p>
+          <p className="mt-0.5 max-w-xl text-[11.5px] leading-5 text-muted">
+            {config.rules.deliveryMode === undefined
+              ? `当前沿用各规则项原有设置：${legacyInlineCount} 个内联、${legacyProviderCount} 个远程；切换后会改为统一交付方式。`
+              : "默认使用远程规则文件以减小订阅体积。开启后所有可内联规则会合并进主 YAML；文件会明显变大，且规则库更新仍需先同步草稿并重新发布，客户端才会拿到新规则。"}
+          </p>
+        </div>
+        <Switch
+          aria-label="将规则直接写入订阅文件"
+          checked={inlineDeliveryChecked}
+          disabled={editingLocked}
+          onCheckedChange={(checked) => update((draft) => {
+            draft.rules.deliveryMode = checked ? "inline" : "provider";
+          })}
+        />
+      </div>
+
       <SortableList
         items={orderedTargets.map((target) => ({ id: target }))}
         onReorder={(next) => reorderBlocks(next.map((entry) => entry.id))}
@@ -487,6 +523,7 @@ export const RulesTab = () => {
           <span className="font-mono text-xs">MATCH →</span>
           <Select
             value={config.rules.final.target}
+            disabled={editingLocked}
             onValueChange={(target) => update((draft) => { draft.rules.final.target = target; })}
           >
             <SelectTrigger className="h-6 w-40 text-xs"><SelectValue /></SelectTrigger>

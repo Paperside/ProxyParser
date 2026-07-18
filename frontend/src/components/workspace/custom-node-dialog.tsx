@@ -3,7 +3,7 @@ import yaml from "js-yaml";
 import { toast } from "sonner";
 
 import type { CustomNode } from "../../lib/build-config-types";
-import { useSecretMutations } from "../../lib/hooks";
+import { useNodeUriParser, useSecretMutations } from "../../lib/hooks";
 import {
   PROTOCOL_SCHEMAS,
   findProtocolSchema,
@@ -379,6 +379,7 @@ const FieldControl = ({
 export const CustomNodeDialog = ({ node, onClose }: { node?: CustomNode; onClose: () => void }) => {
   const { update, editingLocked } = useWorkspace();
   const secrets = useSecretMutations();
+  const uriParser = useNodeUriParser();
 
   const [name, setName] = useState(node?.name ?? "");
   const [type, setType] = useState(node?.type ?? "trojan");
@@ -390,6 +391,9 @@ export const CustomNodeDialog = ({ node, onClose }: { node?: CustomNode; onClose
   const [mode, setMode] = useState<"basic" | "advanced">("basic");
   const [rawYaml, setRawYaml] = useState("");
   const [loadingSecret, setLoadingSecret] = useState(Boolean(node?.secretRef));
+  const [shareUri, setShareUri] = useState("");
+  const [uriWarnings, setUriWarnings] = useState<string[]>([]);
+  const [uriError, setUriError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!node?.secretRef) return;
@@ -404,6 +408,26 @@ export const CustomNodeDialog = ({ node, onClose }: { node?: CustomNode; onClose
 
   const schema = findProtocolSchema(type);
   const isKnownType = Boolean(schema);
+
+  const parseShareUri = async (uri: string) => {
+    setShareUri(uri);
+    setUriError(null);
+    setUriWarnings([]);
+    if (!uri.trim()) return;
+    try {
+      const parsed = await uriParser.mutateAsync(uri);
+      setName(parsed.name);
+      setType(parsed.type);
+      setServer(parsed.server);
+      setPort(String(parsed.port));
+      setFields({ ...buildDefaultFields(findProtocolSchema(parsed.type)), ...parsed.fields });
+      setMode("basic");
+      setUriWarnings(parsed.warnings);
+      toast.success(`已识别 ${parsed.scheme}:// 节点，请核对后保存`);
+    } catch (error) {
+      setUriError(error instanceof Error ? error.message : "无法识别该分享链接");
+    }
+  };
 
   const handleTypeSelect = (nextValue: string) => {
     const nextType = nextValue === CUSTOM_TYPE_SENTINEL ? "" : nextValue;
@@ -519,6 +543,34 @@ export const CustomNodeDialog = ({ node, onClose }: { node?: CustomNode; onClose
         title={node ? `编辑节点：${node.name}` : "新增自建节点"}
         description="敏感字段（密码 / UUID / 私钥等）会自动加密单独存储，不出现在模板与分享中——你只需要专注填好这一张表单。"
       >
+        {!node ? (
+          <div className="mb-3.5 rounded-[10px] border border-accent/30 bg-accent/5 p-3">
+            <Field
+              label="粘贴节点分享链接"
+              hint="支持 ss / ssr / vmess / vless / trojan / http(s) / socks5 / hysteria / hy2 / tuic / wireguard / anytls；Snell 请手动填写。"
+            >
+              <Input
+                value={shareUri}
+                placeholder="vless://…"
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(event) => setShareUri(event.target.value)}
+                onPaste={(event) => {
+                  const pasted = event.clipboardData.getData("text").trim();
+                  if (!pasted.includes("://")) return;
+                  event.preventDefault();
+                  void parseShareUri(pasted);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && shareUri.trim()) void parseShareUri(shareUri);
+                }}
+              />
+            </Field>
+            {uriParser.isPending ? <p className="mt-1.5 text-[11px] text-muted">正在本地解析链接格式…</p> : null}
+            {uriError ? <p className="mt-1.5 text-[11px] text-err">{uriError}</p> : null}
+            {uriWarnings.map((warning) => <p key={warning} className="mt-1.5 text-[11px] text-warn">{warning}</p>)}
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-3.5">
           <Field label="名称">
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Home VPS" />

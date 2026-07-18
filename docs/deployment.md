@@ -6,7 +6,7 @@
 > 2. Compose 默认使用无版本文件名 `/data/proxyparser.sqlite`；`DATABASE_PATH` 可覆盖。
 > 3. 必设 `PUBLIC_BASE_URL`（订阅链接与 rule-provider URL 的公开根地址）和 `JWT_SECRET`。
 > 4. 不设 `PP_SECRET_KEY` 时，首启会在数据库同目录生成 `/data/.secret-key`；它必须与数据库一起持久化和备份。
-> 5. backend 镜像构建期尝试内置 mihomo 校验内核；失败不阻断构建，运行时会降级为结构校验并在设置页提示。
+> 5. backend 镜像构建期必须下载并执行 mihomo 校验内核；失败会阻断构建。生产启动还会核验内核与离线 geodata，任一缺失都拒绝启动。
 
 This project is deployed as Docker images built away from the production server. The production host is intentionally small, so it must not run TypeScript checks, Vite builds, or Docker builds.
 
@@ -101,7 +101,7 @@ The script:
 3. atomically creates `/opt/proxyparser/deploy/.env` with mode `0600` and a strong random `JWT_SECRET` if missing,
 4. validates a canonical `PUBLIC_BASE_URL`, the JWT secret, literal Compose values, and the image tag before loading images,
 5. verifies the existing `/data` mount, proves the target is a dedicated ProxyParser data directory, locks it to `0700`, preserves the effective encryption key, and pins it in the protected `.env` for rollback compatibility,
-6. runs `docker load`, sets `IMAGE_TAG=<tag>`, and runs `docker compose up -d`.
+6. runs `docker load`, sets `IMAGE_TAG=<tag>`, and runs `docker compose up -d`, then checks backend/frontend health; a failed health check automatically restores the previous image tag and containers.
 
 If `deploy/nginx-proxyparser.conf` exists locally, the script also uploads it to the remote deploy directory. That file is ignored by git because it may contain real domains and certificate paths. Keep only `deploy/nginx-proxyparser.conf.example` tracked.
 
@@ -168,6 +168,14 @@ The config expects an existing TLS certificate. Replace these example paths befo
 
 The certificate must include the configured `server_name`.
 
+The tracked host and frontend Nginx configs enable gzip for API JSON/YAML and
+frontend JavaScript/CSS/SVG. Because the host proxy forwards `Accept-Encoding`,
+the frontend container normally performs static compression; the host passes an
+already encoded response through without compressing it again. Vite's
+content-hashed `/assets/*` files use `public, max-age=31536000, immutable`, while
+`index.html` uses `no-cache` so a reload always discovers the current asset URLs.
+Content-addressed `/rs/*` rule snapshots retain the same one-year immutable policy.
+
 ## Health checks
 
 After deploy:
@@ -221,7 +229,7 @@ Persistent state is stored together under:
   .secret-key
 ```
 
-The SQLite file and `.secret-key` are one recovery unit. Losing or replacing the key makes encrypted custom-node credentials and saved long-term subscription links unreadable. If `PP_SECRET_KEY` is supplied through the environment instead, back up that value in the deployment secret store rather than expecting `.secret-key`.
+The SQLite file and `.secret-key` are one recovery unit. Losing or replacing the key makes encrypted custom-node credentials, retained template credentials, saved long-term subscription links, and active encrypted short-term links unreadable. If `PP_SECRET_KEY` is supplied through the environment instead, back up that value in the deployment secret store rather than expecting `.secret-key`.
 
 The safest filesystem backup briefly stops the backend so the SQLite WAL is fully closed:
 

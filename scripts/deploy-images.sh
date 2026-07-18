@@ -210,8 +210,20 @@ if [[ -z "$(read_env_assignment .env PP_SECRET_KEY)" ]]; then
 fi
 ensure_secure_data_dir "$PERSISTENT_DATA_DIR"
 secure_runtime_env_file .env
-wait_for_http_health proxyparser-backend http://127.0.0.1:3001/api/health Backend
-wait_for_http_health proxyparser-backend http://frontend/ Frontend
+if ! wait_for_http_health proxyparser-backend http://127.0.0.1:3001/api/health Backend ||
+   ! wait_for_http_health proxyparser-backend http://frontend/ Frontend; then
+  echo "Tag $TAG failed post-deploy health checks; rolling back to $PREVIOUS_IMAGE_TAG." >&2
+  if [[ -z "$PREVIOUS_IMAGE_TAG" ]]; then
+    echo "No previous image tag exists for automatic rollback." >&2
+    exit 2
+  fi
+  set_env_assignment_atomically .env IMAGE_TAG "$PREVIOUS_IMAGE_TAG"
+  validate_runtime_env_configuration .env
+  "${COMPOSE[@]}" up -d
+  wait_for_http_health proxyparser-backend http://127.0.0.1:3001/api/health "Rolled-back backend"
+  wait_for_http_health proxyparser-backend http://frontend/ "Rolled-back frontend"
+  exit 2
+fi
 REMOTE_SCRIPT
 
 cat <<EOF

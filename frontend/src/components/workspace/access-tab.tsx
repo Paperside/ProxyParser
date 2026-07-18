@@ -96,7 +96,10 @@ export const AccessTab = () => {
                 创建 {formatRelative(token.createdAt)} · 最近使用 {formatRelative(token.lastUsedAt)}
               </span>
               <span className="ml-auto flex gap-1.5">
-                <AsyncCopyButton onReveal={async () => (await mutations.revealToken.mutateAsync(token.id)).url} />
+                <AsyncCopyButton
+                  qrTitle={`${token.label ?? "长期链接"}二维码`}
+                  onReveal={async () => (await mutations.revealToken.mutateAsync(token.id)).url}
+                />
                 <Button size="sm" variant="ghost" onClick={() => setRenaming(token)}>
                   重命名
                 </Button>
@@ -173,14 +176,30 @@ export const AccessTab = () => {
                   <Badge variant="ok">有效 · {formatRelative(token.expiresAt ?? null)}到期</Badge>
                 )}
                 {!token.revokedAt && !expired ? (
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    className="ml-auto"
-                    onClick={() => void mutations.revokeTempToken.mutateAsync(token.id)}
-                  >
-                    立即失效
-                  </Button>
+                  <span className="ml-auto flex items-center gap-1.5">
+                    {token.canReveal === false ? (
+                      <span
+                        className="text-[11px] text-faint"
+                        title="此链接创建于安全恢复能力上线前，明文没有被保存"
+                      >
+                        旧链接不可再次查看，请重新生成
+                      </span>
+                    ) : (
+                      <AsyncCopyButton
+                        qrTitle={`${token.label ?? "短期链接"}二维码`}
+                        onReveal={async () =>
+                          (await mutations.revealTempToken.mutateAsync(token.id)).url
+                        }
+                      />
+                    )}
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => void mutations.revokeTempToken.mutateAsync(token.id)}
+                    >
+                      立即失效
+                    </Button>
+                  </span>
                 ) : null}
               </div>
             );

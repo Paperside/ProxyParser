@@ -32,6 +32,7 @@ export interface AuthContextValue {
     password: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
+  authorizedResponse: (path: string, init?: RequestInit) => Promise<Response>;
   authorizedRequest: <T,>(path: string, init?: RequestInit) => Promise<T>;
 }
 
@@ -49,6 +50,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   });
   const [isBooting, setIsBooting] = useState(true);
   const sessionRef = useRef<Session | null>(session);
+  const refreshPromiseRef = useRef<Promise<Session> | null>(null);
 
   const saveSession = (nextSession: Session | null) => {
     sessionRef.current = nextSession;
@@ -60,14 +62,26 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     }
   };
 
-  const refreshSession = async (refreshToken: string) => {
-    const refreshed = await requestJson<LoginResponse>("/api/auth/refresh", {
+  const refreshSession = (refreshToken: string): Promise<Session> => {
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
+
+    let refreshPromise: Promise<Session>;
+    refreshPromise = requestJson<LoginResponse>("/api/auth/refresh", {
       method: "POST",
       body: JSON.stringify({ refreshToken })
-    });
-    const nextSession = buildSession(refreshed);
-    saveSession(nextSession);
-    return nextSession;
+    })
+      .then((refreshed) => {
+        const nextSession = buildSession(refreshed);
+        saveSession(nextSession);
+        return nextSession;
+      })
+      .finally(() => {
+        if (refreshPromiseRef.current === refreshPromise) {
+          refreshPromiseRef.current = null;
+        }
+      });
+    refreshPromiseRef.current = refreshPromise;
+    return refreshPromise;
   };
 
   useEffect(() => {
@@ -104,7 +118,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
     void bootstrap();
   }, []);
 
-  const authorizedRequest = async <T,>(path: string, init?: RequestInit): Promise<T> => {
+  const authorizedResponse = async (path: string, init?: RequestInit): Promise<Response> => {
     const current = sessionRef.current;
     if (!current) {
       throw new Error("请先登录。");
@@ -119,8 +133,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
         }
       });
       if (response.ok) {
-        if (response.status === 204) return null as T;
-        return response.json() as Promise<T>;
+        return response;
       }
       if (response.status === 401) {
         throw new Error("UNAUTHORIZED");
@@ -133,9 +146,20 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
       if (!(error instanceof Error) || error.message !== "UNAUTHORIZED") {
         throw error;
       }
+      // 另一个并发请求可能已经轮换了 token；先复用最新 access token，避免再次刷新旧 token。
+      const latest = sessionRef.current;
+      if (latest && latest.accessToken !== current.accessToken) {
+        return attempt(latest.accessToken);
+      }
       const nextSession = await refreshSession(current.refreshToken);
       return attempt(nextSession.accessToken);
     }
+  };
+
+  const authorizedRequest = async <T,>(path: string, init?: RequestInit): Promise<T> => {
+    const response = await authorizedResponse(path, init);
+    if (response.status === 204) return null as T;
+    return response.json() as Promise<T>;
   };
 
   const login = async (input: { login: string; password: string }) => {
@@ -173,7 +197,15 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   };
 
   const value = useMemo<AuthContextValue>(
-    () => ({ session, isBooting, login, register, logout, authorizedRequest }),
+    () => ({
+      session,
+      isBooting,
+      login,
+      register,
+      logout,
+      authorizedResponse,
+      authorizedRequest
+    }),
     [session, isBooting]
   );
 

@@ -34,7 +34,7 @@ const sendError = (error: unknown, set: { status?: number | string }) => {
 
 type Ctx = {
   currentUser: UserRecord;
-  set: { status?: number | string };
+  set: { status?: number | string; headers: Record<string, string | number> };
   params: { id: string };
   body: unknown;
 };
@@ -85,12 +85,26 @@ export const createUpstreamSourceRoutes = (
         return sendError(error, set);
       }
     })
-    .patch("/:id", ({ params, body, currentUser, set }: Ctx) => {
+    .get("/:id/content", ({ params, currentUser, set }: Omit<Ctx, "body">) => {
+      try {
+        // 上传配置可能含节点凭据，不允许浏览器、代理或共享缓存留存响应。
+        set.headers["cache-control"] = "no-store";
+        return sourceService.getUploadContent(currentUser.id, params.id);
+      } catch (error) {
+        return sendError(error, set);
+      }
+    })
+    .patch("/:id", async ({ params, body, currentUser, set }: Ctx) => {
       try {
         if (!isRecord(body)) throw new UpstreamSourceError("请求体格式错误。");
         const yamlContent = optionalString(body, "yamlContent");
         if (yamlContent) {
-          return sourceService.replaceUpload(currentUser.id, params.id, yamlContent);
+          return await sourceService.replaceUpload(
+            currentUser.id,
+            params.id,
+            yamlContent,
+            optionalString(body, "uploadedFileName")
+          );
         }
         return sourceService.update(currentUser.id, params.id, {
           displayName: optionalString(body, "displayName"),

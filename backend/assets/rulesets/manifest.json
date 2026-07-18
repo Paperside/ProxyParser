@@ -190,6 +190,19 @@
       "file": "globalmedia.yaml"
     },
     {
+      "slug": "china",
+      "name": "China",
+      "description": "常用中国大陆域名与少量 IP 规则（含 GEOIP CN 兜底），建议指向 China 策略组（默认直连）。",
+      "behavior": "classical",
+      "groupKind": "direct-first",
+      "recommendedTarget": "China",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/China/China_Classical_No_Resolve.yaml" }
+      ],
+      "extraRules": ["GEOIP,CN,no-resolve"],
+      "file": "china.yaml"
+    },
+    {
       "slug": "chinamax",
       "name": "ChinaMax",
       "description": "中国大陆域名与 IP 段（最全版本，含 GEOIP CN 兜底），建议指向 ChinaMax 策略组（默认直连）。",
@@ -200,12 +213,26 @@
         { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/ChinaMax/ChinaMax_Classical_No_Resolve.yaml" }
       ],
       "extraRules": ["GEOIP,CN,no-resolve"],
+      "includeInRecommendedTemplate": false,
       "file": "chinamax.yaml"
+    },
+    {
+      "slug": "advertisinglite",
+      "name": "轻量去广告",
+      "description": "轻量广告与追踪域名集合，兼顾常见广告拦截与客户端资源占用，建议指向 REJECT。",
+      "behavior": "classical",
+      "groupKind": "reject",
+      "recommendedTarget": "REJECT",
+      "sources": [
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AdvertisingLite/AdvertisingLite_Classical_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "advertisinglite.yaml"
     },
     {
       "slug": "advertising",
       "name": "去广告",
-      "description": "广告、追踪、恶意域名集合，建议指向 REJECT。",
+      "description": "完整广告、追踪、恶意域名集合（规则量较大），建议指向 REJECT。",
       "behavior": "classical",
       "groupKind": "reject",
       "recommendedTarget": "REJECT",
@@ -214,6 +241,7 @@
         { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Advertising/Advertising_No_Resolve.yaml" }
       ],
       "extraRules": [],
+      "includeInRecommendedTemplate": false,
       "file": "advertising.yaml"
     },
     {

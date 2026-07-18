@@ -20,6 +20,7 @@ const InstantiateDialog = ({ template, onClose }: { template: TemplateSummary; o
   const detail = useTemplate(template.id);
   const [displayName, setDisplayName] = useState(`${template.displayName} 订阅`);
   const [sourceId, setSourceId] = useState<string | null>(null);
+  const [confirmedSensitive, setConfirmedSensitive] = useState(false);
 
   const placeholderNodes =
     detail.data?.payload?.nodes.custom.filter((node) => node.secretPlaceholder) ?? [];
@@ -30,7 +31,8 @@ const InstantiateDialog = ({ template, onClose }: { template: TemplateSummary; o
       const created = await mutations.instantiate.mutateAsync({
         id: template.id,
         displayName,
-        sourceIds: [sourceId]
+        sourceIds: [sourceId],
+        confirmSensitive: !template.embeddedSecrets || confirmedSensitive
       });
       toast.success("已按模板创建订阅（草稿）。预览确认后发布即可。");
       onClose();
@@ -73,10 +75,16 @@ const InstantiateDialog = ({ template, onClose }: { template: TemplateSummary; o
               出于安全，敏感字段不随模板保存——创建后请在「节点」页为它们补全凭据。
             </p>
           ) : null}
+          {template.embeddedSecrets ? (
+            <label className="flex items-start gap-2 rounded-md border border-warn/30 bg-warn-bg px-3 py-2 text-xs text-warn">
+              <input type="checkbox" checked={confirmedSensitive} onChange={(event) => setConfirmedSensitive(event.target.checked)} />
+              该模板携带可用的节点凭据。应用后我会得到独立凭据副本，并理解模板拥有者或其他获授权用户仍可能持有同一组节点凭据。
+            </label>
+          ) : null}
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>取消</Button>
-          <Button variant="primary" disabled={!sourceId || mutations.instantiate.isPending} onClick={() => void submit()}>
+          <Button variant="primary" disabled={!sourceId || mutations.instantiate.isPending || (template.embeddedSecrets && !confirmedSensitive)} onClick={() => void submit()}>
             创建订阅
           </Button>
         </DialogFooter>
@@ -141,6 +149,7 @@ export const TemplatesPage = () => {
                 {template.displayName}
                 {template.isOfficial ? <Badge variant="accent">官方</Badge> : null}
                 <Badge variant="mono">v{template.latestVersion}</Badge>
+                {template.embeddedSecrets ? <Badge variant="warn">含凭据</Badge> : null}
                 {!template.isOfficial ? (
                   <Badge>{{ private: "私有", unlisted: "链接可见", public: "公开" }[template.visibility]}</Badge>
                 ) : null}

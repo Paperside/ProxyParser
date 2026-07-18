@@ -1,9 +1,11 @@
-import { useState } from "react";
-import { X } from "lucide-react";
+import { useRef, useState } from "react";
+import { Activity, Zap, X } from "lucide-react";
+import { toast } from "sonner";
 
 import type { CustomNode, NodeTransform } from "../../lib/build-config-types";
 import { REGION_CODES, regionLabel } from "../../lib/regions";
 import type { NodeIndexEntry } from "../../lib/types";
+import { useLatencyTest } from "../../lib/hooks";
 import { SectionTitle } from "../shared";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -21,6 +23,15 @@ const TRANSFORM_LABEL: Record<string, string> = {
 };
 
 const CLEAR_REGION_SENTINEL = "__auto__";
+const MAX_PARALLEL_LATENCY_REQUESTS = 2;
+const MAX_NODES_PER_LATENCY_REQUEST = 200;
+
+type LatencyPhase = "queued" | "testing";
+
+interface LatencyJob {
+  nodeIds: string[];
+  isAll: boolean;
+}
 
 const RenameDialog = ({ node, onClose }: { node: NodeIndexEntry; onClose: () => void }) => {
   const { update, editingLocked } = useWorkspace();
@@ -54,12 +65,22 @@ const RenameDialog = ({ node, onClose }: { node: NodeIndexEntry; onClose: () => 
 };
 
 export const NodesTab = () => {
-  const { config, update, preview, detail } = useWorkspace();
+  const { config, update, workspaceIndex, workspaceIndexLoading, detail } = useWorkspace();
   // "new"：新增弹窗；CustomNode：编辑该节点；null：不显示
   const [customDialog, setCustomDialog] = useState<"new" | CustomNode | null>(null);
   const [renaming, setRenaming] = useState<NodeIndexEntry | null>(null);
+  const latencyTest = useLatencyTest(detail.id);
+  const [latencies, setLatencies] = useState<Record<string, { delayMs: number | null; status: string }>>({});
+  const [latencyPhases, setLatencyPhases] = useState<Record<string, LatencyPhase>>({});
+  const busyIdsRef = useRef<Set<string>>(new Set());
+  const latencyQueueRef = useRef<LatencyJob[]>([]);
+  const activeLatencyRequestsRef = useRef(0);
+  const [allLatencyPhase, setAllLatencyPhase] = useState<LatencyPhase | null>(null);
+  const allLatencyPhaseRef = useRef<LatencyPhase | null>(null);
+  const pendingAllJobsRef = useRef(0);
+  const activeAllJobsRef = useRef(0);
 
-  const nodes = preview?.nodeIndex ?? [];
+  const nodes = workspaceIndex?.nodeIndex ?? [];
 
   const toggleTransform = (kind: NodeTransform["kind"]) => {
     update((draft) => {
@@ -102,13 +123,139 @@ export const NodesTab = () => {
     });
   };
 
+  const drainLatencyQueue = () => {
+    while (
+      activeLatencyRequestsRef.current < MAX_PARALLEL_LATENCY_REQUESTS &&
+      latencyQueueRef.current.length > 0
+    ) {
+      const job = latencyQueueRef.current.shift()!;
+      activeLatencyRequestsRef.current += 1;
+      setLatencyPhases((current) => ({
+        ...current,
+        ...Object.fromEntries(job.nodeIds.map((nodeId) => [nodeId, "testing" as const]))
+      }));
+      if (job.isAll) {
+        activeAllJobsRef.current += 1;
+        allLatencyPhaseRef.current = "testing";
+        setAllLatencyPhase("testing");
+      }
+
+      void latencyTest
+        .mutateAsync(job.nodeIds)
+        .then((response) => {
+          setLatencies((current) => ({
+            ...current,
+            ...Object.fromEntries(
+              response.results.map((result) => [
+                result.nodeId,
+                { delayMs: result.delayMs, status: result.status }
+              ])
+            )
+          }));
+          const reachable = response.results.filter((result) => result.status === "ok").length;
+          toast.success(
+            `服务端延迟测试完成：${reachable}/${response.results.length} 个节点可用`
+          );
+        })
+        .catch((error: unknown) => {
+          toast.error(error instanceof Error ? error.message : "延迟测试失败");
+        })
+        .finally(() => {
+          for (const nodeId of job.nodeIds) busyIdsRef.current.delete(nodeId);
+          setLatencyPhases((current) => {
+            const next = { ...current };
+            for (const nodeId of job.nodeIds) delete next[nodeId];
+            return next;
+          });
+          if (job.isAll) {
+            activeAllJobsRef.current -= 1;
+            pendingAllJobsRef.current -= 1;
+            const nextAllPhase =
+              pendingAllJobsRef.current === 0
+                ? null
+                : activeAllJobsRef.current > 0
+                  ? "testing"
+                  : "queued";
+            allLatencyPhaseRef.current = nextAllPhase;
+            setAllLatencyPhase(nextAllPhase);
+          }
+          activeLatencyRequestsRef.current -= 1;
+          drainLatencyQueue();
+        });
+    }
+  };
+
+  const testNodes = (nodeIds?: string[]) => {
+    const isAll = nodeIds === undefined;
+    if (isAll && allLatencyPhaseRef.current) return;
+
+    const requestedIds = nodeIds ?? nodes.filter((node) => !node.disabled).map((node) => node.id);
+    // 同一节点只占一个队列位置；单节点任务之间最多并发两个请求。
+    const availableIds = requestedIds.filter((nodeId) => !busyIdsRef.current.has(nodeId));
+    if (availableIds.length === 0) return;
+
+    for (const nodeId of availableIds) busyIdsRef.current.add(nodeId);
+    setLatencyPhases((current) => ({
+      ...current,
+      ...Object.fromEntries(availableIds.map((nodeId) => [nodeId, "queued" as const]))
+    }));
+    if (isAll) {
+      allLatencyPhaseRef.current = "queued";
+      setAllLatencyPhase("queued");
+    }
+    if (isAll) {
+      const jobs: LatencyJob[] = [];
+      for (let index = 0; index < availableIds.length; index += MAX_NODES_PER_LATENCY_REQUEST) {
+        jobs.push({
+          nodeIds: availableIds.slice(index, index + MAX_NODES_PER_LATENCY_REQUEST),
+          isAll: true
+        });
+      }
+      pendingAllJobsRef.current = jobs.length;
+      activeAllJobsRef.current = 0;
+      latencyQueueRef.current.push(...jobs);
+    } else {
+      latencyQueueRef.current.push({ nodeIds: availableIds, isAll: false });
+    }
+    drainLatencyQueue();
+  };
+
   return (
     <div>
       <SectionTitle
         title="节点"
         desc={`${nodes.filter((n) => n.sourceId !== null).length} 个原生节点（${detail.sourceNames.join("、")}）+ ${config.nodes.custom.length} 个自建。默认原样展示，只有你主动添加的转换会生效。`}
-        actions={<Button size="sm" onClick={() => setCustomDialog("new")}>新增自建节点</Button>}
+        actions={
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={
+                allLatencyPhase !== null ||
+                nodes.every((node) => node.disabled || latencyPhases[node.id])
+              }
+              title={
+                Object.keys(latencyPhases).length > 0 && !allLatencyPhase
+                  ? "从 ProxyParser 服务端测试其余可用节点"
+                  : "从 ProxyParser 服务端测试当前草稿中的全部节点"
+              }
+              onClick={() => testNodes()}
+            >
+              <Activity className={`size-3 ${allLatencyPhase ? "animate-pulse" : ""}`} />
+              {allLatencyPhase === "queued"
+                ? "全部排队中…"
+                : allLatencyPhase === "testing"
+                  ? "全部测试中…"
+                  : "测试全部"}
+            </Button>
+            <Button size="sm" onClick={() => setCustomDialog("new")}>新增自建节点</Button>
+          </>
+        }
       />
+
+      <div className="mb-3 rounded-[10px] border border-warn/30 bg-warn/5 px-3.5 py-2 text-[11.5px] text-muted">
+        延迟测试由 ProxyParser 服务端发起，只代表服务器所在网络能否连通节点及其延迟，不代表你的浏览器或最终客户端网络。
+      </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[10px] border border-line bg-surface px-3.5 py-2.5">
         <span className="text-xs text-faint">持续转换（自动作用于未来新节点）：</span>
@@ -146,6 +293,7 @@ export const NodesTab = () => {
             {nodes.map((node) => {
               const override = config.nodes.overrides.find((o) => o.nodeId === node.id);
               const isCustom = node.sourceId === null;
+              const latencyPhase = latencyPhases[node.id];
               return (
                 <tr key={node.id} className={`hover:bg-surface2/45 ${node.disabled ? "opacity-50" : ""}`}>
                   <td className="border-b border-line px-3 py-1.5">
@@ -156,7 +304,7 @@ export const NodesTab = () => {
                     {isCustom ? <Badge variant="accent" className="ml-1.5 text-[10px]">自建</Badge> : null}
                   </td>
                   <td className="border-b border-line px-3 py-1.5 text-muted">
-                    {isCustom ? "我" : detail.sourceNames[0] ?? "源"}
+                    {node.sourceName ?? "我"}
                   </td>
                   <td className="border-b border-line px-3 py-1.5">
                     <Badge variant="mono">{node.protocol}</Badge>
@@ -194,6 +342,32 @@ export const NodesTab = () => {
                   </td>
                   <td className="border-b border-line px-3 py-1.5">
                     <div className="flex justify-end gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={node.disabled || latencyPhase !== undefined}
+                        title={
+                          node.disabled
+                            ? "已禁用节点不能测试"
+                            : latencyPhase === "queued"
+                              ? "此节点正在等待服务端测试"
+                              : latencyPhase === "testing"
+                                ? "此节点正在测试"
+                              : "从服务端测试此节点连通性"
+                        }
+                        onClick={() => testNodes([node.id])}
+                      >
+                        <Zap className={`size-3 ${latencyPhase ? "animate-pulse" : ""}`} />
+                        {latencyPhase === "queued"
+                          ? "排队中…"
+                          : latencyPhase === "testing"
+                            ? "测试中…"
+                            : latencies[node.id]?.status === "ok"
+                              ? `${latencies[node.id]!.delayMs} ms`
+                              : latencies[node.id]
+                                ? "不可用"
+                                : "测试"}
+                      </Button>
                       {!isCustom ? (
                         <>
                           <Button size="sm" variant="ghost" onClick={() => setRenaming(node)}>
@@ -228,7 +402,11 @@ export const NodesTab = () => {
             {nodes.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-3 py-6 text-center text-xs text-faint">
-                  {preview ? "没有可用节点——检查订阅源是否同步成功。" : "等待预览渲染…"}
+                  {workspaceIndex
+                    ? "没有可用节点——检查订阅源是否同步成功。"
+                    : workspaceIndexLoading
+                      ? "正在更新节点索引…"
+                      : "节点索引暂不可用，请刷新后重试。"}
                 </td>
               </tr>
             ) : null}

@@ -16,7 +16,8 @@ import {
 // 规则组 = 同名策略组：manifest 里每条 groupKind 为 proxy-first/direct-first 的规则组各生成一个
 // 同名 select 策略组；境外服务（proxy-first）默认选中 Proxies，国内相关服务（direct-first）默认选中
 // DIRECT（策略组仍保留切换到 Proxies/Auto 的能力，只是默认成员顺序不同）。
-// Advertising（reject）与 Lan（direct-builtin）没有对应策略组，规则直接落到 REJECT/DIRECT 内置策略。
+// AdvertisingLite（reject）与 Lan（direct-builtin）没有对应策略组，规则直接落到 REJECT/DIRECT 内置策略。
+// manifest 可用 includeInRecommendedTemplate=false 保留高级规则集供手动选择，同时避免其进入推荐方案。
 
 export const OFFICIAL_USER_ID = "user_official";
 export const RECOMMENDED_TEMPLATE_ID = "tpl_recommended";
@@ -54,6 +55,9 @@ const directFirstMembers = (): GroupMember[] => [
 
 export const buildRecommendedTemplatePayload = (): TemplatePayloadV2 | null => {
   const manifest = loadBuiltinRulesetManifest();
+  const recommendedEntries = manifest.filter(
+    (entry) => entry.includeInRecommendedTemplate !== false
+  );
   const hashBySlug = new Map<string, string>();
   for (const entry of manifest) {
     const content = loadBuiltinRulesetContent(entry);
@@ -70,9 +74,9 @@ export const buildRecommendedTemplatePayload = (): TemplatePayloadV2 | null => {
   const ruleTargets: RuleTargetBlock[] = [];
   const ruleOrder: string[] = [];
 
-  // Lan → DIRECT、Advertising → REJECT 恒排最前，不受制于同名策略组
+  // Lan → DIRECT、AdvertisingLite → REJECT 恒排最前，不受制于同名策略组
   for (const groupKind of ["direct-builtin", "reject"] as const) {
-    const entry = manifest.find((candidate) => candidate.groupKind === groupKind);
+    const entry = recommendedEntries.find((candidate) => candidate.groupKind === groupKind);
     if (!entry) continue;
     const item = snapshotItem(hashBySlug, entry.slug);
     if (!item) continue;
@@ -80,7 +84,7 @@ export const buildRecommendedTemplatePayload = (): TemplatePayloadV2 | null => {
     ruleOrder.push(entry.recommendedTarget);
   }
 
-  for (const entry of manifest) {
+  for (const entry of recommendedEntries) {
     if (entry.groupKind !== "proxy-first" && entry.groupKind !== "direct-first") continue;
     const item = snapshotItem(hashBySlug, entry.slug);
     if (!item) continue;
@@ -95,6 +99,18 @@ export const buildRecommendedTemplatePayload = (): TemplatePayloadV2 | null => {
     ruleOrder.push(groupName);
   }
 
+  // MATCH 不直接绑死 Proxies：客户端可在 Final 里临时切为 DIRECT，
+  // 同时保留 Proxies 作为默认首选。Final 固定放在所有代理组之后。
+  customGroups.push({
+    name: "Final",
+    type: "select",
+    members: [
+      { kind: "group", name: "Proxies" },
+      { kind: "builtin", policy: "DIRECT" }
+    ]
+  });
+  groupOrder.push("Final");
+
   return {
     version: 1,
     mode: "rebuild",
@@ -105,16 +121,22 @@ export const buildRecommendedTemplatePayload = (): TemplatePayloadV2 | null => {
     groups: {
       generators: [
         { kind: "proxies-root", name: "Proxies", includeAuto: true, extraMembers: [] },
-        { kind: "region-groups", groupType: "select", unclassified: "others" }
+        {
+          kind: "region-groups",
+          groupType: "select",
+          unclassified: "others",
+          scope: "common"
+        }
       ],
       custom: customGroups,
       order: groupOrder
     },
     rules: {
+      deliveryMode: "provider",
       targets: ruleTargets,
       order: ruleOrder,
       prelude: [],
-      final: { target: "Proxies" }
+      final: { target: "Final" }
     },
     config: {
       structured: {
@@ -156,8 +178,20 @@ export const seedBuiltinTemplates = (db: Database): number => {
   `).run(OFFICIAL_USER_ID, now, now);
 
   db.query(`
-    INSERT OR IGNORE INTO templates (id, owner_user_id, display_name, slug, description, visibility, is_official, latest_version_id, created_at, updated_at)
-    VALUES (?, ?, '推荐方案', ?, '官方维护的起手配置：自动地区分组 + Auto 测速组，Apple / Netflix / Disney+ / TikTok / OpenAI / Anthropic / Steam / Google / PayPal / Telegram / Microsoft / GlobalMedia 等常用服务按同名策略组分流，BiliBili / SteamCN / ChinaMax 默认直连，去广告与内网直连兜底，合理的 DNS 与嗅探设置。', 'public', 1, NULL, ?, ?)
+    INSERT INTO templates (id, owner_user_id, display_name, slug, description, visibility, is_official, latest_version_id, created_at, updated_at)
+    VALUES (?, ?, '推荐方案', ?, '官方维护的起手配置：自动地区分组 + Auto 测速组，Apple / Netflix / Disney+ / TikTok / OpenAI / Anthropic / Steam / Google / PayPal / Telegram / Microsoft / GlobalMedia 等常用服务按同名策略组分流，BiliBili / SteamCN / China 默认直连，轻量去广告与内网直连兜底，合理的 DNS 与嗅探设置。', 'public', 1, NULL, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      display_name = excluded.display_name,
+      slug = excluded.slug,
+      description = excluded.description,
+      visibility = excluded.visibility,
+      is_official = excluded.is_official,
+      updated_at = excluded.updated_at
+    WHERE templates.display_name IS NOT excluded.display_name
+       OR templates.slug IS NOT excluded.slug
+       OR templates.description IS NOT excluded.description
+       OR templates.visibility IS NOT excluded.visibility
+       OR templates.is_official IS NOT excluded.is_official
   `).run(RECOMMENDED_TEMPLATE_ID, OFFICIAL_USER_ID, RECOMMENDED_TEMPLATE_SLUG, now, now);
 
   const payloadJson = JSON.stringify(payload);

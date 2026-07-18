@@ -46,6 +46,19 @@ export interface ReleaseRecord {
   createdAt: string;
 }
 
+export type ReleaseSummaryRecord = Omit<
+  ReleaseRecord,
+  "buildConfig" | "sourceSnapshotIds" | "renderedYaml"
+> & { yamlBytes: number };
+
+export interface ReleaseArtifactRecord {
+  id: string;
+  subscriptionId: string;
+  seq: number;
+  renderedYaml: string;
+  renderedHash: string;
+}
+
 export interface TokenRecord {
   id: string;
   subscriptionId: string;
@@ -57,6 +70,13 @@ export interface TokenRecord {
 }
 
 export interface TempTokenRecord extends TokenRecord {
+  expiresAt: string;
+  canReveal: boolean;
+}
+
+export interface TempTokenRevealRecord {
+  tokenCiphertext: Uint8Array | null;
+  revokedAt: string | null;
   expiresAt: string;
 }
 
@@ -113,6 +133,19 @@ interface ReleaseRow {
   created_at: string;
 }
 
+type ReleaseSummaryRow = Omit<
+  ReleaseRow,
+  "build_config" | "source_snapshot_ids" | "rendered_yaml"
+> & { yaml_bytes: number };
+
+interface ReleaseArtifactRow {
+  id: string;
+  subscription_id: string;
+  seq: number;
+  rendered_yaml: string;
+  rendered_hash: string;
+}
+
 const parseJson = <T,>(value: string | null, fallback: T): T => {
   if (!value) return fallback;
   try {
@@ -155,6 +188,28 @@ const mapRelease = (row: ReleaseRow): ReleaseRecord => ({
   validation: parseJson(row.validation, { structuralErrors: 0, mihomo: null }),
   createdBy: row.created_by,
   createdAt: row.created_at
+});
+
+const mapReleaseSummary = (row: ReleaseSummaryRow): ReleaseSummaryRecord => ({
+  id: row.id,
+  subscriptionId: row.subscription_id,
+  seq: row.seq,
+  renderedHash: row.rendered_hash,
+  yamlBytes: row.yaml_bytes,
+  diffSummary: parseJson(row.diff_summary, {}),
+  trigger: row.trigger as ReleaseTrigger,
+  triggerDetail: row.trigger_detail,
+  validation: parseJson(row.validation, { structuralErrors: 0, mihomo: null }),
+  createdBy: row.created_by,
+  createdAt: row.created_at
+});
+
+const mapReleaseArtifact = (row: ReleaseArtifactRow): ReleaseArtifactRecord => ({
+  id: row.id,
+  subscriptionId: row.subscription_id,
+  seq: row.seq,
+  renderedYaml: row.rendered_yaml,
+  renderedHash: row.rendered_hash
 });
 
 export class SubscriptionRepository {
@@ -334,6 +389,7 @@ export class SubscriptionRepository {
   }): ReleaseRecord {
     const id = createId("rel");
     const now = new Date().toISOString();
+    let seq = 0;
     const insertRelease = this.db.query(
       `INSERT INTO releases (
          id, subscription_id, seq, build_config, source_snapshot_ids, rendered_yaml,
@@ -342,7 +398,7 @@ export class SubscriptionRepository {
     );
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      const seq =
+      seq =
         (this.db
           .query<{ max_seq: number | null }>(
             "SELECT MAX(seq) AS max_seq FROM releases WHERE subscription_id = ?"
@@ -387,12 +443,50 @@ export class SubscriptionRepository {
       throw error;
     }
 
-    return this.findReleaseById(id)!;
+    // YAML 可能达到数十 MB，刚 INSERT 后不要再 SELECT * 从 SQLite 读回一遍。
+    // 调用方已经持有不可变发布产物的全部输入，可直接构造返回值。
+    return {
+      id,
+      subscriptionId: input.subscriptionId,
+      seq,
+      buildConfig: input.buildConfig,
+      sourceSnapshotIds: input.sourceSnapshotIds,
+      renderedYaml: input.renderedYaml,
+      renderedHash: input.renderedHash,
+      diffSummary: input.diffSummary,
+      trigger: input.trigger,
+      triggerDetail: input.triggerDetail,
+      validation: input.validation,
+      createdBy: input.createdBy,
+      createdAt: now
+    };
   }
 
   findReleaseById(id: string): ReleaseRecord | null {
     const row = this.db.query<ReleaseRow>("SELECT * FROM releases WHERE id = ?").get(id);
     return row ? mapRelease(row) : null;
+  }
+
+  findReleaseSummaryById(id: string): ReleaseSummaryRecord | null {
+    const row = this.db
+      .query<ReleaseSummaryRow>(
+        `SELECT id, subscription_id, seq, rendered_hash,
+                length(CAST(rendered_yaml AS BLOB)) AS yaml_bytes, diff_summary, trigger,
+                trigger_detail, validation, created_by, created_at
+         FROM releases WHERE id = ?`
+      )
+      .get(id);
+    return row ? mapReleaseSummary(row) : null;
+  }
+
+  findReleaseArtifactById(id: string): ReleaseArtifactRecord | null {
+    const row = this.db
+      .query<ReleaseArtifactRow>(
+        `SELECT id, subscription_id, seq, rendered_yaml, rendered_hash
+         FROM releases WHERE id = ?`
+      )
+      .get(id);
+    return row ? mapReleaseArtifact(row) : null;
   }
 
   listReleases(subscriptionId: string, limit = 50): ReleaseRecord[] {
@@ -402,6 +496,18 @@ export class SubscriptionRepository {
       )
       .all(subscriptionId, limit)
       .map(mapRelease);
+  }
+
+  listReleaseSummaries(subscriptionId: string, limit = 50): ReleaseSummaryRecord[] {
+    return this.db
+      .query<ReleaseSummaryRow>(
+        `SELECT id, subscription_id, seq, rendered_hash,
+                length(CAST(rendered_yaml AS BLOB)) AS yaml_bytes, diff_summary, trigger,
+                trigger_detail, validation, created_by, created_at
+         FROM releases WHERE subscription_id = ? ORDER BY seq DESC LIMIT ?`
+      )
+      .all(subscriptionId, limit)
+      .map(mapReleaseSummary);
   }
 
   // ── Token ──────────────────────────────────────────────────
@@ -532,6 +638,7 @@ export class SubscriptionRepository {
   createTempToken(input: {
     subscriptionId: string;
     tokenHash: string;
+    tokenCiphertext: Buffer;
     label: string | null;
     expiresAt: string;
   }): TempTokenRecord {
@@ -539,10 +646,19 @@ export class SubscriptionRepository {
     const now = new Date().toISOString();
     this.db
       .query(
-        `INSERT INTO subscription_temp_tokens (id, subscription_id, token_hash, label, expires_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO subscription_temp_tokens
+           (id, subscription_id, token_hash, token_ciphertext, label, expires_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(id, input.subscriptionId, input.tokenHash, input.label, input.expiresAt, now);
+      .run(
+        id,
+        input.subscriptionId,
+        input.tokenHash,
+        input.tokenCiphertext,
+        input.label,
+        input.expiresAt,
+        now
+      );
     return {
       id,
       subscriptionId: input.subscriptionId,
@@ -551,11 +667,13 @@ export class SubscriptionRepository {
       revokedAt: null,
       lastUsedAt: null,
       expiresAt: input.expiresAt,
+      canReveal: true,
       createdAt: now
     };
   }
 
   listTempTokens(subscriptionId: string): TempTokenRecord[] {
+    const now = Date.now();
     return this.db
       .query<{
         id: string;
@@ -564,8 +682,10 @@ export class SubscriptionRepository {
         revoked_at: string | null;
         last_used_at: string | null;
         created_at: string;
+        has_ciphertext: number;
       }>(
-        `SELECT id, label, expires_at, revoked_at, last_used_at, created_at
+        `SELECT id, label, expires_at, revoked_at, last_used_at, created_at,
+                token_ciphertext IS NOT NULL AS has_ciphertext
          FROM subscription_temp_tokens WHERE subscription_id = ? ORDER BY created_at DESC`
       )
       .all(subscriptionId)
@@ -577,14 +697,45 @@ export class SubscriptionRepository {
         revokedAt: row.revoked_at,
         lastUsedAt: row.last_used_at,
         expiresAt: row.expires_at,
+        canReveal:
+          row.has_ciphertext === 1 &&
+          row.revoked_at === null &&
+          Number.isFinite(Date.parse(row.expires_at)) &&
+          Date.parse(row.expires_at) > now,
         createdAt: row.created_at
       }));
   }
 
-  revokeTempToken(tokenId: string) {
+  findTempTokenForReveal(
+    subscriptionId: string,
+    tokenId: string
+  ): TempTokenRevealRecord | null {
+    const row = this.db
+      .query<{
+        token_ciphertext: Uint8Array | null;
+        revoked_at: string | null;
+        expires_at: string;
+      }>(
+        `SELECT token_ciphertext, revoked_at, expires_at
+         FROM subscription_temp_tokens
+         WHERE id = ? AND subscription_id = ?`
+      )
+      .get(tokenId, subscriptionId);
+    if (!row) return null;
+    return {
+      tokenCiphertext: row.token_ciphertext,
+      revokedAt: row.revoked_at,
+      expiresAt: row.expires_at
+    };
+  }
+
+  revokeTempToken(subscriptionId: string, tokenId: string) {
     this.db
-      .query("UPDATE subscription_temp_tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL")
-      .run(new Date().toISOString(), tokenId);
+      .query(
+        `UPDATE subscription_temp_tokens SET revoked_at = ?
+         WHERE id = ? AND subscription_id = ? AND revoked_at IS NULL`
+      )
+      .run(new Date().toISOString(), tokenId, subscriptionId);
   }
 
   findActiveTempTokenByHash(subscriptionId: string, tokenHash: string): { id: string } | null {

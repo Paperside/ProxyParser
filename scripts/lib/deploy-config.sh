@@ -175,7 +175,7 @@ validate_persistent_data_dir() {
 
 ensure_secure_data_dir() {
   local data_dir="$1"
-  local mode data_file entry entry_name component component_path=""
+  local mode data_file entry entry_name artifact_file artifact_name component component_path=""
   local -a path_components
 
   validate_persistent_data_dir "$data_dir" || return
@@ -209,6 +209,25 @@ ensure_secure_data_dir() {
             return 2
           fi
           ;;
+        delivery-artifacts)
+          if [[ -L "$entry" || ! -d "$entry" ]]; then
+            echo "Persistent data entry $entry must be a real directory, not a file or symlink." >&2
+            return 2
+          fi
+          for artifact_file in "$entry"/.[!.]* "$entry"/..?* "$entry"/*; do
+            [[ -e "$artifact_file" || -L "$artifact_file" ]] || continue
+            artifact_name="${artifact_file##*/}"
+            if [[ -L "$artifact_file" || ! -f "$artifact_file" ]]; then
+              echo "Delivery artifact $artifact_file must be a regular, non-symlink file." >&2
+              return 2
+            fi
+            if [[ ! "$artifact_name" =~ ^[a-f0-9]{64}\.yaml\.gz$ &&
+                  ! "$artifact_name" =~ ^[a-f0-9]{64}\.yaml\.gz\.[0-9]+\.[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.tmp$ ]]; then
+              echo "Delivery artifact $artifact_file has an unrecognized name." >&2
+              return 2
+            fi
+          done
+          ;;
         *)
           echo "Existing persistent data directory $data_dir contains unrecognized entry $entry_name; refusing to change its permissions." >&2
           return 2
@@ -220,6 +239,23 @@ ensure_secure_data_dir() {
   fi
 
   chmod 700 "$data_dir"
+  if [[ -d "$data_dir/delivery-artifacts" ]]; then
+    chmod 700 "$data_dir/delivery-artifacts"
+    for artifact_file in \
+      "$data_dir/delivery-artifacts"/.[!.]* \
+      "$data_dir/delivery-artifacts"/..?* \
+      "$data_dir/delivery-artifacts"/*; do
+      [[ -e "$artifact_file" || -L "$artifact_file" ]] || continue
+      artifact_name="${artifact_file##*/}"
+      if [[ -L "$artifact_file" || ! -f "$artifact_file" ||
+            ( ! "$artifact_name" =~ ^[a-f0-9]{64}\.yaml\.gz$ &&
+              ! "$artifact_name" =~ ^[a-f0-9]{64}\.yaml\.gz\.[0-9]+\.[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.tmp$ ) ]]; then
+        echo "Delivery artifact $artifact_file changed during permission hardening; refusing to continue." >&2
+        return 2
+      fi
+      chmod 600 "$artifact_file"
+    done
+  fi
   if [[ -L "$data_dir/.proxyparser-data-dir" ]]; then
     echo "Persistent data marker $data_dir/.proxyparser-data-dir must be a regular, non-symlink file." >&2
     return 2
