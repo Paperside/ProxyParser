@@ -506,6 +506,7 @@ export const RulesTab = () => {
           <span className="font-mono text-xs">MATCH →</span>
           <Select
             value={config.rules.final.target}
+            disabled={editingLocked}
             onValueChange={(target) => update((draft) => { draft.rules.final.target = target; })}
           >
             <SelectTrigger className="h-6 w-40 text-xs"><SelectValue /></SelectTrigger>

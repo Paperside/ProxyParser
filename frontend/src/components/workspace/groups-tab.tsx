@@ -63,7 +63,7 @@ const ExpandableGroupBar = ({
 }) => {
   const [open, setOpen] = useState(false);
   return (
-    <Card className="py-3">
+    <Card className="py-3" role="group" aria-label={`代理组 ${name}`}>
       <div className="flex items-center gap-2.5">
         {dragHandle}
         <button
@@ -207,10 +207,11 @@ const GroupEditorDialog = ({
   initial: CustomGroup | null;
   onClose: () => void;
 }) => {
-  const { update, workspaceIndex, editingLocked } = useWorkspace();
+  const { config, update, workspaceIndex, editingLocked } = useWorkspace();
   const [name, setName] = useState(initial?.name ?? "");
   const [type, setType] = useState<CustomGroup["type"]>(initial?.type ?? "select");
   const [rows, setRows] = useState<MemberRow[]>(() => toMemberRows(initial?.members ?? []));
+  const isFinalTarget = initial !== null && config.rules.final.target === initial.name;
 
   const nodeName = (id: string) =>
     workspaceIndex?.nodeIndex.find((node) => node.id === id)?.renderedName ?? id.slice(0, 10);
@@ -231,9 +232,26 @@ const GroupEditorDialog = ({
       if (existingIndex >= 0) {
         draft.groups.custom[existingIndex] = nextGroup;
         if (initial && initial.name !== nextGroup.name) {
+          const previousName = initial.name;
           draft.groups.order = draft.groups.order.map((entry) =>
-            entry === initial.name ? nextGroup.name : entry
+            entry === previousName ? nextGroup.name : entry
           );
+          draft.rules.order = draft.rules.order.map((entry) =>
+            entry === previousName ? nextGroup.name : entry
+          );
+          for (const block of draft.rules.targets) {
+            if (block.target === previousName) block.target = nextGroup.name;
+          }
+          if (draft.rules.final.target === previousName) {
+            draft.rules.final.target = nextGroup.name;
+          }
+          for (const group of draft.groups.custom) {
+            for (const member of group.members) {
+              if (member.kind === "group" && member.name === previousName) {
+                member.name = nextGroup.name;
+              }
+            }
+          }
         }
       } else {
         draft.groups.custom.push(nextGroup);
@@ -249,7 +267,15 @@ const GroupEditorDialog = ({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent wide title={initial ? `编辑代理组：${initial.name}` : "新增代理组"}>
+      <DialogContent
+        wide
+        title={initial ? `编辑代理组：${initial.name}` : "新增代理组"}
+        description={
+          isFinalTarget
+            ? "这是 MATCH 的兜底选择组；select 组的第一项是默认出口，可拖拽调整 Proxies / DIRECT 顺序。"
+            : undefined
+        }
+      >
         <div className="mb-4 grid grid-cols-2 gap-3.5">
           <Field label="组名">
             <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="AI" />
@@ -266,7 +292,10 @@ const GroupEditorDialog = ({
             </Select>
           </Field>
         </div>
-        <p className="mb-1.5 text-xs font-medium text-muted">成员（拖拽调整输出顺序）</p>
+        <p className="mb-1.5 text-xs font-medium text-muted">
+          成员（拖拽调整输出顺序）
+          {type === "select" ? <span className="ml-1 font-normal text-faint">第一项为默认选择</span> : null}
+        </p>
         <div className="mb-3">
           <SortableList
             items={rows}
@@ -320,6 +349,10 @@ export const GroupsTab = () => {
   );
 
   const removeGroup = (name: string) => {
+    if (config.rules.final.target === name) {
+      toast.error(`「${name}」是当前 MATCH 兜底目标。请先在规则页更换兜底目标。`);
+      return;
+    }
     const referenced = config.rules.targets.some((block) => block.target === name);
     if (referenced) {
       toast.error(`规则中存在指向「${name}」的块。请先在规则页处理它们，系统不会静默生成非法配置。`);
@@ -397,17 +430,49 @@ export const GroupsTab = () => {
               onChange={(event) =>
                 update((draft) => {
                   if (event.target.checked) {
-                    draft.groups.generators.push({ kind: "region-groups", groupType: "select", unclassified: "others" });
+                    draft.groups.generators.push({
+                      kind: "region-groups",
+                      groupType: "select",
+                      unclassified: "others",
+                      scope: "common"
+                    });
                   } else {
                     draft.groups.generators = draft.groups.generators.filter((g) => g.kind !== "region-groups");
                   }
                 })
               }
             />
-            <span><strong>地区代理组</strong> — 按推断/确认的地区自动分组（覆盖全球约 50 个常见国家/地区，节点页可手动纠正）</span>
+            <span><strong>地区代理组</strong> — 按推断/确认的地区自动分组，节点页可手动纠正</span>
             {regionGen?.kind === "region-groups" ? (
-              <label className="ml-4 flex items-center gap-1.5 text-muted">
-                未分类节点
+              <span className="ml-auto flex flex-wrap items-center justify-end gap-2 text-muted">
+                <label className="flex items-center gap-1.5">
+                  范围
+                  <Select
+                    value={regionGen.scope ?? "full"}
+                    onValueChange={(value) =>
+                      update((draft) => {
+                        const generator = draft.groups.generators.find((g) => g.kind === "region-groups");
+                        if (generator?.kind === "region-groups")
+                          generator.scope = value as "common" | "full";
+                      })
+                    }
+                  >
+                    <SelectTrigger aria-label="地区分组范围" className="h-6 w-52 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem
+                        value="common"
+                        description="港/台/日/新/美/韩/英/德，其余进入 Others"
+                      >
+                        常用地区
+                      </SelectItem>
+                      <SelectItem value="full" description="覆盖约 50 个可识别国家和地区">
+                        完整地区
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </label>
+                <label className="flex items-center gap-1.5">
+                  未分类节点
                 <Select
                   value={regionGen.unclassified}
                   onValueChange={(value) =>
@@ -418,13 +483,14 @@ export const GroupsTab = () => {
                     })
                   }
                 >
-                  <SelectTrigger className="h-6 w-28 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="未分类节点处理" className="h-6 w-28 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="others">归入 Others</SelectItem>
                     <SelectItem value="ignore">忽略</SelectItem>
                   </SelectContent>
                 </Select>
-              </label>
+                </label>
+              </span>
             ) : null}
           </label>
         </div>
@@ -456,6 +522,7 @@ export const GroupsTab = () => {
               <ExpandableGroupBar
                 name={group.name}
                 typeLabel={group.type}
+                badge={config.rules.final.target === group.name ? "MATCH 兜底" : undefined}
                 countLabel={rendered ? `${rendered.proxies.length} 项` : `${group.members.length} 条成员配置`}
                 proxies={
                   rendered ? rendered.proxies : group.members.map((member) => memberLabel(member, nodeName))

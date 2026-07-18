@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
-const registerAndCreateSubscription = async (page: Page) => {
+const registerUser = async (page: Page) => {
   const suffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
   await page.goto("/register");
   await page.getByLabel("邮箱").fill(`e2e-${suffix}@example.test`);
@@ -8,6 +8,10 @@ const registerAndCreateSubscription = async (page: Page) => {
   await page.getByLabel("密码").fill("e2e-password-123");
   await page.getByRole("button", { name: "创建账号" }).click();
   await expect(page).toHaveURL(/\/workbench/);
+};
+
+const registerAndCreateSubscription = async (page: Page) => {
+  await registerUser(page);
 
   return page.evaluate(async () => {
     const session = JSON.parse(localStorage.getItem("proxyparser.session")!) as { accessToken: string };
@@ -54,6 +58,107 @@ const registerAndCreateSubscription = async (page: Page) => {
     return created.subscription.id;
   });
 };
+
+test("新建订阅可多选来源，并阻止多来源使用机场原版配置", async ({ page }) => {
+  await registerUser(page);
+  await page.evaluate(async () => {
+    const session = JSON.parse(localStorage.getItem("proxyparser.session")!) as { accessToken: string };
+    const createSource = async (displayName: string, port: number) => {
+      const response = await fetch("http://127.0.0.1:7311/api/sources", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`
+        },
+        body: JSON.stringify({
+          displayName,
+          yamlContent: [
+            "proxies:",
+            `  - name: ${displayName} Node`,
+            "    type: ss",
+            "    server: 127.0.0.1",
+            `    port: ${port}`,
+            "    cipher: aes-128-gcm",
+            "    password: fixture",
+            "proxy-groups: []",
+            "rules: []"
+          ].join("\n")
+        })
+      });
+      if (!response.ok) throw new Error(await response.text());
+    };
+    await createSource("Source Alpha", 8388);
+    await createSource("Source Beta", 8389);
+  });
+
+  await page.goto("/subscriptions/new");
+  await page.getByRole("checkbox", { name: "选择订阅源 Source Alpha" }).check();
+  await page.getByRole("checkbox", { name: "选择订阅源 Source Beta" }).check();
+  await expect(page.getByText("已选 2")).toBeVisible();
+  await page.getByRole("button", { name: "继续（2 个源）" }).click();
+
+  await expect(page.getByText("多来源只合并节点")).toBeVisible();
+  await expect(page.getByText("每个节点名都会追加来源", { exact: false })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /保留机场原版配置/ })
+  ).toBeDisabled();
+  await expect(page.getByText("仅支持单一来源")).toBeVisible();
+
+  await page.getByRole("button", { name: "继续", exact: true }).click();
+  await page.getByLabel("订阅名称").fill("Merged E2E");
+  const createResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === "POST" &&
+    new URL(response.url()).pathname === "/api/subscriptions"
+  );
+  await page.getByRole("button", { name: "创建订阅" }).click();
+  const createResponse = await createResponsePromise;
+  const createBody = createResponse.request().postDataJSON() as { sourceIds: string[] };
+  expect(createBody.sourceIds).toHaveLength(2);
+  const created = await createResponse.json() as { subscription: { id: string } };
+
+  await page.goto(`/subscriptions/${created.subscription.id}/nodes`);
+  await expect(page.getByText("Source Alpha Node · Source Alpha", { exact: true })).toBeVisible();
+  await expect(page.getByText("Source Beta Node · Source Beta", { exact: true })).toBeVisible();
+});
+
+test("地区范围默认常用且 Final 兜底组可编辑", async ({ page }) => {
+  const subscriptionId = await registerAndCreateSubscription(page);
+  await page.goto(`/subscriptions/${subscriptionId}/groups`);
+
+  const scope = page.getByRole("combobox", { name: "地区分组范围" });
+  await expect(scope).toContainText("常用地区");
+  const saveFullScope = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PUT" &&
+      new URL(response.url()).pathname === `/api/subscriptions/${subscriptionId}/draft`
+  );
+  await scope.click();
+  await page.getByRole("option", { name: "完整地区" }).click();
+  await expect(scope).toContainText("完整地区");
+  expect((await saveFullScope).ok()).toBe(true);
+
+  await page.goto(`/subscriptions/${subscriptionId}/overview`);
+  page.once("dialog", (dialog) => void dialog.accept());
+  const saveRecommendedDraft = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PUT" &&
+      new URL(response.url()).pathname === `/api/subscriptions/${subscriptionId}/draft`
+  );
+  await page.getByRole("button", { name: "套用最新推荐分组与规则" }).click();
+  await expect(page.getByText("已套用最新推荐分组与规则", { exact: false })).toBeVisible();
+  expect((await saveRecommendedDraft).ok()).toBe(true);
+
+  await page.goto(`/subscriptions/${subscriptionId}/groups`);
+  await expect(page.getByRole("combobox", { name: "地区分组范围" })).toContainText("常用地区");
+
+  const finalGroup = page.getByRole("group", { name: "代理组 Final" });
+  await expect(finalGroup.getByText("MATCH 兜底")).toBeVisible();
+  await finalGroup.getByRole("button", { name: "编辑" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("第一项是默认出口", { exact: false })).toBeVisible();
+  await expect(dialog.getByText("组 Proxies", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("DIRECT", { exact: true })).toBeVisible();
+});
 
 test("规则交付开关、URI 自动识别与延迟测试入口可用", async ({ page }) => {
   const subscriptionId = await registerAndCreateSubscription(page);

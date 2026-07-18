@@ -74,6 +74,10 @@ export type GroupGenerator =
       kind: "region-groups";
       groupType: "select" | "url-test";
       unclassified: "others" | "ignore";
+      /**
+       * 缺省仅用于兼容历史配置，并按 full 处理；新建配置必须显式写入 common。
+       */
+      scope?: "common" | "full";
       regionOverrides?: Record<string, string>; // nodeId -> region code
     }
   | {

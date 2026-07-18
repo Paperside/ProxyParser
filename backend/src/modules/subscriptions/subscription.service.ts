@@ -146,10 +146,24 @@ const blankBuildConfig = (sourceIds: string[], mode: "rebuild" | "patch"): Build
       ? {
           generators: [
             { kind: "proxies-root", name: "Proxies", includeAuto: true, extraMembers: [] },
-            { kind: "region-groups", groupType: "select", unclassified: "others" }
+            {
+              kind: "region-groups",
+              groupType: "select",
+              unclassified: "others",
+              scope: "common"
+            }
           ],
-          custom: [],
-          order: ["Proxies"]
+          custom: [
+            {
+              name: "Final",
+              type: "select",
+              members: [
+                { kind: "group", name: "Proxies" },
+                { kind: "builtin", policy: "DIRECT" }
+              ]
+            }
+          ],
+          order: ["Proxies", "Final"]
         }
       : { generators: [], custom: [], order: [] },
   rules: {
@@ -157,7 +171,7 @@ const blankBuildConfig = (sourceIds: string[], mode: "rebuild" | "patch"): Build
     targets: [],
     order: [],
     prelude: [],
-    final: { target: mode === "rebuild" ? "Proxies" : "DIRECT" }
+    final: { target: mode === "rebuild" ? "Final" : "DIRECT" }
   },
   config: { structured: {}, rawPatch: null }
 });
@@ -278,11 +292,19 @@ export class SubscriptionService {
     input: {
       displayName: string;
       sourceIds: string[];
-      start: { kind: StartKind; templateId?: string; confirmSensitive?: boolean };
+      start: {
+        kind: StartKind;
+        templateId?: string;
+        confirmSensitive?: boolean;
+        regionScope?: "common" | "full";
+      };
     }
   ) {
     if (input.sourceIds.length === 0) {
       throw new SubscriptionError("至少选择一个订阅源。");
+    }
+    if (new Set(input.sourceIds).size !== input.sourceIds.length) {
+      throw new SubscriptionError("订阅源不能重复选择。");
     }
     for (const sourceId of input.sourceIds) {
       if (!this.sourceRepository.findByIdAndOwner(sourceId, ownerUserId)) {
@@ -291,6 +313,9 @@ export class SubscriptionService {
     }
     if (input.start.kind === "patch" && input.sourceIds.length > 1) {
       throw new SubscriptionError("保留源配置模式只支持单一订阅源。");
+    }
+    if (input.start.kind === "patch" && input.start.regionScope !== undefined) {
+      throw new SubscriptionError("保留源配置模式不能生成地区代理组。");
     }
 
     let draft: BuildConfig;
@@ -335,6 +360,17 @@ export class SubscriptionService {
       case "blank":
         draft = blankBuildConfig(input.sourceIds, "rebuild");
         break;
+    }
+
+    // 创建页可覆盖重组方案中的地区分组范围。recommended/blank 即使旧模板尚未
+    // 完成 seed，也默认写入 common；用户模板则在未显式选择时尊重模板原值。
+    const regionScope =
+      input.start.regionScope ??
+      (input.start.kind === "recommended" || input.start.kind === "blank" ? "common" : undefined);
+    if (regionScope && draft.mode === "rebuild") {
+      draft.groups.generators = draft.groups.generators.map((generator) =>
+        generator.kind === "region-groups" ? { ...generator, scope: regionScope } : generator
+      );
     }
 
     const record = this.repository.create({

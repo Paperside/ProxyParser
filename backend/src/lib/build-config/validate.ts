@@ -211,11 +211,21 @@ const parseGenerator = (value: unknown, index: number, c: Collector): GroupGener
         extraMembers
       };
     }
-    case "region-groups":
+    case "region-groups": {
+      if (
+        value.scope !== undefined &&
+        value.scope !== "common" &&
+        value.scope !== "full"
+      ) {
+        c.fail(`groups.generators[${index}].scope：必须是 common / full`);
+      }
       return {
         kind: "region-groups",
         groupType: value.groupType === "url-test" ? "url-test" : "select",
         unclassified: value.unclassified === "ignore" ? "ignore" : "others",
+        ...(value.scope === "common" || value.scope === "full"
+          ? { scope: value.scope }
+          : {}),
         ...(isRecord(value.regionOverrides)
           ? {
               regionOverrides: Object.fromEntries(
@@ -226,6 +236,7 @@ const parseGenerator = (value: unknown, index: number, c: Collector): GroupGener
             }
           : {})
       };
+    }
     case "auto-group": {
       if (!isNonEmptyString(value.name)) {
         return c.fail(`groups.generators[${index}]：auto-group 缺少 name`);

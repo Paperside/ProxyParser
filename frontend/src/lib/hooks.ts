@@ -151,7 +151,11 @@ export const useSubscriptionMutations = (id?: string) => {
       mutationFn: (body: {
         displayName: string;
         sourceIds: string[];
-        start: { kind: string; templateId?: string; confirmSensitive?: boolean };
+        start: {
+          kind: string;
+          templateId?: string;
+          confirmSensitive?: boolean;
+        };
       }) =>
         authorizedRequest<CreateSubscriptionResponse>("/api/subscriptions", {
           method: "POST",

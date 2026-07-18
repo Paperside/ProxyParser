@@ -97,7 +97,7 @@ Next schema 直接定义当前最终表结构：
 
 - `sources`：一个或多个源引用；多源只允许 `rebuild`。
 - `nodes`：持续 transforms、按稳定 ID 的 overrides、自建节点。
-- `groups`：代理组生成器、自定义组与显式顺序。
+- `groups`：代理组生成器、自定义组与显式顺序；地区生成器可选 `scope: common | full`，旧配置缺省按 full、新建默认 common。
 - `rules`：全局交付模式（provider / inline）、前置规则、按目标组织的规则块、块顺序与最终 MATCH。旧配置缺少全局字段时继续尊重逐项 `emit`，避免迁移改变输出。
 - `config`：结构化字段及 raw YAML patch。
 
@@ -106,7 +106,7 @@ Next schema 直接定义当前最终表结构：
 - `rebuild`：只把源节点当原料，重新构建代理组、规则与配置；支持多源和模板提炼。
 - `patch`：以单一源文档为基底，应用节点改动、追加自定义组/规则和配置补丁；不支持模板提炼。
 
-原生节点 ID 为 `n_<sha256(type|server|port) 前 12 位>`。改名和凭据轮换不改变 ID；server/port 变化按删旧增新处理。相同 identity 冲突时按节点名稳定排序后加入序号，保证结果可重放。
+单源原生节点 ID 为 `n_<sha256(type|server|port) 前 12 位>`。改名和凭据轮换不改变 ID；server/port 变化按删旧增新处理。相同 identity 冲突时按节点名稳定排序后加入序号。多源合并时再把 sourceId 纳入 ID 作用域，并把来源显示名追加到节点名末尾，保证跨源相同端点仍然唯一且可辨认。
 
 raw patch 不能覆盖 `proxies`、`proxy-groups`、`rules` 或 `rule-providers`；这些键只能由对应模块生成。
 
@@ -114,8 +114,8 @@ raw patch 不能覆盖 `proxies`、`proxy-groups`、`rules` 或 `rule-providers`
 
 `backend/src/lib/render-v2/evaluate.ts` 是无 IO 的求值入口：
 
-1. `collectNodes`：读取启用源，计算稳定 ID，执行 transforms/overrides，解密并追加自建节点，处理输出名冲突。
-2. `generateGroups`：求值 Proxies/地区/Auto 生成器，展开 selector 与自定义成员，按 `groups.order` 排序。
+1. `collectNodes`：读取启用源，计算稳定 ID，执行 transforms/overrides，解密并追加自建节点；多源追加来源名并处理输出名冲突。
+2. `generateGroups`：求值 Proxies/地区/Auto 生成器，展开 selector 与自定义成员，按 `groups.order` 排序；common 地区范围把非常用但已识别的地区归入 Others，推荐配置的 Final 兜底组固定输出在最后。
 3. `assembleRules`：输出 prelude、按目标排序的手动规则或快照规则，最后输出 MATCH。全局 `deliveryMode` 可让公开快照统一走托管 provider 或内联；私有快照始终内联。无法等价内联的通配符是阻断发布的 error，不会静默丢弃。
 4. `applyConfig`：写入结构化配置，并深合并经过限制的 raw patch。
 5. patch 支路：保留源文档，传播节点改名/禁用，插入自定义组与规则，并保留源 MATCH。
@@ -229,7 +229,7 @@ mihomo -t -f <config> -d <temp-dir>
 - 自建节点结构保留。默认把 secret 变为占位符；用户也可明确选择保留，此时敏感字段只进入 `template_version_secrets` 密文表，payload/API 仅携带 `embeddedSecret` 标记。应用含凭据模板必须确认，并为接收者创建独立的 `custom_node_secrets` 引用。公开/链接分享含凭据模板需要二次确认并写审计记录，审计不含秘密内容。
 - patch 模式因绑定单一源，明确禁止提炼。
 
-`extractTemplate` 与 `instantiateTemplate` 都是纯函数，往返收敛由测试锁定。官方“推荐方案”由 `seed-builtin-templates.ts` 根据 17 个内置规则集生成，因而首启不依赖网络。
+`extractTemplate` 与 `instantiateTemplate` 都是纯函数，往返收敛由测试锁定。官方“推荐方案”由 `seed-builtin-templates.ts` 根据仓库内置规则目录生成，默认选用 AdvertisingLite 与带 `GEOIP,CN,no-resolve` 兜底的 China；完整版 Advertising 与 ChinaMax 仍可手动选用但不进入推荐方案。全部规则有离线资产，首启不依赖网络。
 
 ## 14. 前端
 

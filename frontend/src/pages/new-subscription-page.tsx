@@ -47,7 +47,7 @@ const START_CHOICES: Array<{ kind: StartKind; title: string; desc: string; badge
 ];
 
 const StepHeader = ({ step }: { step: 1 | 2 | 3 }) => {
-  const items = ["粘贴订阅源", "选择起点", "命名并发布"];
+  const items = ["选择订阅源", "选择起点", "命名并发布"];
   return (
     <div className="my-6 flex items-center justify-center">
       {items.map((label, index) => {
@@ -82,18 +82,42 @@ const StepHeader = ({ step }: { step: 1 | 2 | 3 }) => {
   );
 };
 
-const SourceSummaryBar = ({ source, onChange }: { source: SourceSummary; onChange: () => void }) => {
-  const usage = usageSummary(source.usage);
+const SourceSummaryBar = ({
+  sources,
+  onChange
+}: {
+  sources: SourceSummary[];
+  onChange: () => void;
+}) => {
+  const usage = sources.length === 1 ? usageSummary(sources[0]!.usage) : null;
+  const totals = sources.reduce(
+    (sum, source) => ({
+      proxies: sum.proxies + source.proxyCount,
+      groups: sum.groups + source.groupCount,
+      rules: sum.rules + source.ruleCount
+    }),
+    { proxies: 0, groups: 0, rules: 0 }
+  );
   return (
     <div className="mb-6 flex items-center gap-5 rounded-[10px] border border-ok/25 bg-ok-bg px-4 py-3 text-[12.5px]">
       <span className="health-dot" data-health="ok" />
-      <strong>{source.displayName}</strong>
-      {(
-        [
-          [source.proxyCount, "节点"],
-          [source.groupCount, "源代理组"],
-          [source.ruleCount, "源规则"]
-        ] as const
+      <span className="min-w-0">
+        <strong>{sources.length === 1 ? sources[0]!.displayName : `已选择 ${sources.length} 个订阅源`}</strong>
+        {sources.length > 1 ? (
+          <span className="mt-1 flex max-w-64 flex-wrap gap-1">
+            {sources.map((source) => (
+              <Badge key={source.id}>{source.displayName}</Badge>
+            ))}
+          </span>
+        ) : null}
+      </span>
+      {(sources.length > 1
+        ? ([[totals.proxies, "合并节点"]] as const)
+        : ([
+            [totals.proxies, "节点"],
+            [totals.groups, "源代理组"],
+            [totals.rules, "源规则"]
+          ] as const)
       ).map(([count, label]) => (
         <span key={label} className="flex flex-col leading-tight">
           <b className="font-mono text-sm">{count}</b>
@@ -107,7 +131,7 @@ const SourceSummaryBar = ({ source, onChange }: { source: SourceSummary; onChang
         </span>
       ) : null}
       <Button size="sm" variant="ghost" className="ml-auto" onClick={onChange}>
-        更换
+        调整
       </Button>
     </div>
   );
@@ -121,7 +145,7 @@ export const NewSubscriptionPage = () => {
   const subscriptionMutations = useSubscriptionMutations();
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [sourceId, setSourceId] = useState<string | null>(null);
+  const [sourceIds, setSourceIds] = useState<string[]>([]);
   const [sourceUrl, setSourceUrl] = useState("");
   const [sourceName, setSourceName] = useState("");
   const [startKind, setStartKind] = useState<StartKind>("recommended");
@@ -133,10 +157,27 @@ export const NewSubscriptionPage = () => {
   const [draftRevision, setDraftRevision] = useState<number | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
 
-  const selectedSource = useMemo(
-    () => sources.data?.find((source) => source.id === sourceId) ?? null,
-    [sources.data, sourceId]
+  const selectedSources = useMemo(
+    () =>
+      sourceIds.flatMap((sourceId) => {
+        const source = sources.data?.find((candidate) => candidate.id === sourceId);
+        return source ? [source] : [];
+      }),
+    [sources.data, sourceIds]
   );
+  const isMultiSource = sourceIds.length > 1;
+
+  useEffect(() => {
+    if (isMultiSource && startKind === "patch") setStartKind("recommended");
+  }, [isMultiSource, startKind]);
+
+  const toggleSource = (sourceId: string) => {
+    setSourceIds((current) =>
+      current.includes(sourceId)
+        ? current.filter((id) => id !== sourceId)
+        : [...current, sourceId]
+    );
+  };
 
   const submitSourceUrl = async () => {
     try {
@@ -144,20 +185,24 @@ export const NewSubscriptionPage = () => {
         displayName: sourceName || "我的机场",
         sourceUrl: sourceUrl.trim()
       });
-      setSourceId(created.id);
-      setStep(2);
+      setSourceIds((current) =>
+        current.includes(created.id) ? current : [...current, created.id]
+      );
+      setSourceUrl("");
+      setSourceName("");
+      toast.success("订阅源已同步并选中，可继续添加或进入下一步");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "订阅源添加失败");
     }
   };
 
   const createAndPublish = async () => {
-    if (!sourceId) return;
+    if (sourceIds.length === 0) return;
     setPublishError(null);
     try {
       const created = await subscriptionMutations.create.mutateAsync({
         displayName: displayName || "我的订阅",
-        sourceIds: [sourceId],
+        sourceIds,
         start: {
           kind: startKind,
           ...(startKind === "template" && templateId
@@ -204,88 +249,134 @@ export const NewSubscriptionPage = () => {
               disabled={!/^https?:\/\/.+/.test(sourceUrl.trim()) || sourceMutations.create.isPending}
               onClick={() => void submitSourceUrl()}
             >
-              {sourceMutations.create.isPending ? "正在同步订阅源…" : "添加并同步"}
+              {sourceMutations.create.isPending ? "正在同步订阅源…" : "添加、同步并选中"}
             </Button>
           </Card>
           {sources.data && sources.data.length > 0 ? (
             <Card>
-              <p className="mb-2 text-xs font-medium text-muted">或选择已有订阅源</p>
-              <div className="flex flex-col gap-1">
+              <div className="mb-2 flex items-center gap-2">
+                <p className="text-xs font-medium text-muted">选择已有订阅源（可多选）</p>
+                {sourceIds.length > 0 ? (
+                  <Badge variant="accent" className="ml-auto">已选 {sourceIds.length}</Badge>
+                ) : null}
+              </div>
+              <div className="flex flex-col gap-1.5">
                 {sources.data.map((source) => (
-                  <button
+                  <label
                     key={source.id}
-                    className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-surface2"
-                    onClick={() => {
-                      setSourceId(source.id);
-                      setStep(2);
-                    }}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 text-left text-[13px] transition-colors",
+                      sourceIds.includes(source.id)
+                        ? "border-accent-strong bg-accent-bg"
+                        : "border-transparent hover:border-line hover:bg-surface2"
+                    )}
                   >
+                    <input
+                      type="checkbox"
+                      aria-label={`选择订阅源 ${source.displayName}`}
+                      checked={sourceIds.includes(source.id)}
+                      onChange={() => toggleSource(source.id)}
+                    />
                     <span
                       className="health-dot"
                       data-health={source.lastSyncStatus === "success" ? "ok" : "warn"}
                     />
-                    {source.displayName}
-                    <span className="text-[11px] text-faint">{source.proxyCount} 节点</span>
-                  </button>
+                    <span className="min-w-0 flex-1 truncate">{source.displayName}</span>
+                    <span className="font-mono text-[11px] text-faint">{source.proxyCount} 节点</span>
+                  </label>
                 ))}
               </div>
             </Card>
           ) : null}
+          <div className="flex items-center justify-between gap-3 rounded-[10px] border border-line bg-surface px-4 py-3">
+            <p className="text-xs text-muted">
+              {sourceIds.length === 0
+                ? "至少选择一个订阅源。"
+                : sourceIds.length === 1
+                  ? "将使用这个订阅源创建订阅。"
+                  : `将合并 ${sourceIds.length} 个来源的节点；下一步不会混入各机场自己的分组和规则。`}
+            </p>
+            <Button
+              variant="primary"
+              disabled={sourceIds.length === 0 || selectedSources.length !== sourceIds.length}
+              onClick={() => setStep(2)}
+            >
+              继续{sourceIds.length > 0 ? `（${sourceIds.length} 个源）` : ""}
+            </Button>
+          </div>
         </div>
       ) : null}
 
-      {step === 2 && selectedSource ? (
+      {step === 2 && selectedSources.length > 0 ? (
         <div>
-          <SourceSummaryBar source={selectedSource} onChange={() => setStep(1)} />
+          <SourceSummaryBar sources={selectedSources} onChange={() => setStep(1)} />
+          {isMultiSource ? (
+            <div className="mb-4 rounded-[10px] border border-accent/25 bg-accent-bg px-3.5 py-3 text-[12.5px] leading-5 text-muted">
+              <p className="font-semibold text-ink">多来源只合并节点</p>
+              <p>
+                不会叠加各机场原有的代理组、规则与 DNS；每个节点名都会追加来源，例如「香港 01 · 机场 A」，便于区分同名节点。
+              </p>
+            </div>
+          ) : null}
           <div className="flex flex-col gap-3">
-            {START_CHOICES.map((choice) => (
-              <button
-                key={choice.kind}
-                className={cn(
-                  "relative rounded-[10px] border border-line bg-surface px-4 py-3.5 text-left transition-colors hover:border-line-strong",
-                  startKind === choice.kind && "border-accent-strong bg-accent-bg"
-                )}
-                onClick={() => setStartKind(choice.kind)}
-              >
-                <span
+            {START_CHOICES.map((choice) => {
+              const unavailable = choice.kind === "patch" && isMultiSource;
+              return (
+                <button
+                  key={choice.kind}
+                  disabled={unavailable}
                   className={cn(
-                    "absolute right-3.5 top-3.5 size-3.5 rounded-full border-[1.5px] border-line-strong",
-                    startKind === choice.kind &&
-                      "border-accent bg-[radial-gradient(circle_at_center,var(--pp-accent)_0_4px,transparent_5px)]"
+                    "relative rounded-[10px] border border-line bg-surface px-4 py-3.5 text-left transition-colors hover:border-line-strong",
+                    startKind === choice.kind && "border-accent-strong bg-accent-bg",
+                    unavailable && "cursor-not-allowed border-dashed opacity-55 hover:border-line"
                   )}
-                />
-                <span className="flex items-center gap-2 text-[13.5px] font-semibold">
-                  {choice.title}
-                  {choice.badge ? <Badge variant="accent">{choice.badge}</Badge> : null}
-                </span>
-                <span className="mt-1 block text-[12.5px] text-muted">{choice.desc}</span>
-                {choice.kind === "template" && startKind === "template" ? (
-                  <span className="mt-2 flex flex-wrap gap-1.5">
-                    {(templates.data ?? [])
-                      .filter((template) => template.latestVersion > 0)
-                      .map((template) => (
-                        <span
-                          key={template.id}
-                          role="button"
-                          className={cn(
-                            "rounded-full border border-line-strong px-2.5 py-0.5 text-xs",
-                            templateId === template.id && "border-accent bg-accent-bg text-accent"
-                          )}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setTemplateId(template.id);
-                            setConfirmedTemplateSensitive(false);
-                          }}
-                        >
-                          {template.displayName}
-                          {template.isOfficial ? " · 官方" : ""}
-                          {template.embeddedSecrets ? " · 含凭据" : ""}
-                        </span>
-                      ))}
+                  onClick={() => setStartKind(choice.kind)}
+                >
+                  <span
+                    className={cn(
+                      "absolute right-3.5 top-3.5 size-3.5 rounded-full border-[1.5px] border-line-strong",
+                      startKind === choice.kind &&
+                        "border-accent bg-[radial-gradient(circle_at_center,var(--pp-accent)_0_4px,transparent_5px)]"
+                    )}
+                  />
+                  <span className="flex items-center gap-2 pr-6 text-[13.5px] font-semibold">
+                    {choice.title}
+                    {choice.badge ? <Badge variant="accent">{choice.badge}</Badge> : null}
+                    {unavailable ? <Badge>仅支持单一来源</Badge> : null}
                   </span>
-                ) : null}
-              </button>
-            ))}
+                  <span className="mt-1 block text-[12.5px] text-muted">
+                    {unavailable
+                      ? "原版配置只能来自一个机场；多来源请使用推荐方案、模板或空白自建。"
+                      : choice.desc}
+                  </span>
+                  {choice.kind === "template" && startKind === "template" ? (
+                    <span className="mt-2 flex flex-wrap gap-1.5">
+                      {(templates.data ?? [])
+                        .filter((template) => template.latestVersion > 0)
+                        .map((template) => (
+                          <span
+                            key={template.id}
+                            role="button"
+                            className={cn(
+                              "rounded-full border border-line-strong px-2.5 py-0.5 text-xs",
+                              templateId === template.id && "border-accent bg-accent-bg text-accent"
+                            )}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setTemplateId(template.id);
+                              setConfirmedTemplateSensitive(false);
+                            }}
+                          >
+                            {template.displayName}
+                            {template.isOfficial ? " · 官方" : ""}
+                            {template.embeddedSecrets ? " · 含凭据" : ""}
+                          </span>
+                        ))}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
           {startKind === "template" &&
           (templates.data ?? []).find((template) => template.id === templateId)?.embeddedSecrets ? (
@@ -317,7 +408,7 @@ export const NewSubscriptionPage = () => {
         </div>
       ) : null}
 
-      {step === 3 && selectedSource ? (
+      {step === 3 && selectedSources.length > 0 ? (
         result && subscriptionId && draftRevision !== null ? (
           <PublishAndFinish
             subscriptionId={subscriptionId}

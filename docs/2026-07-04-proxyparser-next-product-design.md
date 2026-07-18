@@ -110,7 +110,7 @@ nodes:
 
 groups:
   generators:            # 生成器：每次渲染重新求值，天然吸收上游节点增删
-    - region-groups: { style: url-test, unclassified: Others }
+    - region-groups: { style: url-test, scope: common, unclassified: Others }
     - auto-group: { name: Auto, members: all-enabled-nodes }
   custom:
     - name: AI
@@ -120,6 +120,9 @@ groups:
         - group: Proxies         # 已知代理组
         - selector: { region: US }  # 抽象集合：可进模板
         - builtin: DIRECT        # 内置策略目标
+    - name: Final
+      type: select
+      members: [ { group: Proxies }, { builtin: DIRECT } ]
 
 rules:
   targets:               # 面向目标组织，不面向规则文件组织
@@ -129,7 +132,7 @@ rules:
     DIRECT:
       - snapshot: { ref: rs_cn_domain@sha256:cd34…, emit: provider }
   order: [ prelude, AI, Streaming, Ads, CN, DIRECT ]   # 块级排序
-  final: MATCH,Proxies
+  final: MATCH,Final
 
 config:
   dns: { … }             # 结构化字段
@@ -322,16 +325,18 @@ Next 的落地方案是：**快照钉版本，输出仍走 provider**。
 新用户的第一次成功必须又快又好：
 
 ```text
-第 1 步  粘贴订阅 URL（或选已有订阅源）
+第 1 步  粘贴订阅 URL（或多选已有订阅源）
          → 立即同步，展示：45 个节点 / 28 个源代理组 / 16 条源规则 / 流量与到期
 第 2 步  选择起点（隐式决定构建模式）：
-         ① 推荐方案（默认高亮）— 官方维护的起手模板：Proxies/Auto/地区组 +
-            AI/流媒体/广告/CN 分流 + 合理 DNS。选它 = rebuild 模式。
+         ① 推荐方案（默认高亮）— 官方维护的起手模板：Proxies/Auto/常用地区组/Final +
+            AI/流媒体/AdvertisingLite/China+GEOIP CN 分流 + 合理 DNS。选它 = rebuild 模式。
          ② 套用我的模板 / 广场模板 = rebuild 模式。
          ③ 保留机场原版配置，仅做小修 = patch 模式。
          ④ 空白自建 = rebuild 模式。
 第 3 步  命名 → 预览摘要 → 发布 → 拿到链接 + 二维码 + 客户端导入指引
 ```
+
+多选订阅源时只合并节点，节点名追加来源名，并禁用第 ③ 项；上游代理组、规则与 DNS 不会互相叠加。
 
 官方"推荐方案"是产品级资产，随产品版本维护更新，也是模板系统的示范样本。精修在创建之后进工作台做——向导不承载编辑深度。
 
@@ -367,11 +372,13 @@ Next 的落地方案是：**快照钉版本，输出仍走 provider**。
 - 列表附**推断徽章**：地区、协议等展示层推断，不写数据；一键"采纳为标签"。
 - 批量清洗动作保存为**持续 transform**（新节点自动适用），单点改名保存为 **ID 级 override**；两类都在"节点规则"面板可见、可删。
 - 自建节点的敏感字段（密码/UUID/私钥）**单独加密存储**（secretRef），BuildConfig 与模板只持有引用。模板导出时 secretRef 变为占位符，应用模板时要求补全——回答 v0.2 遗留问题 1。
-- 多源重名：内部靠稳定 ID 无歧义；渲染输出名冲突时自动加源前缀，并在发布确认中列出——回答遗留问题 2。
+- 多源节点：多源时原生节点 ID 加入 sourceId 作用域，输出名统一追加 ` · 来源名`；即使两个来源含相同端点也不会在节点编辑或测速时串扰。单源名称与 ID 保持兼容——回答遗留问题 2。
 
 ### 6.2 代理组
 
 - 生成器（地区组 / Auto / 推荐服务组）是 BuildConfig 的持久声明，每次渲染重新求值——这是 v0.2 "保存命令"思想的完成形态。
+- 地区组支持 `common` / `full`：新建默认仅单列港、台、日、新、美、韩、英、德，其余已识别地区进入 Others；历史配置缺少该字段时继续按 full 渲染，避免发布内容漂移。
+- 推荐方案以 `Final` select 组作为最后一个代理组，默认成员顺序为 Proxies、DIRECT，最终规则固定为 `MATCH,Final`；用户可在客户端或编辑器切换兜底出口。
 - 成员约束与标准成员配置继承 v0.2 第 7.3 节；当前成员选择器支持节点、组、抽象 selector 与内置目标，尚无独立的自定义预设库。
 - 成员顺序：静态成员（自建节点、组、内置目标）精确排序；抽象选择器作为块整体参与排序；原生节点单点引用不进模板（继承 v0.2 第 7.4/7.5 节）。
 

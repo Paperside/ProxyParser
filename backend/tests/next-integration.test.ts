@@ -157,6 +157,45 @@ afterEach(() => {
 // ── 创建与发布管线 ────────────────────────────────────────────
 
 describe("发布管线", () => {
+  test("多源空白方案只合并节点、追加来源名，并接受地区范围", () => {
+    const ctx = createTestContext();
+    const sourceB = ctx.sourceService.createFromUpload(ctx.userId, {
+      displayName: "备用机场",
+      yamlContent: sourceYaml([{ ...defaultNodes[0], name: "HK-01" }])
+    });
+    const { subscription } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "合并订阅",
+      sourceIds: [ctx.source.id, sourceB.id],
+      start: { kind: "blank", regionScope: "full" }
+    });
+
+    const detail = ctx.subscriptionService.getDetail(ctx.userId, subscription.id);
+    const regionGenerator = detail.draftBuildConfig?.groups.generators.find(
+      (generator) => generator.kind === "region-groups"
+    );
+    expect(regionGenerator).toHaveProperty("scope", "full");
+
+    const workspace = ctx.subscriptionService.workspaceIndex(ctx.userId, subscription.id);
+    expect(workspace.nodeIndex.map((node) => node.renderedName)).toEqual(
+      expect.arrayContaining(["HK-01 · 白云机场", "HK-01 · 备用机场"])
+    );
+    expect(new Set(workspace.nodeIndex.map((node) => node.id)).size).toBe(
+      workspace.nodeIndex.length
+    );
+    expect(workspace.groupIndex.at(-1)).toMatchObject({
+      name: "Final",
+      proxies: ["Proxies", "DIRECT"]
+    });
+
+    expect(() =>
+      ctx.subscriptionService.create(ctx.userId, {
+        displayName: "非法透传",
+        sourceIds: [ctx.source.id, sourceB.id],
+        start: { kind: "patch" }
+      })
+    ).toThrow("只支持单一订阅源");
+  });
+
   test("推荐方案创建 → 发布 → 版本 v1 → 链接可拉取", () => {
     const ctx = createTestContext();
     const { subscription, token } = ctx.subscriptionService.create(ctx.userId, {
@@ -185,9 +224,11 @@ describe("发布管线", () => {
     );
     const groupNames = doc["proxy-groups"].map((g) => g.name);
     expect(groupNames).toEqual(
-      expect.arrayContaining(["Proxies", "OpenAI", "Anthropic", "ChinaMax", "HK", "US"])
+      expect.arrayContaining(["Proxies", "OpenAI", "Anthropic", "China", "HK", "US"])
     );
-    expect(doc.rules?.[doc.rules.length - 1]).toBe("MATCH,Proxies");
+    expect(groupNames.at(-1)).toBe("Final");
+    expect(doc["proxy-groups"].at(-1)?.proxies).toEqual(["Proxies", "DIRECT"]);
+    expect(doc.rules?.[doc.rules.length - 1]).toBe("MATCH,Final");
     // 规则快照以不可变哈希端点输出
     const providers = doc["rule-providers"] as Record<string, { url: string; path: string }>;
     expect(Object.values(providers).every((p) => p.url.startsWith("https://pp.test/rs/"))).toBe(
@@ -199,7 +240,10 @@ describe("发布管线", () => {
       expect(provider.path).toBe(`./rule-providers/${hash}.yaml`);
     }
     expect(doc.rules).toContain("RULE-SET,anthropic,Anthropic");
-    expect(doc.rules).toContain("RULE-SET,chinamax,ChinaMax");
+    expect(doc.rules).toContain("RULE-SET,china,China");
+    expect(doc.rules).toContain("RULE-SET,advertisinglite,REJECT");
+    expect(providers).not.toHaveProperty("chinamax");
+    expect(providers).not.toHaveProperty("advertising");
     // 发布后健康转绿
     expect(ctx.subscriptionRepository.findById(subscription.id)!.health).toBe("ok");
   });
@@ -1188,11 +1232,12 @@ describe("规则库", () => {
     expect(snapshot?.content).toContain("openai");
   });
 
-  test("内置规则后处理补齐 ChinaMax GEOIP 与 Anthropic 官方域名", () => {
+  test("内置规则后处理补齐 China/ChinaMax GEOIP 与 Anthropic 官方域名", () => {
     const ctx = createTestContext();
     const manifest = loadBuiltinRulesetManifest();
     const payloadBySlug = new Map<string, string[]>();
     const expectedBySlug = new Map<string, string[]>([
+      ["china", ["GEOIP,CN,no-resolve"]],
       ["chinamax", ["GEOIP,CN,no-resolve"]],
       [
         "anthropic",
@@ -1732,7 +1777,7 @@ describe("规则追踪器", () => {
     // 兜底断言用一个不落入任何 CIDR/域名规则集的公共 IP
     const fallback = ctx.subscriptionService.trace(ctx.userId, subscription.id, "8.8.8.8", false);
     expect(fallback.verdict).toBe("final");
-    expect(fallback.target).toBe("Proxies");
+    expect(fallback.target).toBe("Final");
     expect(fallback.maybeNotes.some((note) => note.includes("GEOIP,CN,no-resolve"))).toBe(
       true
     );

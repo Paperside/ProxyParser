@@ -11,7 +11,12 @@ import {
   BUILTIN_POLICIES
 } from "../build-config/types";
 import { identifyNodes } from "../build-config/node-identity";
-import { detectRegion, isRegionCode, REGION_CODES } from "./region";
+import {
+  COMMON_REGION_CODES,
+  detectRegion,
+  isRegionCode,
+  REGION_CODES
+} from "./region";
 import { emitClashYaml } from "./emit-yaml";
 
 // 渲染管线 v2（技术方案 §5）：纯函数、无 IO、确定性。
@@ -137,6 +142,8 @@ export const collectNodes = (
   const { buildConfig } = input;
   const pool: PoolNode[] = [];
   const overridesById = new Map(buildConfig.nodes.overrides.map((o) => [o.nodeId, o] as const));
+  const enabledSourceCount = buildConfig.sources.filter((source) => source.enabled).length;
+  const mergeMultipleSources = enabledSourceCount > 1;
 
   for (const sourceRef of buildConfig.sources) {
     if (!sourceRef.enabled) continue;
@@ -151,11 +158,21 @@ export const collectNodes = (
       continue;
     }
     const identified = identifyNodes(Array.isArray(snapshot.proxies) ? snapshot.proxies : []);
-    for (const { id, node } of identified) {
+    for (const { id: baseId, node } of identified) {
+      // 单源保持历史 ID；多源把 sourceId 纳入 identity，避免两个机场复用相同
+      // type/server/port 时节点索引、override 和延迟测试互相串扰。
+      const id = mergeMultipleSources
+        ? `n_${createHash("sha256")
+            .update(`${sourceRef.sourceId}|${baseId}`)
+            .digest("hex")
+            .slice(0, 12)}`
+        : baseId;
       const override = overridesById.get(id);
       const baseName = typeof node.name === "string" ? node.name : "";
       const transformed = applyTransforms(baseName, buildConfig.nodes.transforms);
-      const renderedName = override?.rename ?? transformed;
+      const renamed = override?.rename ?? transformed;
+      const sourceLabel = input.sourceLabels.get(sourceRef.sourceId) ?? sourceRef.sourceId;
+      const renderedName = mergeMultipleSources ? `${renamed} · ${sourceLabel}` : renamed;
       const tags = override?.tags ?? [];
       const regionTag = tags.find(isRegionCode) ?? null;
       pool.push({
@@ -165,7 +182,8 @@ export const collectNodes = (
         sourceId: sourceRef.sourceId,
         disabled: override?.disabled === true,
         tags,
-        region: regionTag ?? detectRegion(renderedName),
+        // 来源名称只用于区分合并后的节点，不应参与节点地区推断。
+        region: regionTag ?? detectRegion(renamed),
         protocol: typeof node.type === "string" ? node.type : ""
       });
     }
@@ -274,14 +292,22 @@ export const generateGroups = (
   for (const generator of buildConfig.groups.generators) {
     if (generator.kind === "region-groups") {
       const overrides = generator.regionOverrides ?? {};
+      // scope 缺省表示历史配置，必须延续原来的完整地区分组行为。
+      const scope = generator.scope ?? "full";
+      const commonRegions = new Set<string>(COMMON_REGION_CODES);
       const buckets = new Map<string, PoolNode[]>();
       const unclassified: PoolNode[] = [];
+      const outsideScope: PoolNode[] = [];
       for (const node of enabledNodes) {
         const region = overrides[node.id] ?? node.region;
         if (region && isRegionCode(region)) {
-          const bucket = buckets.get(region) ?? [];
-          bucket.push(node);
-          buckets.set(region, bucket);
+          if (scope === "full" || commonRegions.has(region)) {
+            const bucket = buckets.get(region) ?? [];
+            bucket.push(node);
+            buckets.set(region, bucket);
+          } else {
+            outsideScope.push(node);
+          }
         } else {
           unclassified.push(node);
         }
@@ -308,18 +334,26 @@ export const generateGroups = (
                 }
         });
       }
-      if (unclassified.length > 0) {
-        if (generator.unclassified === "others") {
+      const others = [
+        ...outsideScope,
+        ...(generator.unclassified === "others" ? unclassified : [])
+      ];
+      if (others.length > 0) {
+        // common 模式下，非高频但已识别的地区始终归入 Others；unclassified
+        // 仍只控制真正无法识别地区的节点。
+        if (outsideScope.length > 0 || generator.unclassified === "others") {
           regionGroupNames.push("Others");
           builds.push({
             origin: "generator",
             entry: {
               name: "Others",
               type: "select",
-              proxies: unclassified.map((node) => node.renderedName)
+              proxies: others.map((node) => node.renderedName)
             }
           });
         }
+      }
+      if (unclassified.length > 0) {
         issues.push({
           kind: "unclassified-nodes",
           severity: "warn",
@@ -486,6 +520,17 @@ export const generateGroups = (
       ordered.push(build.entry);
       consumed.add(build.entry.name);
     }
+  }
+
+  // 推荐配置的 MATCH 指向独立 Final select 组。选择组的第一项代表默认策略，
+  // 但 Final 自身始终放在代理组列表末尾，避免动态地区组被追加到它后面。
+  const finalIndex =
+    buildConfig.rules.final.target === "Final"
+      ? ordered.findIndex((group) => group.name === "Final")
+      : -1;
+  if (finalIndex >= 0) {
+    const [finalGroup] = ordered.splice(finalIndex, 1);
+    ordered.push(finalGroup!);
   }
 
   return { groups: ordered, groupNames: new Set(ordered.map((group) => group.name)) };

@@ -102,6 +102,59 @@ describe("validateBuildConfig", () => {
       expect(result.value.nodes.custom).toEqual([]);
     }
   });
+
+  test("地区分组范围只接受 common / full，旧配置不强行补默认值", () => {
+    const valid = validateBuildConfig({
+      version: 1,
+      mode: "rebuild",
+      sources: [{ sourceId: "src_1" }],
+      groups: {
+        generators: [
+          {
+            kind: "region-groups",
+            groupType: "select",
+            unclassified: "others",
+            scope: "common"
+          }
+        ]
+      },
+      rules: { final: { target: "DIRECT" } }
+    });
+    expect(valid.ok).toBe(true);
+    if (valid.ok) {
+      expect(valid.value.groups.generators[0]).toHaveProperty("scope", "common");
+    }
+
+    const legacy = validateBuildConfig({
+      version: 1,
+      mode: "rebuild",
+      sources: [{ sourceId: "src_1" }],
+      groups: {
+        generators: [
+          { kind: "region-groups", groupType: "select", unclassified: "others" }
+        ]
+      },
+      rules: { final: { target: "DIRECT" } }
+    });
+    expect(legacy.ok).toBe(true);
+    if (legacy.ok) {
+      expect(legacy.value.groups.generators[0]).not.toHaveProperty("scope");
+    }
+
+    const invalid = validateBuildConfig({
+      version: 1,
+      mode: "rebuild",
+      sources: [{ sourceId: "src_1" }],
+      groups: {
+        generators: [
+          { kind: "region-groups", groupType: "select", scope: "tiny" }
+        ]
+      },
+      rules: { final: { target: "DIRECT" } }
+    });
+    expect(invalid.ok).toBe(false);
+    if (!invalid.ok) expect(invalid.errors.join()).toContain("common / full");
+  });
 });
 
 // ── 渲染管线 ─────────────────────────────────────────────────
@@ -268,6 +321,136 @@ describe("evaluate（rebuild）", () => {
 
     // rawPatch 深合并
     expect((result.document as Record<string, unknown>)["unified-delay"]).toBe(true);
+  });
+
+  test("common 地区模式仅生成常用组，其余已识别地区归入 Others", () => {
+    const config = structuredClone(buildConfig);
+    const regionGenerator = config.groups.generators.find(
+      (generator) => generator.kind === "region-groups"
+    );
+    if (!regionGenerator || regionGenerator.kind !== "region-groups") {
+      throw new Error("expected region generator");
+    }
+    regionGenerator.scope = "common";
+    regionGenerator.unclassified = "ignore";
+    config.sources = [{ sourceId: "src_region", enabled: true }];
+    config.nodes.custom = [];
+    config.groups.custom = [];
+    config.groups.order = ["Proxies"];
+    config.rules = { targets: [], order: [], prelude: [], final: { target: "Proxies" } };
+
+    const snapshot: ClashProxyDocument = {
+      proxies: [
+        { name: "🇯🇵 东京", type: "ss", server: "jp.example.com", port: 443 },
+        { name: "🇫🇷 巴黎", type: "ss", server: "fr.example.com", port: 443 },
+        { name: "神秘节点", type: "ss", server: "unknown.example.com", port: 443 }
+      ],
+      "proxy-groups": [],
+      rules: []
+    };
+    const result = evaluate(
+      createInput({
+        buildConfig: config,
+        sourceSnapshots: new Map([["src_region", snapshot]]),
+        sourceLabels: new Map([["src_region", "地区测试"]]),
+        rulesetSnapshots: new Map(),
+        customNodeSecrets: new Map()
+      })
+    );
+
+    const groups = new Map(result.document["proxy-groups"].map((group) => [group.name, group]));
+    expect(groups.has("JP")).toBe(true);
+    expect(groups.has("FR")).toBe(false);
+    expect(groups.get("Others")?.proxies).toEqual(["巴黎"]);
+    const warning = result.issues.find((issue) => issue.kind === "unclassified-nodes");
+    expect(warning?.refs.nodeIds).toHaveLength(1);
+  });
+
+  test("旧配置缺省 scope 时延续完整地区分组", () => {
+    const config = structuredClone(buildConfig);
+    config.sources = [{ sourceId: "src_region", enabled: true }];
+    config.nodes.custom = [];
+    config.groups.custom = [];
+    config.groups.order = ["Proxies"];
+    config.rules = { targets: [], order: [], prelude: [], final: { target: "Proxies" } };
+    const snapshot: ClashProxyDocument = {
+      proxies: [{ name: "🇫🇷 巴黎", type: "ss", server: "fr.example.com", port: 443 }],
+      "proxy-groups": [],
+      rules: []
+    };
+    const result = evaluate(
+      createInput({
+        buildConfig: config,
+        sourceSnapshots: new Map([["src_region", snapshot]]),
+        sourceLabels: new Map([["src_region", "地区测试"]]),
+        rulesetSnapshots: new Map(),
+        customNodeSecrets: new Map()
+      })
+    );
+    expect(result.document["proxy-groups"].some((group) => group.name === "FR")).toBe(true);
+  });
+
+  test("多源合并追加来源名并为相同端点生成唯一节点 ID", () => {
+    const sharedEndpoint = {
+      type: "ss",
+      server: "shared.example.com",
+      port: 443,
+      password: "secret"
+    };
+    const config: BuildConfig = {
+      version: 1,
+      mode: "rebuild",
+      sources: [
+        { sourceId: "src_a", enabled: true },
+        { sourceId: "src_b", enabled: true }
+      ],
+      nodes: { transforms: [], overrides: [], custom: [] },
+      groups: {
+        generators: [
+          { kind: "proxies-root", name: "Proxies", includeAuto: false, extraMembers: [] }
+        ],
+        custom: [
+          {
+            name: "Final",
+            type: "select",
+            members: [
+              { kind: "group", name: "Proxies" },
+              { kind: "builtin", policy: "DIRECT" }
+            ]
+          }
+        ],
+        order: ["Final", "Proxies"]
+      },
+      rules: { targets: [], order: [], prelude: [], final: { target: "Final" } },
+      config: { structured: {}, rawPatch: null }
+    };
+    const result = evaluate({
+      buildConfig: config,
+      sourceSnapshots: new Map([
+        ["src_a", { proxies: [{ name: "入口", ...sharedEndpoint }], "proxy-groups": [], rules: [] }],
+        ["src_b", { proxies: [{ name: "入口", ...sharedEndpoint }], "proxy-groups": [], rules: [] }]
+      ]),
+      sourceLabels: new Map([
+        ["src_a", "机场甲"],
+        ["src_b", "机场乙"]
+      ]),
+      rulesetSnapshots: new Map(),
+      customNodeSecrets: new Map(),
+      publicBaseUrl: "https://pp.example.com"
+    });
+
+    expect(result.document.proxies.map((node) => node.name)).toEqual([
+      "入口 · 机场甲",
+      "入口 · 机场乙"
+    ]);
+    expect(new Set(result.nodeIndex.map((node) => node.id)).size).toBe(2);
+    expect(result.nodeIndex.every((node) => node.id.startsWith("n_"))).toBe(true);
+    expect(result.document["proxy-groups"].at(-1)).toMatchObject({
+      name: "Final",
+      type: "select",
+      proxies: ["Proxies", "DIRECT"]
+    });
+    expect(result.document.rules?.at(-1)).toBe("MATCH,Final");
   });
 
   test("全局规则交付模式覆盖旧快照项的 emit", () => {

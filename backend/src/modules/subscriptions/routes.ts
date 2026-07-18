@@ -63,7 +63,11 @@ export const createSubscriptionRoutes = (
           start: {
             kind,
             templateId: str(startRaw, "templateId"),
-            confirmSensitive: startRaw.confirmSensitive === true
+            confirmSensitive: startRaw.confirmSensitive === true,
+            regionScope:
+              startRaw.regionScope === "common" || startRaw.regionScope === "full"
+                ? startRaw.regionScope
+                : undefined
           }
         });
         set.status = 201;

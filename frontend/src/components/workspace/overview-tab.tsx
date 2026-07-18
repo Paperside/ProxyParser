@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { formatRelative, usageSummary } from "../../lib/format";
 import {
   useSubscriptionMutations,
+  useTemplate,
   useTemplateExtractPreview,
   useTemplateMutations
 } from "../../lib/hooks";
@@ -166,11 +167,37 @@ const ExtractDialog = ({ onClose }: { onClose: () => void }) => {
 };
 
 export const OverviewTab = () => {
-  const { detail, config, workspaceIndex, saving } = useWorkspace();
+  const { detail, config, workspaceIndex, saving, editingLocked, update } = useWorkspace();
   const navigate = useNavigate();
   const mutations = useSubscriptionMutations(detail.id);
+  const recommendedTemplate = useTemplate("tpl_recommended");
   const [showExtract, setShowExtract] = useState(false);
   const usage = usageSummary(detail.usage);
+
+  const applyRecommendedGroupsAndRules = () => {
+    const payload = recommendedTemplate.data?.payload;
+    if (!payload) {
+      toast.error("最新推荐方案尚未加载，请稍后重试。");
+      return;
+    }
+    if (
+      !confirm(
+        "用最新推荐方案替换当前代理组与规则？订阅源、节点调整、基础配置和已发布版本都会保留；变更只会先保存为草稿。"
+      )
+    ) {
+      return;
+    }
+    const accepted = update((draft) => {
+      draft.mode = "rebuild";
+      draft.groups = structuredClone(payload.groups);
+      draft.rules = structuredClone(payload.rules);
+    });
+    if (accepted) {
+      toast.success("已套用最新推荐分组与规则，请预览并通过 Mihomo 校验后发布。");
+    } else {
+      toast.error("草稿已锁定，请重新载入最新版本后再试。");
+    }
+  };
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
@@ -225,6 +252,18 @@ export const OverviewTab = () => {
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
+            disabled={
+              saving ||
+              editingLocked ||
+              recommendedTemplate.isLoading ||
+              !recommendedTemplate.data?.payload
+            }
+            onClick={applyRecommendedGroupsAndRules}
+          >
+            套用最新推荐分组与规则
+          </Button>
+          <Button
+            size="sm"
             disabled={config.mode !== "rebuild" || saving}
             onClick={() => setShowExtract(true)}
           >
@@ -251,6 +290,8 @@ export const OverviewTab = () => {
         </div>
         {config.mode !== "rebuild" ? (
           <p className="mt-2 text-[11px] text-faint">保留源配置模式与订阅源绑定，不能提炼为通用模板。</p>
+        ) : recommendedTemplate.isError ? (
+          <p className="mt-2 text-[11px] text-err">最新推荐方案读取失败，暂时无法套用。</p>
         ) : saving ? (
           <p className="mt-2 text-[11px] text-faint">草稿保存完成后即可提炼，确保模板包含最新修改。</p>
         ) : null}
