@@ -21,7 +21,7 @@ export interface MihomoAsset {
 // 固定资产名和压缩包 SHA-256，避免构建过程跟随 latest 漂移或接受被替换的资产。
 export const MIHOMO_ASSETS = {
   "darwin-amd64": {
-    // 上游不带级别后缀的 amd64 资产从 v1.19.28 起按 GOAMD64=v3 构建。
+    // 上游不带级别后缀的 amd64 资产按 GOAMD64=v3 构建。
     // 固定 v1 资产，保证可在普通 x86-64 主机及 arm64 上的 amd64 构建模拟器中执行。
     name: "mihomo-darwin-amd64-v1-v1.19.28.gz",
     sha256: "dc49247406556ee78e9977b3e393d96389d64531ec02738fb848cbea6c8c21ad",
