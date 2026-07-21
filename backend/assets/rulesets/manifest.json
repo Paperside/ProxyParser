@@ -1,5 +1,5 @@
 {
-  "comment": "内置规则源清单。file 为仓库内离线快照（离线内置原则，技术方案 §8）；scripts/fetch-rulesets.ts 负责更新。数据来自 blackmatrix7/ios_rule_script（Clash No_Resolve 变体），每个规则组统一合并为单份 classical payload：sources 里 kind=\"domain\" 的条目会被脚本转换成 DOMAIN/DOMAIN-SUFFIX 规则行后与 kind=\"classical\" 条目合并去重。groupKind 驱动推荐模板生成同名策略组：proxy-first（境外服务，默认走 Proxies）/ direct-first（国内服务，默认直连）/ reject（直接落 REJECT，不建组）/ direct-builtin（直接落 DIRECT，不建组）。",
+  "comment": "内置规则源清单。file 为仓库内离线快照（离线内置原则，技术方案 §8）；scripts/fetch-rulesets.ts 负责更新。sources 的 kind 描述上游 payload 行为，最终按 entry.behavior 合并为 domain/ipcidr/classical 快照。groupKind 驱动推荐模板生成策略组：同一 recommendedTarget 的多个规则集会合并进同一规则块与策略组；proxy-first（境外服务，默认走 Proxies）/ direct-first（国内服务，默认直连）/ reject（直接落 REJECT，不建组）/ direct-builtin（直接落 DIRECT，不建组）。",
   "entries": [
     {
       "slug": "apple",
@@ -191,8 +191,8 @@
     },
     {
       "slug": "china",
-      "name": "China",
-      "description": "常用中国大陆域名与少量 IP 规则（含 GEOIP CN 兜底），建议指向 China 策略组（默认直连）。",
+      "name": "China（旧版兼容）",
+      "description": "旧版混合型 China 规则集，保留用于已发布版本回滚；新配置请使用 China Domain + China IP。",
       "behavior": "classical",
       "groupKind": "direct-first",
       "recommendedTarget": "China",
@@ -200,7 +200,46 @@
         { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/China/China_Classical_No_Resolve.yaml" }
       ],
       "extraRules": ["GEOIP,CN,no-resolve"],
+      "includeInRecommendedTemplate": false,
       "file": "china.yaml"
+    },
+    {
+      "slug": "china-domain",
+      "name": "China Domain",
+      "description": "常用中国大陆域名规则，建议与 China IP 一同指向 China 策略组（默认直连）。",
+      "behavior": "domain",
+      "groupKind": "direct-first",
+      "recommendedTarget": "China",
+      "sources": [
+        { "kind": "domain", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/China/China_Domain.yaml" }
+      ],
+      "extraRules": [],
+      "recommendedManualRules": [
+        { "type": "DOMAIN-KEYWORD", "value": ".tmall.com" },
+        { "type": "DOMAIN-KEYWORD", "value": "alicdn" },
+        { "type": "DOMAIN-KEYWORD", "value": "alipay" },
+        { "type": "DOMAIN-KEYWORD", "value": "aliyun" },
+        { "type": "DOMAIN-KEYWORD", "value": "baidu" },
+        { "type": "DOMAIN-KEYWORD", "value": "beplay" },
+        { "type": "DOMAIN-KEYWORD", "value": "microsoft" },
+        { "type": "DOMAIN-KEYWORD", "value": "officecdn" },
+        { "type": "DOMAIN-KEYWORD", "value": "taobao" }
+      ],
+      "file": "china-domain.yaml"
+    },
+    {
+      "slug": "china-ip",
+      "name": "China IP",
+      "description": "完整中国大陆 IPv4/IPv6 CIDR，并保留 China 规则中的服务商补充网段；建议与 China Domain 一同指向 China 策略组（默认直连）。",
+      "behavior": "ipcidr",
+      "groupKind": "direct-first",
+      "recommendedTarget": "China",
+      "sources": [
+        { "kind": "ipcidr", "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.yaml" },
+        { "kind": "classical", "url": "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/China/China_Classical_No_Resolve.yaml" }
+      ],
+      "extraRules": [],
+      "file": "china-ip.yaml"
     },
     {
       "slug": "chinamax",

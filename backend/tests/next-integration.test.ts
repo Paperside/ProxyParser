@@ -245,7 +245,10 @@ describe("发布管线", () => {
     expect(doc["proxy-groups"].at(-1)?.proxies).toEqual(["Proxies", "DIRECT"]);
     expect(doc.rules?.[doc.rules.length - 1]).toBe("MATCH,Final");
     // 规则快照以不可变哈希端点输出
-    const providers = doc["rule-providers"] as Record<string, { url: string; path: string }>;
+    const providers = doc["rule-providers"] as Record<
+      string,
+      { url: string; path: string; behavior: string }
+    >;
     expect(Object.values(providers).every((p) => p.url.startsWith("https://pp.test/rs/"))).toBe(
       true
     );
@@ -255,7 +258,19 @@ describe("发布管线", () => {
       expect(provider.path).toBe(`./rule-providers/${hash}.yaml`);
     }
     expect(doc.rules).toContain("RULE-SET,anthropic,Anthropic");
-    expect(doc.rules).toContain("RULE-SET,china,China");
+    expect(groupNames.filter((name) => name === "China")).toHaveLength(1);
+    expect(doc.rules).toContain("RULE-SET,china-domain,China");
+    expect(doc.rules).toContain("RULE-SET,china-ip,China,no-resolve");
+    expect(doc.rules).toContain("DOMAIN-KEYWORD,baidu,China");
+    expect(doc.rules).not.toContain("RULE-SET,china,China");
+    expect(providers["china-domain"]?.behavior).toBe("domain");
+    expect(providers["china-ip"]?.behavior).toBe("ipcidr");
+    expect(doc.rules!.indexOf("RULE-SET,china-domain,China")).toBeLessThan(
+      doc.rules!.indexOf("RULE-SET,china-ip,China,no-resolve")
+    );
+    expect(doc.rules!.indexOf("RULE-SET,china-ip,China,no-resolve")).toBeLessThan(
+      doc.rules!.indexOf("MATCH,Final")
+    );
     expect(doc.rules).toContain("RULE-SET,advertisinglite,REJECT");
     expect(providers).not.toHaveProperty("chinamax");
     expect(providers).not.toHaveProperty("advertising");
@@ -1900,12 +1915,41 @@ describe("上游吸收", () => {
 describe("规则库", () => {
   test("内置规则源离线可用且有钉版本快照", () => {
     const ctx = createTestContext();
+    const manifest = loadBuiltinRulesetManifest();
     const list = ctx.rulesetService.list(ctx.userId);
-    expect(list.length).toBeGreaterThanOrEqual(10);
+    expect(manifest).toHaveLength(21);
+    expect(list).toHaveLength(manifest.length);
     const openai = list.find((entry) => entry.slug === "openai")!;
     expect(openai.latestSnapshotHash).toBeTruthy();
     const snapshot = ctx.rulesetService.getPublicSnapshot(openai.latestSnapshotHash!);
     expect(snapshot?.content).toContain("openai");
+  });
+
+  test("内置规则 seed 遇到用户 slug/id 冲突时原子拒绝且不改写 catalog", () => {
+    const ctx = createTestContext();
+    ctx.db.query(`
+      UPDATE ruleset_catalog
+      SET owner_user_id = ?, is_official = 0, name = '用户自建 China Domain'
+      WHERE id = 'rsc_china_domain'
+    `).run(ctx.userId);
+
+    expect(() => seedBuiltinRulesetCatalog(ctx.db)).toThrow(
+      "内置规则集标识冲突：china-domain / rsc_china_domain"
+    );
+    const row = ctx.db.query<{
+      name: string;
+      owner_user_id: string | null;
+      is_official: number;
+    }>(`
+      SELECT name, owner_user_id, is_official
+      FROM ruleset_catalog
+      WHERE id = 'rsc_china_domain'
+    `).get();
+    expect(row).toEqual({
+      name: "用户自建 China Domain",
+      owner_user_id: ctx.userId,
+      is_official: 0
+    });
   });
 
   test("内置规则后处理补齐 China/ChinaMax GEOIP 与 Anthropic 官方域名", () => {
@@ -1950,6 +1994,111 @@ describe("规则库", () => {
     const chinaMaxPayload = payloadBySlug.get("chinamax")!;
     expect(chinaMaxPayload.some((rule) => rule.startsWith("IP-CIDR,") && rule.endsWith(",no-resolve"))).toBe(true);
     expect(chinaMaxPayload.some((rule) => rule.startsWith("IP-CIDR6,") && rule.endsWith(",no-resolve"))).toBe(true);
+  });
+
+  test("推荐 China 使用纯 domain 与完整 ipcidr 两个离线快照", () => {
+    const ctx = createTestContext();
+    const manifest = loadBuiltinRulesetManifest();
+    const legacy = manifest.find((entry) => entry.slug === "china")!;
+    const domainEntry = manifest.find((entry) => entry.slug === "china-domain")!;
+    const ipEntry = manifest.find((entry) => entry.slug === "china-ip")!;
+
+    expect(legacy.includeInRecommendedTemplate).toBe(false);
+    expect(domainEntry).toMatchObject({ behavior: "domain", recommendedTarget: "China" });
+    expect(ipEntry).toMatchObject({ behavior: "ipcidr", recommendedTarget: "China" });
+
+    const catalogBySlug = new Map(
+      ctx.rulesetService.list(ctx.userId).map((entry) => [entry.slug, entry] as const)
+    );
+    const domainSnapshot = ctx.rulesetService.getPublicSnapshot(
+      catalogBySlug.get("china-domain")!.latestSnapshotHash!
+    )!;
+    const ipSnapshot = ctx.rulesetService.getPublicSnapshot(
+      catalogBySlug.get("china-ip")!.latestSnapshotHash!
+    )!;
+    const domainPayload = (yaml.load(domainSnapshot.content) as { payload: string[] }).payload;
+    const ipPayload = (yaml.load(ipSnapshot.content) as { payload: string[] }).payload;
+
+    expect(domainSnapshot.behavior).toBe("domain");
+    expect(domainPayload.length).toBeGreaterThan(3_000);
+    expect(domainPayload.every((entry) => !entry.includes(","))).toBe(true);
+    expect(domainPayload.some((entry) => entry.includes("GEOIP"))).toBe(false);
+
+    expect(ipSnapshot.behavior).toBe("ipcidr");
+    expect(ipPayload.length).toBeGreaterThan(5_000);
+    expect(ipPayload.every((entry) => /^[0-9a-f:.]+\/\d+$/i.test(entry))).toBe(true);
+    expect(ipPayload.some((entry) => entry.includes("GEOIP"))).toBe(false);
+    expect(ipPayload.some((entry) => entry.includes(":"))).toBe(true);
+
+    const recommended = ctx.templateRepository.findLatestPayload(RECOMMENDED_TEMPLATE_ID)!;
+    const chinaGroups = recommended.groups.custom.filter((group) => group.name === "China");
+    const chinaBlocks = recommended.rules.targets.filter((block) => block.target === "China");
+    expect(chinaGroups).toHaveLength(1);
+    expect(chinaBlocks).toHaveLength(1);
+    expect(chinaBlocks[0]!.items).toEqual([
+      expect.objectContaining({ kind: "snapshot", slug: "china-domain" }),
+      expect.objectContaining({ kind: "snapshot", slug: "china-ip", extra: "no-resolve" }),
+      expect.objectContaining({
+        kind: "manual",
+        entries: expect.arrayContaining([
+          { type: "DOMAIN-KEYWORD", value: "baidu" },
+          { type: "DOMAIN-KEYWORD", value: "taobao" }
+        ])
+      })
+    ]);
+    expect(
+      chinaBlocks[0]!.items.find((item) => item.kind === "manual")?.entries
+    ).toHaveLength(9);
+    expect(recommended.rules.order.filter((target) => target === "China")).toHaveLength(1);
+  });
+
+  test("升级重启 seed 不改写旧 China 快照或已发布 Release", () => {
+    const ctx = createTestContext();
+    const { subscription, token } = ctx.subscriptionService.create(ctx.userId, {
+      displayName: "旧 China 发布兼容",
+      sourceIds: [ctx.source.id],
+      start: { kind: "recommended" }
+    });
+    const detail = ctx.subscriptionService.getDetail(ctx.userId, subscription.id);
+    const draft = structuredClone(detail.draftBuildConfig!);
+    const chinaBlock = draft.rules.targets.find((block) => block.target === "China")!;
+    const legacy = ctx.rulesetService.list(ctx.userId).find((entry) => entry.slug === "china")!;
+    chinaBlock.items = [
+      {
+        kind: "snapshot",
+        catalogId: legacy.id,
+        slug: legacy.slug,
+        hash: legacy.latestSnapshotHash!,
+        emit: "provider"
+      }
+    ];
+    ctx.subscriptionService.saveDraft(
+      ctx.userId,
+      subscription.id,
+      draft,
+      detail.draftRevision
+    );
+    const release = ctx.subscriptionService.publish(ctx.userId, subscription.id, {
+      trigger: "manual"
+    });
+    expect(release.renderedYaml).toContain("RULE-SET,china,China");
+    expect(release.renderedYaml).not.toContain("RULE-SET,china-ip,China");
+
+    seedBuiltinRulesetCatalog(ctx.db);
+    seedBuiltinTemplates(ctx.db);
+
+    const delivered = ctx.subscriptionService.deliver(
+      subscription.id,
+      token.token,
+      "token",
+      null,
+      "ClashMi/upgrade-regression"
+    );
+    expect(delivered.yamlText).toBe(release.renderedYaml);
+    expect(delivered.renderedHash).toBe(release.renderedHash);
+    expect(ctx.rulesetService.getPublicSnapshot(legacy.latestSnapshotHash!)?.content).toContain(
+      "GEOIP,CN,no-resolve"
+    );
   });
 
   test("启动 seed 提升缺少 mandatory extraRules 的旧快照且不降级较新的完整快照", () => {
@@ -2450,13 +2599,46 @@ describe("规则追踪器", () => {
     expect(direct.verdict).toBe("hit");
     expect(direct.target).toBe("DIRECT");
 
+    const mobileBareIps = [
+      "203.119.238.240",
+      "123.125.246.93",
+      "123.125.18.132",
+      "116.153.83.96",
+      "101.91.140.224",
+      "203.119.206.8",
+      "116.162.122.9",
+      "101.91.140.124",
+      "58.19.186.158",
+      "58.19.186.38",
+      "203.119.238.194",
+      "58.250.127.139",
+      "111.202.18.87",
+      "58.19.186.170",
+      "58.19.186.46",
+      "111.32.167.96",
+      "122.225.31.27",
+      "58.222.46.26",
+      "111.161.40.135",
+      "150.139.224.14",
+      "150.138.37.167",
+      "39.137.35.133",
+      "111.170.10.15",
+      "150.139.224.10",
+      "116.63.10.31",
+      "111.202.18.20"
+    ];
+    for (const ip of mobileBareIps) {
+      const result = ctx.subscriptionService.trace(ctx.userId, subscription.id, ip, false);
+      expect(result.verdict).toBe("hit");
+      expect(result.target).toBe("China");
+      expect(result.matched?.ruleText).toContain("RULE-SET,china-ip,China,no-resolve");
+    }
+
     // 兜底断言用一个不落入任何 CIDR/域名规则集的公共 IP
     const fallback = ctx.subscriptionService.trace(ctx.userId, subscription.id, "8.8.8.8", false);
     expect(fallback.verdict).toBe("final");
     expect(fallback.target).toBe("Final");
-    expect(fallback.maybeNotes.some((note) => note.includes("GEOIP,CN,no-resolve"))).toBe(
-      true
-    );
+    expect(fallback.maybeNotes.some((note) => note.includes("GEOIP,CN,no-resolve"))).toBe(false);
   });
 });
 

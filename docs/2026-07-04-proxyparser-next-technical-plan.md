@@ -17,7 +17,7 @@ ProxyParser Next 面向 Clash/Mihomo，核心模型是“订阅源快照 + 声�
 3. Release 与规则快照不可变；回滚生成新 Release，不改写历史。
 4. 规则源更新只生成新快照与更新提示，不静默改写 BuildConfig。
 5. 发布必须先通过结构校验；手动发布必须取得真实 mihomo 内核通过结果，后台自动发布在内核可用时同样经过门禁。
-6. 运行所需 geodata、17 个内置规则集及官方推荐模板均有仓库内离线资产，联网只用于更新。
+6. 运行所需 geodata、21 个内置规则集及官方推荐模板均有仓库内离线资产，联网只用于更新。
 7. 自建节点与模板版本的敏感字段、长期 token 和新建短期 token 的明文只以 AES-256-GCM 密文落库；匹配的密钥必须与数据库一起持久化和备份。
 
 ## 1. 运行时基线
@@ -163,7 +163,7 @@ URL 源同步成功后生成节点增删、改名和凭据变化报告，并回�
 
 ## 8. 规则库
 
-`backend/assets/rulesets/manifest.json` 定义 17 个内置规则集及合并源，配套 YAML 是首启 seed 的离线快照。`directory.json` 是可搜索的扩展目录索引，浏览目录本身不落库。
+`backend/assets/rulesets/manifest.json` 定义 21 个内置规则集及合并源，配套 YAML 是首启 seed 的离线快照。`directory.json` 是可搜索的扩展目录索引，浏览目录本身不落库。
 
 规则处理流程：
 
@@ -229,7 +229,7 @@ mihomo -t -f <config> -d <temp-dir>
 - 自建节点结构保留。默认把 secret 变为占位符；用户也可明确选择保留，此时敏感字段只进入 `template_version_secrets` 密文表，payload/API 仅携带 `embeddedSecret` 标记。应用含凭据模板必须确认，并为接收者创建独立的 `custom_node_secrets` 引用。公开/链接分享含凭据模板需要二次确认并写审计记录，审计不含秘密内容。
 - patch 模式因绑定单一源，明确禁止提炼。
 
-`extractTemplate` 与 `instantiateTemplate` 都是纯函数，往返收敛由测试锁定。官方“推荐方案”由 `seed-builtin-templates.ts` 根据仓库内置规则目录生成，默认选用 AdvertisingLite 与带 `GEOIP,CN,no-resolve` 兜底的 China；完整版 Advertising 与 ChinaMax 仍可手动选用但不进入推荐方案。全部规则有离线资产，首启不依赖网络。
+`extractTemplate` 与 `instantiateTemplate` 都是纯函数，往返收敛由测试锁定。官方“推荐方案”由 `seed-builtin-templates.ts` 根据仓库内置规则目录生成，默认选用 AdvertisingLite，并将 `china-domain` 与带 `no-resolve` 的完整 `china-ip` 同时指向 China；旧版混合 China、完整版 Advertising 与 ChinaMax 仍可手动选用但不进入推荐方案。全部规则有离线资产，首启不依赖网络。
 
 ## 14. 前端
 

@@ -103,6 +103,37 @@ describe("validateBuildConfig", () => {
     }
   });
 
+  test("snapshot 规则项保留 no-resolve 修饰符", () => {
+    const result = validateBuildConfig({
+      version: 1,
+      mode: "rebuild",
+      sources: [{ sourceId: "src_1" }],
+      rules: {
+        targets: [
+          {
+            target: "DIRECT",
+            items: [
+              {
+                kind: "snapshot",
+                catalogId: "rsc_china_ip",
+                slug: "china-ip",
+                hash: "hash_cn_ip",
+                emit: "provider",
+                extra: "no-resolve"
+              }
+            ]
+          }
+        ],
+        order: ["DIRECT"],
+        final: { target: "DIRECT" }
+      }
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.rules.targets[0]!.items[0]).toHaveProperty("extra", "no-resolve");
+    }
+  });
+
   test("地区分组范围只接受 common / full，旧配置不强行补默认值", () => {
     const valid = validateBuildConfig({
       version: 1,
@@ -466,6 +497,34 @@ describe("evaluate（rebuild）", () => {
     const provider = evaluate(createInput({ buildConfig: providerConfig }));
     expect(provider.document.rules).toContain("RULE-SET,cn-small,DIRECT");
     expect(provider.document["rule-providers"]).toHaveProperty("cn-small");
+  });
+
+  test("ipcidr 快照的 no-resolve 在 provider 与内联模式都保留", () => {
+    const config = structuredClone(buildConfig);
+    const directItem = config.rules.targets.find((block) => block.target === "DIRECT")!
+      .items[0]!;
+    if (directItem.kind !== "snapshot") throw new Error("expected snapshot rule item");
+    directItem.hash = "hash_cn_ip";
+    directItem.slug = "china-ip";
+    directItem.emit = "provider";
+    directItem.extra = "no-resolve";
+
+    const snapshots = new Map(createInput().rulesetSnapshots);
+    snapshots.set("hash_cn_ip", {
+      hash: "hash_cn_ip",
+      slug: "china-ip",
+      behavior: "ipcidr",
+      content: "payload:\n  - 58.19.0.0/16\n  - 2408:8000::/20\n",
+      isPublic: true
+    });
+
+    const provider = evaluate(createInput({ buildConfig: config, rulesetSnapshots: snapshots }));
+    expect(provider.document.rules).toContain("RULE-SET,china-ip,DIRECT,no-resolve");
+
+    config.rules.deliveryMode = "inline";
+    const inline = evaluate(createInput({ buildConfig: config, rulesetSnapshots: snapshots }));
+    expect(inline.document.rules).toContain("IP-CIDR,58.19.0.0/16,DIRECT,no-resolve");
+    expect(inline.document.rules).toContain("IP-CIDR6,2408:8000::/20,DIRECT,no-resolve");
   });
 
   test("内联模式遇到无法表达的通配符时阻止发布", () => {

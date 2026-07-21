@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { createId } from "../../lib/ids";
 import { normalizeRulesetContent } from "../../lib/rulesets/normalize";
-import { decodeMultiSourceSpec, mergeMultiSourceClassical } from "../../lib/rulesets/merge";
+import { decodeMultiSourceSpec, mergeMultiSourceRuleset } from "../../lib/rulesets/merge";
 import { parsePastedRules, type PasteParseReport } from "../../lib/rulesets/parse";
 import { logger } from "../../lib/logging/logger";
 import type { EventRepository } from "../events/event.repository";
@@ -180,7 +180,7 @@ export class RulesetService {
     // 走同一套合并/规范化逻辑，保证在线复检与离线快照重新生成结果一致。
     const multiSource = decodeMultiSourceSpec(entry.sourceUrl);
     const normalized = multiSource
-      ? await mergeMultiSourceClassical(multiSource)
+      ? await mergeMultiSourceRuleset(multiSource, entry.behavior)
       : normalizeRulesetContent(await this.fetchText(entry.sourceUrl));
     const snapshot: RulesetSnapshotRecord = {
       hash: sha256Hex(normalized.content),

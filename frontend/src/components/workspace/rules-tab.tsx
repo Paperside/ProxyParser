@@ -35,7 +35,13 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
   const { update, editingLocked } = useWorkspace();
   const [busy, setBusy] = useState<string | null>(null);
 
-  const pushToBlock = (catalogId: string, slug: string, hash: string, emit: "inline" | "provider") =>
+  const pushToBlock = (
+    catalogId: string,
+    slug: string,
+    hash: string,
+    emit: "inline" | "provider",
+    extra?: "no-resolve"
+  ) =>
     update((draft) => {
       let block = draft.rules.targets.find((candidate) => candidate.target === target);
       if (!block) {
@@ -43,7 +49,14 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
         draft.rules.targets.push(block);
         draft.rules.order.push(target);
       }
-      block.items.push({ kind: "snapshot", catalogId, slug, hash, emit });
+      block.items.push({
+        kind: "snapshot",
+        catalogId,
+        slug,
+        hash,
+        emit,
+        ...(extra ? { extra } : {})
+      });
     });
 
   const importOne = async (catalogId: string, slug: string) => {
@@ -54,7 +67,13 @@ const ImportRulesetDialog = ({ target, onClose }: { target: string; onClose: () 
     setBusy(catalogId);
     try {
       const snapshot = await mutations.ensureSnapshot.mutateAsync(catalogId);
-      if (!pushToBlock(catalogId, slug, snapshot.hash, "provider")) {
+      if (!pushToBlock(
+        catalogId,
+        slug,
+        snapshot.hash,
+        "provider",
+        snapshot.behavior === "ipcidr" ? "no-resolve" : undefined
+      )) {
         throw new Error("草稿在导入期间被锁定。请重新载入后再试。");
       }
       toast.success(`已导入 ${slug}（钉住 @${snapshot.hash.slice(0, 8)}）`);
@@ -261,7 +280,7 @@ const AddBlockDialog = ({ onClose }: { onClose: () => void }) => {
 
 const itemSummary = (item: RuleItem) =>
   item.kind === "snapshot"
-    ? `${item.slug} @${item.hash.slice(0, 8)} · ${item.emit === "provider" ? "provider" : "内联"}`
+    ? `${item.slug} @${item.hash.slice(0, 8)} · ${item.emit === "provider" ? "provider" : "内联"}${item.extra ? ` · ${item.extra}` : ""}`
     : `${item.entries.length} 条手动规则`;
 
 const SYNC_SKIP_REASON: Record<string, string> = {

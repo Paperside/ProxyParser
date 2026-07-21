@@ -1,11 +1,13 @@
 import yaml from "js-yaml";
 
-// 多源规则合并：用于 blackmatrix7 风格「大号纯域名文件 + 小号关键词/IP补充文件」的规则组，
+// 多源规则合并：按目标 behavior 生成 domain/ipcidr/classical payload，
 // 拉取脚本（scripts/fetch-rulesets.ts）与在线复检（ruleset.service.ts）共用同一份逻辑，
 // 保证离线快照与远端实时重新抓取的结果字节级一致。
 
+export type RulesetBehavior = "domain" | "ipcidr" | "classical";
+
 export interface RulesetSource {
-  kind: "domain" | "classical";
+  kind: RulesetBehavior;
   url: string;
 }
 
@@ -22,6 +24,56 @@ const domainEntryToClassical = (entry: string): string | null => {
   if (trimmed.includes("*")) return null;
   if (trimmed.startsWith("+.")) return `DOMAIN-SUFFIX,${trimmed.slice(2)}`;
   return `DOMAIN,${trimmed}`;
+};
+
+const classicalEntryToIpCidr = (entry: string): string | null => {
+  const [type, value] = entry.split(",").map((part) => part.trim());
+  if ((type !== "IP-CIDR" && type !== "IP-CIDR6") || !value) return null;
+  return value;
+};
+
+const convertEntry = (
+  entry: string,
+  sourceBehavior: RulesetBehavior,
+  targetBehavior: RulesetBehavior
+): string | null => {
+  const trimmed = entry.trim();
+  if (trimmed.length === 0) return null;
+
+  if (targetBehavior === "classical") {
+    if (sourceBehavior === "domain") return domainEntryToClassical(trimmed);
+    if (sourceBehavior === "ipcidr") {
+      return trimmed.includes(":")
+        ? `IP-CIDR6,${trimmed},no-resolve`
+        : `IP-CIDR,${trimmed},no-resolve`;
+    }
+    return trimmed;
+  }
+
+  if (targetBehavior === "domain") {
+    if (sourceBehavior !== "domain") return null;
+    return trimmed;
+  }
+
+  if (sourceBehavior === "ipcidr") return trimmed;
+  if (sourceBehavior === "classical") return classicalEntryToIpCidr(trimmed);
+  return null;
+};
+
+const normalizeExtraEntry = (entry: string, targetBehavior: RulesetBehavior): string | null => {
+  const trimmed = entry.trim();
+  if (trimmed.length === 0) return null;
+  if (targetBehavior === "classical") return trimmed;
+  if (targetBehavior === "domain") {
+    if (trimmed.includes(",")) {
+      throw new Error(`domain extraRules 只能包含 domain payload 条目：${trimmed}`);
+    }
+    return trimmed;
+  }
+  if (!/^[0-9a-f:.]+\/\d+$/i.test(trimmed)) {
+    throw new Error(`ipcidr extraRules 只能包含 CIDR：${trimmed}`);
+  }
+  return trimmed;
 };
 
 const fetchPayloadEntries = async (url: string): Promise<string[]> => {
@@ -43,8 +95,9 @@ const fetchPayloadEntries = async (url: string): Promise<string[]> => {
     .filter((entry) => entry.length > 0);
 };
 
-export const mergeMultiSourceClassical = async (
-  spec: MultiSourceSpec
+export const mergeMultiSourceRuleset = async (
+  spec: MultiSourceSpec,
+  targetBehavior: RulesetBehavior
 ): Promise<{ content: string; entryCount: number }> => {
   const seen = new Set<string>();
   const lines: string[] = [];
@@ -58,16 +111,13 @@ export const mergeMultiSourceClassical = async (
   for (const source of spec.sources) {
     const rawEntries = await fetchPayloadEntries(source.url);
     for (const raw of rawEntries) {
-      if (source.kind === "domain") {
-        const converted = domainEntryToClassical(raw);
-        if (converted) push(converted);
-      } else {
-        push(raw);
-      }
+      const converted = convertEntry(raw, source.kind, targetBehavior);
+      if (converted) push(converted);
     }
   }
   for (const extra of spec.extraRules) {
-    push(extra);
+    const normalized = normalizeExtraEntry(extra, targetBehavior);
+    if (normalized) push(normalized);
   }
 
   return {
@@ -75,6 +125,9 @@ export const mergeMultiSourceClassical = async (
     entryCount: lines.length
   };
 };
+
+export const mergeMultiSourceClassical = async (spec: MultiSourceSpec) =>
+  mergeMultiSourceRuleset(spec, "classical");
 
 // source_url 落库编码：官方多源规则组存 JSON（{sources, extraRules}），
 // 用户从 URL 导入的自定义规则源仍是裸 URL 字符串，两者共用同一列。
@@ -92,7 +145,7 @@ export const decodeMultiSourceSpec = (raw: string): MultiSourceSpec | null => {
         (item): item is RulesetSource =>
           typeof item === "object" &&
           item !== null &&
-          (item as RulesetSource).kind !== undefined &&
+          ["domain", "ipcidr", "classical"].includes((item as RulesetSource).kind) &&
           typeof (item as RulesetSource).url === "string"
       );
       const extraRules = Array.isArray((parsed as Record<string, unknown>).extraRules)

@@ -13,9 +13,9 @@ import {
 // 约束：只引用内置规则源（离线快照随仓库分发），保证黄金路径全离线可用。
 // 原则：不默认清洗节点名——transforms 留空，由用户主动开启。
 //
-// 规则组 = 同名策略组：manifest 里每条 groupKind 为 proxy-first/direct-first 的规则组各生成一个
-// 同名 select 策略组；境外服务（proxy-first）默认选中 Proxies，国内相关服务（direct-first）默认选中
-// DIRECT（策略组仍保留切换到 Proxies/Auto 的能力，只是默认成员顺序不同）。
+// 规则组 = 同名策略组：manifest 里 groupKind 为 proxy-first/direct-first 的规则集按
+// recommendedTarget 聚合到同一个规则块与 select 策略组；境外服务（proxy-first）默认选中 Proxies，
+// 国内相关服务（direct-first）默认选中 DIRECT（策略组仍保留切换到 Proxies/Auto 的能力）。
 // AdvertisingLite（reject）与 Lan（direct-builtin）没有对应策略组，规则直接落到 REJECT/DIRECT 内置策略。
 // manifest 可用 includeInRecommendedTemplate=false 保留高级规则集供手动选择，同时避免其进入推荐方案。
 
@@ -23,10 +23,20 @@ export const OFFICIAL_USER_ID = "user_official";
 export const RECOMMENDED_TEMPLATE_ID = "tpl_recommended";
 export const RECOMMENDED_TEMPLATE_SLUG = "recommended";
 
-const snapshotItem = (hashBySlug: Map<string, string>, slug: string): RuleItem | null => {
-  const hash = hashBySlug.get(slug);
+const snapshotItem = (
+  hashBySlug: Map<string, string>,
+  entry: ReturnType<typeof loadBuiltinRulesetManifest>[number]
+): RuleItem | null => {
+  const hash = hashBySlug.get(entry.slug);
   if (!hash) return null;
-  return { kind: "snapshot", catalogId: catalogIdForSlug(slug), slug, hash, emit: "provider" };
+  return {
+    kind: "snapshot",
+    catalogId: catalogIdForSlug(entry.slug),
+    slug: entry.slug,
+    hash,
+    emit: "provider",
+    ...(entry.behavior === "ipcidr" ? { extra: "no-resolve" } : {})
+  };
 };
 
 // 地区分组是按实际节点动态生成的：某个地区码当前没有节点时，渲染阶段会静默跳过
@@ -78,25 +88,51 @@ export const buildRecommendedTemplatePayload = (): TemplatePayloadV2 | null => {
   for (const groupKind of ["direct-builtin", "reject"] as const) {
     const entry = recommendedEntries.find((candidate) => candidate.groupKind === groupKind);
     if (!entry) continue;
-    const item = snapshotItem(hashBySlug, entry.slug);
+    const item = snapshotItem(hashBySlug, entry);
     if (!item) continue;
     ruleTargets.push({ target: entry.recommendedTarget, items: [item] });
     ruleOrder.push(entry.recommendedTarget);
   }
 
+  const groupKindByTarget = new Map<string, "proxy-first" | "direct-first">();
+  const ruleBlockByTarget = new Map<string, RuleTargetBlock>();
+
   for (const entry of recommendedEntries) {
     if (entry.groupKind !== "proxy-first" && entry.groupKind !== "direct-first") continue;
-    const item = snapshotItem(hashBySlug, entry.slug);
+    const item = snapshotItem(hashBySlug, entry);
     if (!item) continue;
     const groupName = entry.recommendedTarget;
-    customGroups.push({
-      name: groupName,
-      type: "select",
-      members: entry.groupKind === "proxy-first" ? proxyFirstMembers() : directFirstMembers()
+    const existingKind = groupKindByTarget.get(groupName);
+    if (existingKind && existingKind !== entry.groupKind) {
+      throw new Error(`推荐目标 ${groupName} 的 groupKind 冲突：${existingKind} / ${entry.groupKind}`);
+    }
+    if (!existingKind) {
+      groupKindByTarget.set(groupName, entry.groupKind);
+      customGroups.push({
+        name: groupName,
+        type: "select",
+        members: entry.groupKind === "proxy-first" ? proxyFirstMembers() : directFirstMembers()
+      });
+      groupOrder.push(groupName);
+      const block = { target: groupName, items: [item] };
+      ruleBlockByTarget.set(groupName, block);
+      ruleTargets.push(block);
+      ruleOrder.push(groupName);
+      continue;
+    }
+    ruleBlockByTarget.get(groupName)!.items.push(item);
+  }
+
+  // domain behavior 只能承载精确/后缀域名；旧 classical 规则中的 DOMAIN-KEYWORD
+  // 作为同一目标块的手动规则保留，避免拆分 provider 时静默改变既有推荐语义。
+  for (const entry of recommendedEntries) {
+    if (!entry.recommendedManualRules?.length) continue;
+    const block = ruleTargets.find((candidate) => candidate.target === entry.recommendedTarget);
+    if (!block) continue;
+    block.items.push({
+      kind: "manual",
+      entries: entry.recommendedManualRules.map((rule) => ({ ...rule }))
     });
-    groupOrder.push(groupName);
-    ruleTargets.push({ target: groupName, items: [item] });
-    ruleOrder.push(groupName);
   }
 
   // MATCH 不直接绑死 Proxies：客户端可在 Final 里临时切为 DIRECT，

@@ -127,7 +127,14 @@ export interface RuleTargetBlock {
 }
 
 export type RuleItem =
-  | { kind: "snapshot"; catalogId: string; slug: string; hash: string; emit: "provider" | "inline" }
+  | {
+      kind: "snapshot";
+      catalogId: string;
+      slug: string;
+      hash: string;
+      emit: "provider" | "inline";
+      extra?: "no-resolve";
+    }
   | { kind: "manual"; entries: RuleEntry[] };
 
 export interface RuleEntry {

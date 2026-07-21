@@ -304,7 +304,8 @@ const parseRuleItem = (value: unknown, path: string, c: Collector): RuleItem | n
         catalogId: value.catalogId,
         slug: value.slug,
         hash: value.hash,
-        emit: value.emit === "inline" ? "inline" : "provider"
+        emit: value.emit === "inline" ? "inline" : "provider",
+        ...(value.extra === "no-resolve" ? { extra: "no-resolve" as const } : {})
       };
     }
     case "manual": {

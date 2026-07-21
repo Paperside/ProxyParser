@@ -567,7 +567,8 @@ const parsePayloadEntries = (content: string): string[] => {
 
 const inlineRulesFromSnapshot = (
   snapshot: RulesetSnapshotData,
-  target: string
+  target: string,
+  extra?: string
 ): { rules: string[]; unsupported: string[] } => {
   const entries = parsePayloadEntries(snapshot.content);
   const rules: string[] = [];
@@ -588,7 +589,12 @@ const inlineRulesFromSnapshot = (
       continue;
     }
     if (snapshot.behavior === "ipcidr") {
-      rules.push(entry.includes(":") ? `IP-CIDR6,${entry},${target}` : `IP-CIDR,${entry},${target}`);
+      const modifier = extra ? `,${extra}` : "";
+      rules.push(
+        entry.includes(":")
+          ? `IP-CIDR6,${entry},${target}${modifier}`
+          : `IP-CIDR,${entry},${target}${modifier}`
+      );
       continue;
     }
     // domain behavior
@@ -676,7 +682,11 @@ export const assembleRules = (
 
       const deliveryMode = buildConfig.rules.deliveryMode ?? item.emit;
       if (deliveryMode === "inline" || !snapshot.isPublic) {
-        const { rules: inlined, unsupported } = inlineRulesFromSnapshot(snapshot, block.target);
+        const { rules: inlined, unsupported } = inlineRulesFromSnapshot(
+          snapshot,
+          block.target,
+          item.extra
+        );
         rules.push(...inlined);
         if (unsupported.length > 0) {
           issues.push({
@@ -710,7 +720,7 @@ export const assembleRules = (
           path: `./rule-providers/${item.hash}.yaml`
         };
       }
-      rules.push(`RULE-SET,${slug},${block.target}`);
+      rules.push(`RULE-SET,${slug},${block.target}${item.extra ? `,${item.extra}` : ""}`);
     }
   }
 

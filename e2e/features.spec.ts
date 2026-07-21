@@ -348,6 +348,65 @@ test("规则交付开关、URI 自动识别与延迟测试入口可用", async (
   await expect(page.getByText("已识别 vless:// 节点", { exact: false })).toBeVisible();
 });
 
+test("推荐方案将 China 拆为 domain/ip 且裸 IP 命中 China", async ({ page }) => {
+  const subscriptionId = await registerAndCreateSubscription(page);
+  const result = await page.evaluate(async (id) => {
+    const session = JSON.parse(localStorage.getItem("proxyparser.session")!) as {
+      accessToken: string;
+    };
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.accessToken}`
+    };
+    const detailResponse = await fetch(`http://127.0.0.1:7311/api/subscriptions/${id}`, {
+      headers
+    });
+    if (!detailResponse.ok) throw new Error(await detailResponse.text());
+    const detail = await detailResponse.json() as {
+      draftBuildConfig: {
+        groups: { custom: Array<{ name: string }> };
+        rules: {
+          targets: Array<{
+            target: string;
+            items: Array<{ kind: string; slug?: string; extra?: string }>;
+          }>;
+          order: string[];
+        };
+      };
+    };
+    const traceResponse = await fetch(
+      `http://127.0.0.1:7311/api/subscriptions/${id}/trace`,
+      { method: "POST", headers, body: JSON.stringify({ query: "58.19.186.158", draft: true }) }
+    );
+    if (!traceResponse.ok) throw new Error(await traceResponse.text());
+    return { detail, trace: await traceResponse.json() };
+  }, subscriptionId);
+
+  const chinaGroups = result.detail.draftBuildConfig.groups.custom.filter(
+    (group) => group.name === "China"
+  );
+  const chinaBlocks = result.detail.draftBuildConfig.rules.targets.filter(
+    (block) => block.target === "China"
+  );
+  expect(chinaGroups).toHaveLength(1);
+  expect(chinaBlocks).toHaveLength(1);
+  expect(chinaBlocks[0]!.items).toEqual([
+    expect.objectContaining({ kind: "snapshot", slug: "china-domain" }),
+    expect.objectContaining({ kind: "snapshot", slug: "china-ip", extra: "no-resolve" }),
+    expect.objectContaining({ kind: "manual" })
+  ]);
+  expect(result.detail.draftBuildConfig.rules.order.filter((target) => target === "China")).toHaveLength(1);
+  expect(result.trace).toMatchObject({ verdict: "hit", target: "China" });
+  expect((result.trace as { matched: { ruleText: string } }).matched.ruleText).toContain(
+    "RULE-SET,china-ip,China,no-resolve"
+  );
+
+  await page.goto(`/subscriptions/${subscriptionId}/rules`);
+  await expect(page.getByText(/china-domain @/)).toBeVisible();
+  await expect(page.getByText(/china-ip @.*no-resolve/)).toBeVisible();
+  await expect(page.getByText("9 条手动规则", { exact: true })).toBeVisible();
+});
+
 test("工作区不自动生成完整预览，大 YAML 仅按需下载", async ({ page }) => {
   const subscriptionId = await registerAndCreateSubscription(page);
   let previewRequests = 0;
