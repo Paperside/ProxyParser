@@ -21,9 +21,11 @@ export interface MihomoAsset {
 // 固定资产名和压缩包 SHA-256，避免构建过程跟随 latest 漂移或接受被替换的资产。
 export const MIHOMO_ASSETS = {
   "darwin-amd64": {
-    name: "mihomo-darwin-amd64-v1.19.28.gz",
-    sha256: "03e0ce01921f1bcc75e51e6505853330e2956e4dac123564a37620e2a68f823f",
-    size: 17_382_772
+    // 上游不带级别后缀的 amd64 资产从 v1.19.28 起按 GOAMD64=v3 构建。
+    // 固定 v1 资产，保证可在普通 x86-64 主机及 arm64 上的 amd64 构建模拟器中执行。
+    name: "mihomo-darwin-amd64-v1-v1.19.28.gz",
+    sha256: "dc49247406556ee78e9977b3e393d96389d64531ec02738fb848cbea6c8c21ad",
+    size: 17_403_769
   },
   "darwin-arm64": {
     name: "mihomo-darwin-arm64-v1.19.28.gz",
@@ -31,9 +33,9 @@ export const MIHOMO_ASSETS = {
     size: 15_963_072
   },
   "linux-amd64": {
-    name: "mihomo-linux-amd64-v1.19.28.gz",
-    sha256: "d5967e079d9f793515a5a8193aabda455f7e012427eccd567dbc4f2f15498204",
-    size: 18_107_361
+    name: "mihomo-linux-amd64-v1-v1.19.28.gz",
+    sha256: "c0c446f0b0e0bceffffa32daad220ffd35915b9f576f35557f49226f09f54a72",
+    size: 18_134_843
   },
   "linux-arm64": {
     name: "mihomo-linux-arm64-v1.19.28.gz",

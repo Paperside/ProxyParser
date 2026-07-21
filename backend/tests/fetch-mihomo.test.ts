@@ -21,13 +21,15 @@ describe("fetch-mihomo", () => {
       expect(asset.sha256).toMatch(/^[0-9a-f]{64}$/);
       expect(asset.size).toBeGreaterThan(0);
     }
+    expect(MIHOMO_ASSETS["darwin-amd64"].name).toContain("-amd64-v1-");
+    expect(MIHOMO_ASSETS["linux-amd64"].name).toContain("-amd64-v1-");
   });
 
   it("为 Linux/Darwin 的 x64/arm64 选择精确下载 URL", () => {
     const linuxX64 = getMihomoAsset("linux", "x64");
-    expect(linuxX64.name).toBe("mihomo-linux-amd64-v1.19.28.gz");
+    expect(linuxX64.name).toBe("mihomo-linux-amd64-v1-v1.19.28.gz");
     expect(linuxX64.url).toBe(
-      "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.28/mihomo-linux-amd64-v1.19.28.gz"
+      "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.28/mihomo-linux-amd64-v1-v1.19.28.gz"
     );
     expect(getMihomoAsset("darwin", "arm64").name).toBe(
       "mihomo-darwin-arm64-v1.19.28.gz"
