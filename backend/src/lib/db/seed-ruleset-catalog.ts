@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { Database } from "bun:sqlite";
 import yaml from "js-yaml";
 
+import type { RuleEntry } from "../build-config/types";
 import { encodeMultiSourceSpec, type RulesetSource } from "../rulesets/merge";
 
 // 内置规则源 seed：从仓库离线资产（assets/rulesets）落库 catalog + 内容快照。
@@ -27,6 +28,7 @@ export interface BuiltinRulesetManifestEntry {
   recommendedTarget: string;
   sources: RulesetSource[];
   extraRules?: string[];
+  recommendedManualRules?: RuleEntry[];
   includeInRecommendedTemplate?: boolean;
   file: string;
 }
@@ -126,60 +128,102 @@ export const seedBuiltinRulesetCatalog = (db: Database): number => {
       AND is_official = 1
       AND owner_user_id IS NULL
   `);
+  const findCatalogIdentity = db.query<{
+    id: string;
+    slug: string;
+    owner_user_id: string | null;
+    is_official: number;
+  }>(`
+    SELECT id, slug, owner_user_id, is_official
+    FROM ruleset_catalog
+    WHERE slug = ? OR id = ?
+  `);
 
-  for (const entry of entries) {
-    const content = loadBuiltinRulesetContent(entry);
-    if (content === null) {
-      continue;
-    }
-    const catalogId = catalogIdForSlug(entry.slug);
-    const sourceUrl = encodeMultiSourceSpec({
-      sources: entry.sources,
-      extraRules: entry.extraRules ?? []
-    });
-    insertCatalog.run(
-      catalogId,
-      entry.slug,
-      entry.name,
-      entry.description,
-      sourceUrl,
-      entry.behavior,
-      entry.recommendedTarget,
-      now,
-      now
-    );
-    const hash = sha256Hex(content);
-    insertSnapshot.run(hash, catalogId, content, entry.behavior, countPayloadEntries(content), now);
-    setLatest.run(hash, catalogId);
-
-    // 已存在的 catalog 可能仍指向旧版本快照。只有当旧 latest 缺少当前 manifest
-    // 明确要求的后处理规则时，才把随版本发布的离线快照提升为 latest 并点亮徽章。
-    // 这样能补齐新增的 mandatory extraRules，同时不会把已经包含这些规则、但内容更新的
-    // 远端快照降级回较旧的 bundled snapshot；订阅本身仍保持钉版本，等待用户确认应用。
-    const catalogState = getCatalogState.get(catalogId);
-    const latestHash = catalogState?.latest_snapshot_hash ?? null;
-    const requiredRules = entry.extraRules ?? [];
-    if (
-      catalogState?.is_official === 1 &&
-      catalogState.owner_user_id === null &&
-      latestHash &&
-      latestHash !== hash &&
-      requiredRules.length > 0
-    ) {
-      const bundledEntries = payloadEntries(content);
-      const bundledHasRequiredRules = requiredRules.every((rule) => bundledEntries.has(rule));
-      if (bundledHasRequiredRules) {
-        const latestContent = getSnapshotContent.get(latestHash)?.content ?? null;
-        const latestEntries = latestContent ? payloadEntries(latestContent) : new Set<string>();
-        const isMissingRequiredRule = requiredRules.some((rule) => !latestEntries.has(rule));
-        if (isMissingRequiredRule) {
-          // CAS 防止启动 seed 与后台 refresh 并发时覆盖刚写入的更新快照。
-          promoteBundledSnapshot.run(hash, now, catalogId, latestHash);
-        }
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    // slug 全库唯一。先一次性确认所有保留标识仍属于对应官方 catalog，避免新增
+    // 内置 slug 意外覆盖用户 catalog；预检和写入在同一事务中，失败不留下半套 seed。
+    for (const entry of entries) {
+      const expectedId = catalogIdForSlug(entry.slug);
+      const conflicts = findCatalogIdentity
+        .all(entry.slug, expectedId)
+        .filter(
+          (row) =>
+            row.id !== expectedId ||
+            row.slug !== entry.slug ||
+            row.owner_user_id !== null ||
+            row.is_official !== 1
+        );
+      if (conflicts.length > 0) {
+        throw new Error(`内置规则集标识冲突：${entry.slug} / ${expectedId}`);
       }
     }
-    seeded += 1;
-  }
 
-  return seeded;
+    for (const entry of entries) {
+      const content = loadBuiltinRulesetContent(entry);
+      if (content === null) {
+        continue;
+      }
+      const catalogId = catalogIdForSlug(entry.slug);
+      const sourceUrl = encodeMultiSourceSpec({
+        sources: entry.sources,
+        extraRules: entry.extraRules ?? []
+      });
+      insertCatalog.run(
+        catalogId,
+        entry.slug,
+        entry.name,
+        entry.description,
+        sourceUrl,
+        entry.behavior,
+        entry.recommendedTarget,
+        now,
+        now
+      );
+      const hash = sha256Hex(content);
+      insertSnapshot.run(
+        hash,
+        catalogId,
+        content,
+        entry.behavior,
+        countPayloadEntries(content),
+        now
+      );
+      setLatest.run(hash, catalogId);
+
+      // 已存在的 catalog 可能仍指向旧版本快照。只有当旧 latest 缺少当前 manifest
+      // 明确要求的后处理规则时，才把随版本发布的离线快照提升为 latest 并点亮徽章。
+      // 这样能补齐新增的 mandatory extraRules，同时不会把已经包含这些规则、但内容更新的
+      // 远端快照降级回较旧的 bundled snapshot；订阅本身仍保持钉版本，等待用户确认应用。
+      const catalogState = getCatalogState.get(catalogId);
+      const latestHash = catalogState?.latest_snapshot_hash ?? null;
+      const requiredRules = entry.extraRules ?? [];
+      if (
+        catalogState?.is_official === 1 &&
+        catalogState.owner_user_id === null &&
+        latestHash &&
+        latestHash !== hash &&
+        requiredRules.length > 0
+      ) {
+        const bundledEntries = payloadEntries(content);
+        const bundledHasRequiredRules = requiredRules.every((rule) => bundledEntries.has(rule));
+        if (bundledHasRequiredRules) {
+          const latestContent = getSnapshotContent.get(latestHash)?.content ?? null;
+          const latestEntries = latestContent ? payloadEntries(latestContent) : new Set<string>();
+          const isMissingRequiredRule = requiredRules.some((rule) => !latestEntries.has(rule));
+          if (isMissingRequiredRule) {
+            // CAS 防止启动 seed 与后台 refresh 并发时覆盖刚写入的更新快照。
+            promoteBundledSnapshot.run(hash, now, catalogId, latestHash);
+          }
+        }
+      }
+      seeded += 1;
+    }
+
+    db.exec("COMMIT");
+    return seeded;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 };
