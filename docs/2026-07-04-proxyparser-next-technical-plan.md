@@ -229,7 +229,7 @@ mihomo -t -f <config> -d <temp-dir>
 - 自建节点结构保留。默认把 secret 变为占位符；用户也可明确选择保留，此时敏感字段只进入 `template_version_secrets` 密文表，payload/API 仅携带 `embeddedSecret` 标记。应用含凭据模板必须确认，并为接收者创建独立的 `custom_node_secrets` 引用。公开/链接分享含凭据模板需要二次确认并写审计记录，审计不含秘密内容。
 - patch 模式因绑定单一源，明确禁止提炼。
 
-`extractTemplate` 与 `instantiateTemplate` 都是纯函数，往返收敛由测试锁定。官方“推荐方案”由 `seed-builtin-templates.ts` 根据仓库内置规则目录生成，默认选用 AdvertisingLite，并将 `china-domain` 与带 `no-resolve` 的完整 `china-ip` 同时指向 China；旧版混合 China、完整版 Advertising 与 ChinaMax 仍可手动选用但不进入推荐方案。全部规则有离线资产，首启不依赖网络。
+`extractTemplate` 与 `instantiateTemplate` 都是纯函数，往返收敛由测试锁定。官方“推荐方案”由 `seed-builtin-templates.ts` 根据仓库内置规则目录生成，默认选用 AdvertisingLite，并将 `china-domain` 与完整 `china-ip` 同时指向 China；IP 兜底允许 DNS 解析（不附加 `no-resolve`），使未收录但解析至国内 IP 的域名也能命中 China。服务专用规则仍优先于 China。旧版混合 China、完整版 Advertising 与 ChinaMax 仍可手动选用但不进入推荐方案。全部规则有离线资产，首启不依赖网络。
 
 ## 14. 前端
 

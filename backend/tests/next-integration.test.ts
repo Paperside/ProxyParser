@@ -260,15 +260,16 @@ describe("发布管线", () => {
     expect(doc.rules).toContain("RULE-SET,anthropic,Anthropic");
     expect(groupNames.filter((name) => name === "China")).toHaveLength(1);
     expect(doc.rules).toContain("RULE-SET,china-domain,China");
-    expect(doc.rules).toContain("RULE-SET,china-ip,China,no-resolve");
+    expect(doc.rules).toContain("RULE-SET,china-ip,China");
+    expect(doc.rules).not.toContain("RULE-SET,china-ip,China,no-resolve");
     expect(doc.rules).toContain("DOMAIN-KEYWORD,baidu,China");
     expect(doc.rules).not.toContain("RULE-SET,china,China");
     expect(providers["china-domain"]?.behavior).toBe("domain");
     expect(providers["china-ip"]?.behavior).toBe("ipcidr");
     expect(doc.rules!.indexOf("RULE-SET,china-domain,China")).toBeLessThan(
-      doc.rules!.indexOf("RULE-SET,china-ip,China,no-resolve")
+      doc.rules!.indexOf("RULE-SET,china-ip,China")
     );
-    expect(doc.rules!.indexOf("RULE-SET,china-ip,China,no-resolve")).toBeLessThan(
+    expect(doc.rules!.indexOf("RULE-SET,china-ip,China")).toBeLessThan(
       doc.rules!.indexOf("MATCH,Final")
     );
     expect(doc.rules).toContain("RULE-SET,advertisinglite,REJECT");
@@ -1962,6 +1963,7 @@ describe("规则库", () => {
       [
         "anthropic",
         [
+          "DOMAIN-SUFFIX,clau.de",
           "DOMAIN-SUFFIX,claude.com",
           "DOMAIN,servd-anthropic-website.b-cdn.net"
         ]
@@ -2037,7 +2039,7 @@ describe("规则库", () => {
     expect(chinaBlocks).toHaveLength(1);
     expect(chinaBlocks[0]!.items).toEqual([
       expect.objectContaining({ kind: "snapshot", slug: "china-domain" }),
-      expect.objectContaining({ kind: "snapshot", slug: "china-ip", extra: "no-resolve" }),
+      expect.objectContaining({ kind: "snapshot", slug: "china-ip" }),
       expect.objectContaining({
         kind: "manual",
         entries: expect.arrayContaining([
@@ -2580,6 +2582,12 @@ describe("规则追踪器", () => {
     expect(anthropicCdn.verdict).toBe("hit");
     expect(anthropicCdn.target).toBe("Anthropic");
 
+    for (const domain of ["clau.de", "go.clau.de"]) {
+      const shortLink = ctx.subscriptionService.trace(ctx.userId, subscription.id, domain, false);
+      expect(shortLink.verdict).toBe("hit");
+      expect(shortLink.target).toBe("Anthropic");
+    }
+
     const claudePlatform = ctx.subscriptionService.trace(
       ctx.userId,
       subscription.id,
@@ -2631,7 +2639,7 @@ describe("规则追踪器", () => {
       const result = ctx.subscriptionService.trace(ctx.userId, subscription.id, ip, false);
       expect(result.verdict).toBe("hit");
       expect(result.target).toBe("China");
-      expect(result.matched?.ruleText).toContain("RULE-SET,china-ip,China,no-resolve");
+      expect(result.matched?.ruleText).toContain("RULE-SET,china-ip,China");
     }
 
     // 兜底断言用一个不落入任何 CIDR/域名规则集的公共 IP

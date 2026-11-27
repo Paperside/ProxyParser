@@ -34,8 +34,8 @@ const snapshotItem = (
     catalogId: catalogIdForSlug(entry.slug),
     slug: entry.slug,
     hash,
-    emit: "provider",
-    ...(entry.behavior === "ipcidr" ? { extra: "no-resolve" } : {})
+    // IP 兜底必须允许解析未收录的域名；no-resolve 会使域名入站漏到 Final。
+    emit: "provider"
   };
 };
 
